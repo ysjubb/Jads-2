@@ -175,6 +175,7 @@ export class MissionService {
         certExpiryUtcMs:        input.certExpiryUtcMs != null ? String(input.certExpiryUtcMs) : null,
         chainVerifiedByServer:  true,
         archivedCrlBase64:      input.archivedCrlBase64 ?? null,
+        serverReceivedAtUtcMs:  String(Date.now()),
         uploadStatus:           'COMPLETE' as any,
         uploadedAt:             new Date(),
         sensorHealthSummaryFlags: input.records.reduce((acc, r) => acc | r.sensorHealthFlags, 0),

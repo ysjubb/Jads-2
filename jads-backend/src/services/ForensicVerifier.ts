@@ -77,7 +77,10 @@ export class ForensicVerifier {
     if (!i1.pass) failures.push(...i1.detail.split('; '))
 
     // ── I-2: NTP time evidence (CRITICAL if FAILED) ───────────────────────
-    const i2 = this.checkNtpEvidence(mission.ntpSyncStatus, mission.ntpOffsetMs)
+    const i2 = this.checkNtpEvidence(
+      mission.ntpSyncStatus, mission.ntpOffsetMs,
+      mission.missionEndUtcMs, mission.serverReceivedAtUtcMs
+    )
     invariants.push(i2)
     if (!i2.pass) failures.push(i2.detail)
 
@@ -243,8 +246,10 @@ export class ForensicVerifier {
   }
 
   private checkNtpEvidence(
-    ntpSyncStatus: string,
-    ntpOffsetMs:   number | null
+    ntpSyncStatus:        string,
+    ntpOffsetMs:          number | null,
+    missionEndUtcMs:      string | null,
+    serverReceivedAtUtcMs: string | null
   ): InvariantResult {
     // ── I-2 offset magnitude enforcement ────────────────────────────────────
     // ntpSyncStatus alone is insufficient. A device can report SYNCED with a
@@ -284,6 +289,21 @@ export class ForensicVerifier {
       detail = `NTP status: ${effectiveStatus} (offset not recorded — timing accuracy cannot be bounded)`
     } else {
       detail = `NTP status: ${effectiveStatus}${offsetStr}`
+    }
+
+    // ── Server-vs-device time drift advisory ──────────────────────────────
+    // If serverReceivedAtUtcMs was captured at ingestion and device missionEndUtcMs
+    // differs by more than 300 seconds, the device clock may have been manipulated
+    // or experienced severe drift. Append a warning to the I-2 detail string.
+    const SERVER_DRIFT_THRESHOLD = 300_000  // 300 seconds
+    if (missionEndUtcMs != null && serverReceivedAtUtcMs != null) {
+      const deviceEndMs  = Number(missionEndUtcMs)
+      const serverMs     = Number(serverReceivedAtUtcMs)
+      const driftMs      = Math.abs(deviceEndMs - serverMs)
+      if (driftMs > SERVER_DRIFT_THRESHOLD) {
+        const driftSec = Math.round(driftMs / 1000)
+        detail += ` | SERVER_TIME_DRIFT: device missionEndUtcMs differs from serverReceivedAtUtcMs by ${driftSec}s (threshold: 300s) — device clock may be inaccurate`
+      }
     }
 
     return {

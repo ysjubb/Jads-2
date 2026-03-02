@@ -330,6 +330,7 @@ model DroneMission {
   sensorHealthSummaryFlags Int?
   recordsWithDegradedGps  Int?
   archivedCrlBase64       String?
+  serverReceivedAtUtcMs   String?
 
   telemetryRecords        DroneTelemetryRecord[]
   violations              DroneViolation[]
