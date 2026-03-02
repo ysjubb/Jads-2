@@ -12,6 +12,7 @@
     "5432": { "label": "PostgreSQL" }
   },
   "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postStartCommand": "cd jads-backend && npm run dev &",
   "customizations": {
     "vscode": {
       "extensions": [
