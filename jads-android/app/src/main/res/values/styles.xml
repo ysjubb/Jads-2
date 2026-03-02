@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.JADS" parent="Theme.AppCompat.Light.NoActionBar">
+        <!-- Minimal theme — UI is Step 6 (user app screens) -->
+    </style>
+</resources>

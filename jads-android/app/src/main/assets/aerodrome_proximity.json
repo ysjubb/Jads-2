@@ -1,0 +1,92 @@
+[
+  {
+    "icaoCode": "VIDP",
+    "name": "Indira Gandhi International Airport",
+    "arpLat": 28.5665,
+    "arpLon": 77.1031,
+    "type": "INTERNATIONAL",
+    "exclusionInnerKm": 5.0,
+    "exclusionOuterKm": 8.0
+  },
+  {
+    "icaoCode": "VIAL",
+    "name": "Adampur Air Force Station",
+    "arpLat": 31.4336,
+    "arpLon": 75.7588,
+    "type": "MILITARY",
+    "exclusionInnerKm": 5.0,
+    "exclusionOuterKm": 10.0
+  },
+  {
+    "icaoCode": "VIGG",
+    "name": "Goa International Airport",
+    "arpLat": 15.3808,
+    "arpLon": 73.8314,
+    "type": "INTERNATIONAL",
+    "exclusionInnerKm": 5.0,
+    "exclusionOuterKm": 8.0
+  },
+  {
+    "icaoCode": "VABB",
+    "name": "Chhatrapati Shivaji Maharaj International Airport",
+    "arpLat": 19.0896,
+    "arpLon": 72.8656,
+    "type": "INTERNATIONAL",
+    "exclusionInnerKm": 5.0,
+    "exclusionOuterKm": 8.0
+  },
+  {
+    "icaoCode": "VOMM",
+    "name": "Chennai International Airport",
+    "arpLat": 12.9941,
+    "arpLon": 80.1709,
+    "type": "INTERNATIONAL",
+    "exclusionInnerKm": 5.0,
+    "exclusionOuterKm": 8.0
+  },
+  {
+    "icaoCode": "VOBL",
+    "name": "Kempegowda International Airport Bengaluru",
+    "arpLat": 13.1986,
+    "arpLon": 77.7066,
+    "type": "INTERNATIONAL",
+    "exclusionInnerKm": 5.0,
+    "exclusionOuterKm": 8.0
+  },
+  {
+    "icaoCode": "VECC",
+    "name": "Netaji Subhas Chandra Bose International Airport",
+    "arpLat": 22.6549,
+    "arpLon": 88.4467,
+    "type": "INTERNATIONAL",
+    "exclusionInnerKm": 5.0,
+    "exclusionOuterKm": 8.0
+  },
+  {
+    "icaoCode": "VOHB",
+    "name": "Hakimpet Air Force Station",
+    "arpLat": 17.4709,
+    "arpLon": 78.5433,
+    "type": "MILITARY",
+    "exclusionInnerKm": 5.0,
+    "exclusionOuterKm": 10.0
+  },
+  {
+    "icaoCode": "VISR",
+    "name": "Srinagar International Airport",
+    "arpLat": 33.9871,
+    "arpLon": 74.7742,
+    "type": "INTERNATIONAL",
+    "exclusionInnerKm": 5.0,
+    "exclusionOuterKm": 10.0
+  },
+  {
+    "icaoCode": "VIJU",
+    "name": "Jammu Airport",
+    "arpLat": 32.6891,
+    "arpLon": 74.8374,
+    "type": "INTERNATIONAL",
+    "exclusionInnerKm": 5.0,
+    "exclusionOuterKm": 8.0
+  }
+]

@@ -1,0 +1,325 @@
+// FlightPlanService — wires all validation engines in the correct order:
+//   P4A: OfplValidationService — field syntax, Item 18, aerodrome lookup
+//   P4B: RouteSemanticEngine   — route parsing, distances, TAS, magnetic track
+//   P4C: AltitudeComplianceEngine — semicircular rule, RVSM
+//   P4D: FirGeometryEngine     — FIR sequencing, EET per FIR
+//   P4E: AftnMessageBuilder + IAftnGateway — build and file AFTN message
+//
+// Every write records permissionArtefactId for forensic replay.
+// Audit log written for every file attempt (success and failure).
+
+import { PrismaClient }             from '@prisma/client'
+import { OfplValidationService }    from './OfplValidationService'
+import { RouteSemanticEngine }      from './RouteSemanticEngine'
+import { AltitudeComplianceEngine } from './AltitudeComplianceEngine'
+import { FirGeometryEngine }        from './FirGeometryEngine'
+import { AftnMessageBuilder }       from './AftnMessageBuilder'
+import { AftnAddresseeService }     from './AftnAddresseeService'
+import { FlightPlanNotificationService } from './FlightPlanNotificationService'
+import { AftnGatewayStub }          from '../adapters/stubs/AftnGatewayStub'
+import { AirspaceVersioningService } from './AirspaceVersioningService'
+import type { IAftnGateway }        from '../adapters/interfaces/IAftnGateway'
+import { serializeForJson }         from '../utils/bigintSerializer'
+import { createServiceLogger }      from '../logger'
+
+const log = createServiceLogger('FlightPlanService')
+
+export class FlightPlanService {
+  private validator    = new OfplValidationService(this.prisma)
+  private routeEngine  = new RouteSemanticEngine(
+    this.prisma, new AirspaceVersioningService(this.prisma))
+  private altEngine    = new AltitudeComplianceEngine()
+  private firEngine    = new FirGeometryEngine()
+  private msgBuilder   = new AftnMessageBuilder()
+  private addresseeSvc = new AftnAddresseeService()
+  private notifySvc    = new FlightPlanNotificationService(this.prisma)
+
+  constructor(
+    private readonly prisma:      PrismaClient,
+    private readonly aftnGateway: IAftnGateway = new AftnGatewayStub()
+  ) {}
+
+  async createAndFilePlan(
+    input:                any,
+    userId:               string,
+    userType:             'CIVILIAN' | 'SPECIAL',
+    authorisedCallsigns?: string[]
+  ): Promise<{ flightPlanId: string; status: string; atsRef?: string; report: any }> {
+    const allErrors:         any[] = []
+    const allWarnings:       any[] = []
+    const allUsedVersionIds: string[] = []
+
+    // ── P4A: Field validation, Item 18, aerodrome checks ───────────────────
+    const step1 = await this.validator.validate(input, userType, authorisedCallsigns)
+    allErrors.push(...step1.errors)
+    allWarnings.push(...step1.warnings)
+    allUsedVersionIds.push(...step1.usedVersionIds)
+
+    if (step1.errors.length > 0) {
+      await this.writeAuditLog(userId, userType, 'flight_plan_validation_failed', null, false,
+        { errors: step1.errors, callsign: input.callsign })
+      return {
+        flightPlanId: '', status: 'VALIDATION_FAILED',
+        report: serializeForJson({ errors: step1.errors, warnings: step1.warnings })
+      }
+    }
+
+    // ── P4B: Route semantic computation ────────────────────────────────────
+    const step2 = await this.routeEngine.validateAndCompute({
+      departureIcao:   input.departureIcao,
+      destinationIcao: input.destinationIcao,
+      routeString:     input.route,
+      speedIndicator:  input.speedIndicator,
+      speedValue:      input.speedValue,
+      depLatDeg:       step1.computedData.depAerodrome?.latDeg,
+      depLonDeg:       step1.computedData.depAerodrome?.lonDeg,
+      depMagVar:       step1.computedData.depAerodrome?.magneticVariation,
+      destLatDeg:      step1.computedData.destAerodrome?.latDeg,
+      destLonDeg:      step1.computedData.destAerodrome?.lonDeg,
+    })
+    allErrors.push(...step2.errors)
+    allWarnings.push(...step2.warnings)
+    allUsedVersionIds.push(...step2.usedVersionIds)
+
+    // ── P4C: Altitude compliance ───────────────────────────────────────────
+    const step3 = this.altEngine.checkCompliance({
+      flightRules:    input.flightRules,
+      levelIndicator: input.levelIndicator,
+      levelValue:     input.levelValue,
+      magneticTrackDeg: step2.magneticTrackDeg,
+      equipment:      input.equipment,
+      destinationTransitionAltFt:
+        step1.computedData.destAerodrome?.transitionAltitudeFt ?? undefined,
+      destinationTransitionLevelFl:
+        step1.computedData.destAerodrome?.transitionLevelFl ?? undefined,
+    })
+    allErrors.push(...step3.errors)
+    allWarnings.push(...step3.warnings)
+
+    // ── P4D: FIR sequencing ────────────────────────────────────────────────
+    const step4 = this.firEngine.computeFirSequence(
+      step2.legs,
+      step2.groundspeedKts,
+      input.departureIcao,
+      input.destinationIcao
+    )
+
+    // Final check after all engines
+    if (allErrors.length > 0) {
+      await this.writeAuditLog(userId, userType, 'flight_plan_engines_failed', null, false,
+        { errors: allErrors, callsign: input.callsign })
+      return {
+        flightPlanId: '', status: 'VALIDATION_FAILED',
+        report: serializeForJson({ errors: allErrors, warnings: allWarnings })
+      }
+    }
+
+    // ── Build AFTN message ─────────────────────────────────────────────────
+    const speedStr = `${input.speedIndicator}${input.speedValue}`
+    const levelStr = input.levelIndicator === 'VFR'
+      ? 'VFR'
+      : `${input.levelIndicator}${input.levelValue}`
+
+    const aftnMessage = this.msgBuilder.build({
+      callsign:           input.callsign,
+      flightRules:        input.flightRules,
+      flightType:         input.flightType,
+      aircraftType:       input.aircraftType,
+      wakeTurbulence:     input.wakeTurbulence,
+      equipment:          input.equipment,
+      surveillance:       input.surveillance,
+      departureIcao:      input.departureIcao,
+      eobt:               input.estimatedOffBlock,
+      speed:              speedStr,
+      level:              levelStr,
+      route:              input.route,
+      destination:        input.destinationIcao,
+      eet:                input.eet,
+      alternate1:         input.alternate1,
+      alternate2:         input.alternate2,
+      item18Parsed:       step1.item18Parsed,
+      endurance:          input.enduranceHHmm,
+      pob:                input.personsOnBoard,
+      // Item 19 SAR fields — passed through from operator input
+      radioEquipment:     input.radioEquipment,
+      survivalEquipment:  input.survivalEquipment,
+      jackets:            input.jackets,
+      dinghies:           input.dinghies,
+    })
+
+    // ── Save to DB — VALIDATED ─────────────────────────────────────────────
+    const flightPlanIdBig = BigInt(Date.now())
+    const plan = await this.prisma.mannedFlightPlan.create({
+      data: {
+        flightPlanId:               flightPlanIdBig,
+        aircraftId:              input.callsign,
+        flightRules:           input.flightRules,
+        flightType:            input.flightType,
+        aircraftType:          input.aircraftType,
+        wakeTurbulence:        input.wakeTurbulence,
+        item10Equipment:            input.equipment.split(''),
+        item10Surveillance:         input.surveillance.split(''),
+        adep:            input.departureIcao,
+        eobt:    this.parseEobt(input.estimatedOffBlock),
+        cruisingSpeed:                speedStr,
+        cruisingLevel:                levelStr,
+        route:                input.route,
+        ades:          input.destinationIcao,
+        eet:                  this.hhmm2min(input.eet),
+        altn1:           input.alternate1 ?? null,
+        altn2:           input.alternate2 ?? null,
+        item18:            input.otherInfo ?? null,
+        endurance:            input.enduranceHHmm ? this.hhmm2min(input.enduranceHHmm) : null,
+        personsOnBoard:       input.personsOnBoard ?? null,
+        aftnMessage:            aftnMessage,
+        permissionArtefactId: [...new Set(allUsedVersionIds)],
+        validatedAtUtc:             new Date(),
+        validationResultJson:       JSON.stringify({
+          errors: allErrors, warnings: allWarnings,
+          magneticTrackDeg:  step2.magneticTrackDeg,
+          totalEet:   step2.totalEet,
+          cruiseTasKts:      step2.cruiseTasKts,
+        }),
+        status:                     'VALIDATED' as any,
+        totalEet:            step2.totalEet,
+        route:            JSON.stringify(step4.crossings),
+        eet:      step4.eetPerFirJson,
+        filedBy:              userType === 'CIVILIAN' ? userId : null,
+        filedBy:       userType === 'SPECIAL'  ? userId : null,
+      }
+    })
+
+    // ── Auto-generate AFTN addressees (AftnAddresseeService) ──────────────
+    const addresseeStructure = this.addresseeSvc.generateAddressees({
+      adep:           input.departureIcao,
+      ades:           input.destinationIcao,
+      depAlternate:   input.alternate1 ?? undefined,
+      destAlternate:  input.alternate2 ?? undefined,
+      firSequence:    step4.crossings.map(c => ({
+        firCode:       c.firCode,
+        firName:       c.firName ?? c.firCode,
+        entryWaypoint: c.entryWaypoint ?? input.departureIcao,
+      })),
+    })
+    const addressees = addresseeStructure.actionAddressees.map(a => a.aftnAddress)
+
+    const filingResult = await this.aftnGateway.fileFpl({
+      messageType:    'FPL',
+      priority:       'GG',
+      addressees,
+      originator:     'JADSZTZX',
+      filingTime:     input.estimatedOffBlock,
+      messageContent: aftnMessage
+    })
+
+    // ── Update filing result ───────────────────────────────────────────────
+    const finalStatus = filingResult.accepted ? 'FILED' : 'FILING_FAILED'
+    await this.prisma.mannedFlightPlan.update({
+      where: { id: plan.id },
+      data: {
+        status:             finalStatus as any,
+        atsRef:             filingResult.atsRef ?? null,
+        aftnTransmissionId: filingResult.aftnTransmissionId ?? null,
+        filedAt:         filingResult.accepted ? new Date() : null,
+      }
+    })
+
+    await this.writeAuditLog(
+      userId, userType,
+      filingResult.accepted ? 'flight_plan_filed' : 'flight_plan_filing_failed',
+      plan.id, filingResult.accepted,
+      {
+        callsign:        input.callsign,
+        atsRef:          filingResult.atsRef,
+        aftnMessage:     aftnMessage.substring(0, 300),
+        firSequence:     step4.crossings.map(c => c.firCode).join('→'),
+        totalEet: Math.round(step2.totalEet),
+        addresseesCount: addressees.length,
+      }
+    )
+
+    // ── Filing confirmation — fire-and-forget, never blocks filing ─────────
+    if (filingResult.accepted && input.pilotEmail) {
+      this.notifySvc.sendFilingConfirmation(
+        {
+          id:            plan.id,
+          aircraftId:    input.callsign,
+          adep:          input.departureIcao,
+          ades:          input.destinationIcao,
+          eobt:          input.estimatedOffBlock,
+          cruisingLevel: levelStr,
+          totalEet:      input.eet,
+          destAlternate: input.alternate1 ?? undefined,
+          flightRules:   input.flightRules,
+          atsRef:        filingResult.atsRef ?? null,
+          aftnMessage,
+          filedAt:       new Date(),
+          addressees:    addresseeStructure,
+        },
+        {
+          email:        input.pilotEmail,
+          mobileNumber: input.pilotMobile ?? '',
+        },
+        input.notifyEmails ?? []
+      ).catch(err => {
+        log.warn('filing_notification_failed', { data: { planId: plan.id, err: err.message } })
+      })
+    }
+
+    log.info(filingResult.accepted ? 'flight_plan_filed' : 'flight_plan_filing_failed', {
+      data: {
+        flightPlanId: plan.id, callsign: input.callsign,
+        atsRef: filingResult.atsRef, status: finalStatus,
+        addressees: addressees.length,
+      }
+    })
+
+    return {
+      flightPlanId: plan.id,
+      status:       finalStatus,
+      atsRef:       filingResult.atsRef ?? undefined,
+      report:       serializeForJson({
+        errors:           allErrors,
+        warnings:         allWarnings,
+        aftnMessage,
+        magneticTrackDeg: step2.magneticTrackDeg,
+        totalEet:  Math.round(step2.totalEet),
+        totalEetMinutes:  step2.totalEetMinutes,
+        firSequence:      step4.crossings,
+        status:  'PENDING_CLEARANCE',
+      })
+    }
+  }
+
+  private parseEobt(eobt: string): Date {
+    const day  = parseInt(eobt.substring(0, 2))
+    const hour = parseInt(eobt.substring(2, 4))
+    const min  = parseInt(eobt.substring(4, 6))
+    const now  = new Date()
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), day, hour, min, 0))
+  }
+
+  private hhmm2min(hhmm: string): number {
+    return parseInt(hhmm.substring(0, 2)) * 60 + parseInt(hhmm.substring(2, 4))
+  }
+
+  private async writeAuditLog(
+    actorId:    string,
+    actorType:  string,
+    action:     string,
+    resourceId: string | null,
+    success:    boolean,
+    data:       object
+  ): Promise<void> {
+    await this.prisma.auditLog.create({
+      data: {
+        actorType:    actorType === 'CIVILIAN' ? 'CIVILIAN_USER' : 'SPECIAL_USER',
+        actorId, action,
+        resourceType: 'flight_plan',
+        resourceId:   resourceId ?? undefined,
+        success,
+        detailJson: JSON.stringify(data)
+      }
+    })
+  }
+}

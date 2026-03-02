@@ -1,0 +1,132 @@
+{
+  "_comment": "JADS Platform v4.0 — Canonical test vectors. Single source of truth for telemetry format.",
+  "_version": "4.0",
+  "_generated": "2024-01-01T00:00:00Z",
+  "_rules": {
+    "missionId": "Unix epoch milliseconds as uint64 big-endian",
+    "sequence": "Zero-based, gapless, uint32 big-endian at offset 0",
+    "timestampUtcMs": "NTP-corrected UTC milliseconds, uint64 big-endian at offset 4",
+    "latitudeMicrodeg": "WGS84 latitude × 1e6, int32 big-endian at offset 12",
+    "longitudeMicrodeg": "WGS84 longitude × 1e6, int32 big-endian at offset 16",
+    "altitudeCm": "AGL centimetres, uint32 big-endian at offset 20",
+    "velocityNorthMms": "mm/s northward, int32 big-endian at offset 24",
+    "velocityEastMms": "mm/s eastward, int32 big-endian at offset 28",
+    "velocityDownMms": "mm/s downward, int32 big-endian at offset 32",
+    "hdop": "HDOP × 100, uint16 big-endian at offset 36",
+    "satelliteCount": "GPS satellites, uint8 at offset 38",
+    "fixType": "0=NONE 1=2D 2=3D 3=DGPS, uint8 at offset 39",
+    "npntClassification": "0=GREEN 1=YELLOW 2=RED, uint8 at offset 40",
+    "missionIdBytes": "uint64 big-endian at offset 41",
+    "operatorIdHash": "SHA256(operatorId)[0..15] — 16 bytes at offset 49",
+    "reserved": "bytes 65-91 MUST be 0x00",
+    "crc32": "CRC32 of bytes 0..91, uint32 big-endian at offset 92"
+  },
+  "hash0_computation": {
+    "_comment": "HASH_0 = SHA256('MISSION_INIT' || missionId_uint64_BE). 12 + 8 = 20 bytes input.",
+    "missionId": 1704067200000,
+    "missionIdHex": "0000018cc251f400",
+    "prefixAscii": "MISSION_INIT",
+    "prefixHex": "4d495353494f4e5f494e4954",
+    "inputHex": "4d495353494f4e5f494e49540000018cc251f400",
+    "hash0Hex": "04416388bf699ff7246cd094ff0db2980eb3d43c44bd39a5faba39f9cb365327"
+  },
+  "vectors": [
+    {
+      "_id": "TV-001",
+      "_description": "Sequence 0 — mission start, hovering at VIDP, GREEN zone",
+      "inputs": {
+        "missionId":          1704067200000,
+        "sequence":           0,
+        "timestampUtcMs":     1704067200000,
+        "latitudeMicrodeg":   28632500,
+        "longitudeMicrodeg":  77219500,
+        "altitudeCm":         3048,
+        "velocityNorthMms":   0,
+        "velocityEastMms":    0,
+        "velocityDownMms":    0,
+        "hdop":               85,
+        "satelliteCount":     12,
+        "fixType":            2,
+        "npntClassification": 0,
+        "operatorId":         "JADS-DGCA-000001-DP"
+      },
+      "expected": {
+        "canonicalHex":  "000000000000018cc251f40001b4e5b4049a46ac00000be800000000000000000000000000550c02000000018cc251f400e2d68916f0b6135d727b913aa3195953000000000000000000000000000000000000000000000000000000f6f7cfb9",
+        "crc32Hex":      "f6f7cfb9",
+        "prevHashHex":   "04416388bf699ff7246cd094ff0db2980eb3d43c44bd39a5faba39f9cb365327",
+        "chainHashHex":  "076d34521bf38c421d9792dee2248bf0264645c59836532bc9bd1ae28f1adde2"
+      }
+    },
+    {
+      "_id": "TV-002",
+      "_description": "Sequence 1 — moving north-east, 50m AGL",
+      "inputs": {
+        "missionId":          1704067200000,
+        "sequence":           1,
+        "timestampUtcMs":     1704067201000,
+        "latitudeMicrodeg":   28632600,
+        "longitudeMicrodeg":  77219600,
+        "altitudeCm":         5000,
+        "velocityNorthMms":   2500,
+        "velocityEastMms":    1800,
+        "velocityDownMms":    -100,
+        "hdop":               72,
+        "satelliteCount":     13,
+        "fixType":            2,
+        "npntClassification": 0,
+        "operatorId":         "JADS-DGCA-000001-DP"
+      },
+      "expected": {
+        "canonicalHex":  "000000010000018cc251f7e801b4e618049a471000001388000009c400000708ffffff9c00480d02000000018cc251f400e2d68916f0b6135d727b913aa319595300000000000000000000000000000000000000000000000000000073e1386d",
+        "crc32Hex":      "73e1386d",
+        "prevHashHex":   "076d34521bf38c421d9792dee2248bf0264645c59836532bc9bd1ae28f1adde2",
+        "chainHashHex":  "486aeb72d57a9f3f7664a266bce6cf22133db32f6c6abb198b70d08066a3bfe3"
+      }
+    },
+    {
+      "_id": "TV-003",
+      "_description": "RED zone classification — npntClassification=2 at offset 40",
+      "inputs": {
+        "missionId":          1704067200000,
+        "sequence":           0,
+        "timestampUtcMs":     1704067200000,
+        "latitudeMicrodeg":   28632500,
+        "longitudeMicrodeg":  77219500,
+        "altitudeCm":         0,
+        "velocityNorthMms":   0,
+        "velocityEastMms":    0,
+        "velocityDownMms":    0,
+        "hdop":               100,
+        "satelliteCount":     8,
+        "fixType":            2,
+        "npntClassification": 2,
+        "operatorId":         "JADS-DGCA-000001-DP"
+      },
+      "expected": {
+        "npntClassificationByte": "02",
+        "npntByteOffset": 40
+      }
+    },
+    {
+      "_id": "TV-004",
+      "_description": "Reserved bytes 65-91 must be 0x00",
+      "inputs": { "_ref": "TV-001" },
+      "expected": {
+        "reservedBytesHex":   "00000000",
+        "reservedByteOffset": 65,
+        "reservedByteLength": 27
+      }
+    },
+    {
+      "_id": "TV-005",
+      "_description": "CRC32 computed over bytes 0..91 only, stored at offset 92",
+      "inputs": { "_ref": "TV-001" },
+      "expected": {
+        "crcInputLength":     92,
+        "crcOutputLength":    4,
+        "crcOffset":          92,
+        "totalPayloadLength": 96
+      }
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+# JADS Platform v4.0 — Local Development Stack
+# Usage:
+#   docker-compose up -d          → start Postgres in background
+#   docker-compose down           → stop
+#   docker-compose down -v        → stop + wipe all data (fresh start)
+
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: jads_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     jads
+      POSTGRES_PASSWORD: jads_dev_password
+      POSTGRES_DB:       jads_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - jads_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jads -d jads_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  jads_pgdata:
+    driver: local

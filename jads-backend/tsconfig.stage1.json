@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target":           "ES2022",
+    "module":           "CommonJS",
+    "lib":              ["ES2022"],
+    "strict":           true,
+    "esModuleInterop":  true,
+    "skipLibCheck":     true,
+    "noEmit":           true,
+    "typeRoots":        ["/home/claude/.npm-global/lib/node_modules/docx/node_modules/@types/node/.."]
+  },
+  "include": ["src/env.ts", "src/logger.ts"]
+}

@@ -1,0 +1,475 @@
+// JADS Platform v4.0 — Prisma Schema
+// AUTHORITATIVE SOURCE: matches migration SQL exactly.
+// Never modify field names here without a corresponding migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════
+// ENUMS — must match migration SQL CREATE TYPE
+// ═══════════════════════════════════════════════
+
+enum UserRole {
+  PILOT
+  DRONE_OPERATOR
+  PILOT_AND_DRONE
+  GOVT_PILOT
+  GOVT_DRONE_OPERATOR
+  GOVT_ADMIN
+  PLATFORM_SUPER_ADMIN
+  DGCA_AUDITOR
+  AAI_AUDITOR
+  IAF_AUDITOR
+  ARMY_AUDITOR
+  NAVY_AUDITOR
+  INVESTIGATION_OFFICER
+}
+
+enum IdentityVerificationStatus {
+  PENDING
+  VERIFIED
+  REVERIFICATION_DUE
+  EXPIRED
+  SUSPENDED
+  REVOKED
+}
+
+enum UserAccountStatus {
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+enum AirspaceDataSource {
+  DGCA_MANUAL
+  AAI_AIP
+  NOTAM_DERIVED
+  IAF_CLASSIFIED
+  ADMIN_OVERRIDE
+}
+
+enum AirspaceApprovalStatus {
+  DRAFT
+  PENDING
+  ACTIVE
+  EXPIRED
+  REJECTED
+}
+
+enum NpntClass {
+  GREEN
+  YELLOW
+  RED
+}
+
+enum NtpSyncStatus {
+  SYNCED
+  DEGRADED
+  FAILED
+}
+
+enum MissionUploadStatus {
+  PENDING
+  PROCESSING
+  COMPLETE
+  FAILED
+}
+
+enum ViolationType {
+  GEOFENCE_BREACH
+  ALTITUDE_VIOLATION
+  SPEED_VIOLATION
+  TIME_WINDOW_VIOLATION
+  CHAIN_BREAK
+  REPLAY_ATTEMPT
+  GPS_SPOOFING_SUSPECTED
+  UNPERMITTED_ZONE
+}
+
+enum ViolationSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum FlightRules {
+  IFR
+  VFR
+  SVFR
+  Y
+  Z
+}
+
+enum FlightType {
+  S
+  N
+  G
+  M
+  X
+}
+
+enum FlightPlanStatus {
+  DRAFT
+  VALIDATED
+  FILED
+  ACKNOWLEDGED
+  ACTIVATED
+  COMPLETED
+  CANCELLED
+  OVERDUE
+  REJECTED_BY_ATC
+}
+
+// ═══════════════════════════════════════════════
+// MODELS
+// ═══════════════════════════════════════════════
+
+model CivilianUser {
+  id                  String                     @id @default(cuid())
+  aadhaarHash         String                     @unique
+  phone               String                     @unique
+  email               String?
+  role                UserRole                   @default(PILOT)
+  dgcaLicenseNumber   String?
+  dgcaLicenseExpiry   DateTime?
+  identityStatus      IdentityVerificationStatus @default(PENDING)
+  accountStatus       UserAccountStatus          @default(PENDING_APPROVAL)
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+  lastLoginAt         DateTime?
+  annualReconfirmDue  DateTime?
+
+  flightPlans         MannedFlightPlan[]         @relation("FiledByCivilian")
+}
+
+model SpecialUser {
+  id                  String            @id @default(cuid())
+  username            String            @unique
+  passwordHash        String
+  unitDesignator      String
+  entityCode          String
+  role                UserRole          @default(GOVT_DRONE_OPERATOR)
+  accountStatus       UserAccountStatus @default(ACTIVE)
+  provisionedBy       String
+  provisionedAt       DateTime          @default(now())
+  lastLoginAt         DateTime?
+  passwordLastChanged DateTime          @default(now())
+
+  entityRights        GovtAdminEntityRights[]
+  flightPlans         MannedFlightPlan[]       @relation("FiledBySpecial")
+}
+
+model GovtAdminEntityRights {
+  id                String      @id @default(cuid())
+  specialUserId     String
+  entityCode        String
+  canViewMissions   Boolean     @default(true)
+  canViewFlightPlans Boolean    @default(true)
+  canViewViolations Boolean     @default(true)
+  canExportForensic Boolean     @default(false)
+  grantedBy         String
+  grantedAt         DateTime    @default(now())
+
+  specialUser       SpecialUser @relation(fields: [specialUserId], references: [id])
+}
+
+model InvestigationAccess {
+  id              String    @id @default(cuid())
+  grantedToUserId String
+  missionId       String?
+  flightPlanId    String?
+  reason          String
+  grantedBy       String
+  grantedAt       DateTime  @default(now())
+  expiresAt       DateTime
+}
+
+model AuditLog {
+  id             String    @id @default(cuid())
+  timestamp      DateTime  @default(now())
+  actorId        String
+  actorType      String
+  action         String
+  resourceType   String
+  resourceId     String?
+  ipAddress      String?
+  userAgent      String?
+  detailJson     String
+  sequenceNumber BigInt    @default(autoincrement())
+
+  @@index([actorId])
+  @@index([resourceType, resourceId])
+  @@index([timestamp])
+  @@index([sequenceNumber])
+}
+
+model AdminUser {
+  id            String            @id @default(cuid())
+  username      String            @unique
+  passwordHash  String
+  role          UserRole          @default(GOVT_ADMIN)
+  entityCode    String
+  accountStatus UserAccountStatus @default(ACTIVE)
+  createdAt     DateTime          @default(now())
+  lastLoginAt   DateTime?
+}
+
+model OtpRecord {
+  id        String    @id @default(cuid())
+  phone     String
+  otpHash   String
+  purpose   String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model AirspaceVersion {
+  id             String                 @id @default(cuid())
+  dataType       String
+  versionNumber  Int
+  payloadJson    String
+  payloadHash    String
+  approvalStatus AirspaceApprovalStatus @default(DRAFT)
+  dataSource     AirspaceDataSource     @default(ADMIN_OVERRIDE)
+  airacCycle     String?
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
+  changeReason   String
+  createdBy      String
+  approvedBy     String?
+  rejectedBy     String?
+  createdAt      DateTime               @default(now())
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  rejectionReason String?
+  supersededById String?
+
+  @@index([dataType])
+  @@index([approvalStatus])
+}
+
+model MannedFlightPlan {
+  id               String          @id @default(cuid())
+  filedBy          String
+  filedByType      String          @default("CIVILIAN")
+  aftnMessage      String?
+  aftnAddressees   String?
+  ficNumber        String?
+  adcNumber        String?
+  notifyEmail      String?
+  notifyMobile     String?
+  filedAt          DateTime?
+  clearedAt        DateTime?
+  item18           String?
+  item19           String?
+  status           FlightPlanStatus @default(DRAFT)
+  flightRules      FlightRules     @default(VFR)
+  flightType       FlightType      @default(G)
+  aircraftId       String
+  aircraftType     String
+  wakeTurbulence   String          @default("L")
+  equipment        String          @default("S")
+  survivalEquipment String?
+  adep             String
+  ades             String
+  altn1            String?
+  altn2            String?
+  eobt             DateTime
+  eet              String
+  totalEet         String?
+  endurance        String?
+  personsOnBoard   Int?
+  route            String
+  cruisingLevel    String
+  cruisingSpeed    String
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  civilianFiler    CivilianUser?   @relation("FiledByCivilian", fields: [filedBy], references: [id])
+  specialFiler     SpecialUser?    @relation("FiledBySpecial", fields: [filedBy], references: [id])
+  adcRecords       AdcRecord[]
+
+  @@index([filedBy])
+  @@index([adep, ades])
+}
+
+model DroneMission {
+  id                      String              @id @default(cuid())
+  missionId               String              @unique
+  deviceNonce             String?             @unique
+  operatorId              String
+  operatorType            String              @default("CIVILIAN")
+  deviceId                String
+  deviceModel             String?
+  npntClassification      NpntClass
+  permissionArtefactId    String?
+  missionStartUtcMs       String
+  missionEndUtcMs         String?
+  ntpSyncStatus           NtpSyncStatus       @default(SYNCED)
+  ntpOffsetMs             Int?
+  certValidAtStart        Boolean             @default(false)
+  certExpiryUtcMs         String?
+  deviceCertDer           String?             // DER-encoded device X.509 cert (base64) for post-hoc ECDSA re-verification
+  chainVerifiedByServer   Boolean             @default(false)
+  chainFailureSequence    Int?
+  uploadStatus            MissionUploadStatus @default(PENDING)
+  uploadedAt              DateTime            @default(now())
+  isDuplicate             Boolean             @default(false)
+  duplicateOfMissionId    String?
+  strongboxBacked         Boolean?
+  secureBootVerified      Boolean?
+  androidVersionAtUpload  String?
+  sensorHealthSummaryFlags Int?
+  recordsWithDegradedGps  Int?
+  archivedCrlBase64       String?
+
+  telemetryRecords        DroneTelemetryRecord[]
+  violations              DroneViolation[]
+  overrides               DroneMissionOverride[]
+
+  @@index([operatorId])
+  @@index([uploadedAt])
+}
+
+
+model DroneTelemetryRecord {
+  id                  String       @id @default(cuid())
+  missionId           String
+  sequence            Int
+  canonicalPayloadHex String
+  chainHashHex        String
+  signatureHex        String
+  prevHashPrefixHex   String
+  crc32Valid          Boolean
+  gnssStatus          String
+  sensorHealthFlags   Int          @default(0)
+  decodedJson         String
+  recordedAtUtcMs     String
+
+  mission             DroneMission @relation(fields: [missionId], references: [id])
+
+  @@index([missionId])
+  @@index([sequence])
+}
+
+
+model DroneViolation {
+  id              String            @id @default(cuid())
+  missionId       String
+  sequence        Int
+  violationType   ViolationType
+  severity        ViolationSeverity
+  timestampUtcMs  String
+  detailJson      String
+  overriddenBy    String?
+  overrideReason  String?
+  overriddenAt    DateTime?
+
+  mission         DroneMission      @relation(fields: [missionId], references: [id])
+
+  @@index([missionId])
+}
+
+
+model DroneMissionOverride {
+  id           String       @id @default(cuid())
+  missionId    String
+  overriddenBy String
+  reason       String
+  overrideType String
+  createdAt    DateTime     @default(now())
+
+  mission      DroneMission @relation(fields: [missionId], references: [id])
+}
+
+model AdcRecord {
+  id           String           @id @default(cuid())
+  flightPlanId String?
+  adcNumber    String           @unique
+  issuedBy     String
+  issuedAt     DateTime         @default(now())
+  validFrom    DateTime
+  validTo      DateTime
+  remarks      String?
+
+  flightPlan   MannedFlightPlan? @relation(fields: [flightPlanId], references: [id])
+}
+
+model FicRecord {
+  id           String    @id @default(cuid())
+  ficNumber    String    @unique
+  firCode      String
+  subject      String
+  content      String
+  category     String    @default("GENERAL")
+  effectiveFrom DateTime
+  effectiveTo  DateTime?
+  issuedBy     String
+  issuedAtUtc  DateTime  @default(now())
+  fetchedAt    DateTime  @default(now())
+}
+
+model NotamRecord {
+  id            String    @id @default(cuid())
+  notamId       String    @unique
+  series        String
+  number        Int
+  year          Int
+  type          String
+  location      String
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  content       String
+  fetchedAt     DateTime  @default(now())
+}
+
+model MetarRecord {
+  id            String    @id @default(cuid())
+  icao          String
+  rawMetar      String
+  observedAt    DateTime
+  windDirection Int?
+  windSpeedKt   Int?
+  visibilityM   Int?
+  tempC         Float?
+  dewpointC     Float?
+  qnhHpa        Float?
+  fetchedAt     DateTime  @default(now())
+}
+
+model AerodromeRecord {
+  id           String  @id @default(cuid())
+  icao         String  @unique
+  iata         String?
+  name         String
+  city         String
+  state        String?
+  country      String  @default("IN")
+  latitudeDeg  Float
+  longitudeDeg Float
+  elevationFt  Int?
+  type         String  @default("AIRPORT")
+  runways      String?
+}
+
+model EvidenceLedger {
+  id                String   @id @default(cuid())
+  anchorDate        DateTime @db.Date
+  missionCount      Int      @default(0)
+  missionIdsCsvHash String
+  anchorHash        String
+  prevAnchorHash    String
+  computedAt        DateTime @default(now())
+  jobRunId          String
+
+  @@unique([anchorDate])
+  @@index([anchorDate])
+}

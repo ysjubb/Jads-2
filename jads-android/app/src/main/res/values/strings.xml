@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">JADS</string>
+    <string name="app_name_full">JADS Drone Operator</string>
+    <string name="mission_notification_title">JADS Mission Active</string>
+    <string name="mission_notification_text">Recording telemetry — do not close the app</string>
+    <string name="channel_mission_id">jads_mission</string>
+    <string name="channel_mission_name">Mission Recording</string>
+</resources>

@@ -1,0 +1,27 @@
+# Environment files (contain secrets)
+.env
+*.env.local
+
+# Node.js
+node_modules/
+dist/
+*.tgz
+
+# Android
+jads-android/.gradle/
+jads-android/build/
+jads-android/app/build/
+*.apk
+local.properties
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Zip archives (uploaded raw files)
+*.zip
