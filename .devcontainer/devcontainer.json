@@ -1,0 +1,23 @@
+{
+  "name": "JADS Platform v4.0",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "forwardPorts": [8080, 5173, 5174, 5432],
+  "portsAttributes": {
+    "8080": { "label": "JADS Backend API" },
+    "5173": { "label": "Admin Portal" },
+    "5174": { "label": "Audit Portal" },
+    "5432": { "label": "PostgreSQL" }
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Prisma.prisma",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  }
+}
