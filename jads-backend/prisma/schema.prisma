@@ -41,6 +41,7 @@ enum IdentityVerificationStatus {
 }
 
 enum UserAccountStatus {
+  PENDING_APPROVAL
   ACTIVE
   SUSPENDED
   REVOKED
@@ -293,8 +294,8 @@ model MannedFlightPlan {
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
-  civilianFiler    CivilianUser?   @relation("FiledByCivilian", fields: [filedBy], references: [id])
-  specialFiler     SpecialUser?    @relation("FiledBySpecial", fields: [filedBy], references: [id])
+  civilianFiler    CivilianUser?   @relation("FiledByCivilian", fields: [filedBy], references: [id], map: "MannedFlightPlan_civilianFiler_fkey")
+  specialFiler     SpecialUser?    @relation("FiledBySpecial", fields: [filedBy], references: [id], map: "MannedFlightPlan_specialFiler_fkey")
   adcRecords       AdcRecord[]
 
   @@index([filedBy])

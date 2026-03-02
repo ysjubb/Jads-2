@@ -24,7 +24,7 @@ export interface ParsedCoordinate {
   displayDMS:  string   // canonical display: 28°34'15"N 077°12'07"E
 }
 
-export interface CoordinateParseResult {
+export type CoordinateParseResult = {
   success: true
   coord:   ParsedCoordinate
 } | {
