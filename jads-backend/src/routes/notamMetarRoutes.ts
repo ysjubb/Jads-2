@@ -59,8 +59,8 @@ router.get('/:icao', requireAuth, async (req, res) => {
       return
     }
 
-    const ageMinutes = Math.round((Date.now() - metar.observationUtc.getTime()) / 60000)
-    res.json(serializeForJson({ success: true, metar, ageMinutes, isStale: ageMinutes > 60 }))
+    const ageMinutes = metar.observationUtc ? Math.round((Date.now() - metar.observationUtc.getTime()) / 60000) : null
+    res.json(serializeForJson({ success: true, metar, ageMinutes, isStale: (ageMinutes ?? 0) > 60 }))
   } catch {
     res.status(500).json({ error: 'METAR_FETCH_FAILED' })
   }

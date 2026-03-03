@@ -40,14 +40,12 @@ router.post('/route-plan', requireAuth, async (req, res) => {
     // Special users default to DIRECT routing; civilian to AIRWAYS
     const effectiveMode = mode ?? (req.auth!.userType === 'SPECIAL' ? 'DIRECT' : 'AIRWAYS')
 
-    const plan = routeService.planRoute({
-      adep,
-      ades,
-      mode:           effectiveMode,
+    const plan = routeService.planRoute(
       waypoints,
-      cruisingLevel,
-      flightRules,
-    })
+      waypoints.slice(0, -1).map(() => ({ type: effectiveMode === 'DIRECT' ? 'DIRECT' as const : 'AIRWAY' as const })),
+      480,  // Default groundspeed for planning (480 kts)
+      typeof cruisingLevel === 'number' ? cruisingLevel : parseInt(String(cruisingLevel).replace(/\D/g, '')) || 350,
+    )
 
     res.json({ success: true, routePlan: plan })
   } catch (e: unknown) {
@@ -101,7 +99,6 @@ router.get('/', requireAuth, async (req, res) => {
         id: true, flightPlanId: true, aircraftId: true,
         adep: true, ades: true,
         eobt: true, status: true, filedAt: true,
-        status: true,
       }
     })
     res.json(serializeForJson({ success: true, plans }))
@@ -129,7 +126,7 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
       reason.trim()
     )
 
-    res.json({ success: true, ...result })
+    res.json({ ...result })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     const status = msg.includes('NOT_FOUND') ? 404
@@ -165,7 +162,7 @@ router.post('/:id/delay', requireAuth, async (req, res) => {
       reason.trim()
     )
 
-    res.json({ success: true, ...result })
+    res.json({ ...result })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     const status = msg.includes('NOT_FOUND') ? 404

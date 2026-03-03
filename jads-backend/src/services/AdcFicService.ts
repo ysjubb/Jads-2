@@ -38,7 +38,7 @@ export class AdcFicService {
     // Role-based filtering in service layer (P6A frozen rule)
     const filtered = isGovt
       ? allRecords
-      : allRecords.filter(r => CIVILIAN_VISIBLE_ADC_TYPES.has(r.adcType))
+      : allRecords.filter(r => r.adcType && CIVILIAN_VISIBLE_ADC_TYPES.has(r.adcType))
 
     log.info('adc_query', { data: {
       role, total: allRecords.length, visible: filtered.length,
@@ -50,14 +50,14 @@ export class AdcFicService {
       afmluId:       r.afmluId,
       adcNumber:     r.adcNumber,
       adcType:       r.adcType,
-      areaGeoJson:   JSON.parse(r.areaGeoJson),
+      areaGeoJson:   r.areaGeoJson ? JSON.parse(r.areaGeoJson) : null,
       verticalLimits: {
         lowerFt:  r.lowerFt,
         lowerRef: r.lowerRef,
         upperFt:  r.upperFt,
         upperRef: r.upperRef
       },
-      effectiveFrom:     r.effectiveFrom.toISOString(),
+      effectiveFrom:     r.effectiveFrom?.toISOString() ?? null,
       effectiveTo:       r.effectiveTo?.toISOString() ?? null,
       activitySchedule:  r.activitySchedule,
       contactFrequency:  r.contactFrequency,
@@ -83,7 +83,7 @@ export class AdcFicService {
     })
     return isGovt
       ? records
-      : records.filter(r => CIVILIAN_VISIBLE_ADC_TYPES.has(r.adcType))
+      : records.filter(r => r.adcType && CIVILIAN_VISIBLE_ADC_TYPES.has(r.adcType))
   }
 
   async getActiveFic(firCode?: string) {

@@ -160,15 +160,15 @@ router.get('/special-users', async (req, res) => {
 // Unit accounts use username+password (no OTP, no Aadhaar)
 router.post('/special-users', requireAdminRole('PLATFORM_SUPER_ADMIN'), async (req, res) => {
   try {
-    const result = await specialUserAuthService.provisionUnit({
-      username:     req.body.username,
-      unitName:     req.body.unitName,
-      entityCode:   req.body.entityCode,
-      unitType:     req.body.unitType     ?? 'UNIT',
-      baseLocation: req.body.baseLocation,
-      role:         req.body.role         ?? 'GOVT_DRONE_OPERATOR',
-      createdBy:    req.adminAuth!.adminUserId,
-    })
+    const result = await specialUserAuthService.provisionUnit(
+      req.adminAuth!.adminUserId,
+      req.body.username,
+      req.body.unitName,
+      req.body.entityCode,
+      req.body.unitType     ?? 'UNIT',
+      req.body.baseLocation,
+      req.body.role         ?? 'GOVT_DRONE_OPERATOR',
+    )
 
     await prisma.auditLog.create({ data: {
       actorType:    'ADMIN_USER',
@@ -206,10 +206,14 @@ router.post('/special-users/bulk', requireAdminRole('PLATFORM_SUPER_ADMIN'), asy
 
     for (const unit of units) {
       try {
-        const result = await specialUserAuthService.provisionUnit({
-          ...unit,
-          createdBy: req.adminAuth!.adminUserId,
-        })
+        const result = await specialUserAuthService.provisionUnit(
+          req.adminAuth!.adminUserId,
+          unit.username,
+          unit.unitName,
+          unit.entityCode,
+          unit.unitType,
+          unit.baseLocation,
+        )
         results.push({ username: result.username, initialPassword: result.initialPassword, userId: result.userId })
       } catch (err: unknown) {
         failures.push({ username: unit.username, error: err instanceof Error ? err.message : String(err) })
@@ -406,7 +410,7 @@ router.post('/airspace/drone-zone/:versionId/withdraw', async (req, res) => {
 router.get('/airspace/drone-zones', async (req, res) => {
   try {
     const { status } = req.query
-    const where = { dataType: 'DRONE_ZONE', ...(status ? { approvalStatus: status as string } : {}) }
+    const where = { dataType: 'DRONE_ZONE', ...(status ? { approvalStatus: status as any } : {}) }
     const zones = await prisma.airspaceVersion.findMany({ where, orderBy: { createdAt: 'desc' } })
     res.json(serializeForJson({ success: true, zones, count: zones.length }))
   } catch { res.status(500).json({ error: 'FETCH_FAILED' }) }
@@ -544,8 +548,12 @@ router.post('/users/special', async (req, res) => {
       }
     }
     const specialUser = await prisma.specialUser.create({ data: {
+      username: `${entityCode.toLowerCase()}.${serviceNumber}`,
+      passwordHash: '',  // Credentials issued separately via provisionUnit
+      unitDesignator: unitDesignation ?? entityCode,
+      provisionedBy: req.adminAuth!.adminUserId,
       entityCode, serviceNumber, officialEmail, mobileNumber: mobileNumber ?? '',
-      unitDesignation: unitDesignation ?? '', role,
+      unitDesignation: unitDesignation ?? '', role: role as any,
       authorisedCallsigns: authorisedCallsigns ?? [],
       accountStatus: 'ACTIVE', reconfirmationStatus: 'CURRENT',
       lastReconfirmedAt: new Date(), nextReconfirmDueAt: new Date(Date.now() + 365 * 86400000),
@@ -642,7 +650,9 @@ router.post('/users/entity-admin/grant', requireAdminRole('PLATFORM_SUPER_ADMIN'
     const { adminUserId, entityCode } = req.body
     if (!adminUserId || !entityCode) { res.status(400).json({ error: 'MISSING_REQUIRED_FIELDS' }); return }
     const rights = await prisma.govtAdminEntityRights.create({ data: {
-      adminUserId, entityCode, grantedByAdminId: req.adminAuth!.adminUserId, isActive: true
+      specialUserId: adminUserId, adminUserId, entityCode,
+      grantedBy: req.adminAuth!.adminUserId,
+      grantedByAdminId: req.adminAuth!.adminUserId, isActive: true
     }})
     await prisma.auditLog.create({ data: {
       actorType: 'ADMIN_USER', actorId: req.adminAuth!.adminUserId,

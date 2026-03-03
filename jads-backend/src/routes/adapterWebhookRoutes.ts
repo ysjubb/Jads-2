@@ -58,12 +58,12 @@ router.post('/adc/push', async (req, res) => {
     })
 
     log.info('adc_push_accepted', {
-      data: { flightPlanId, afmluId, adcNumber, newStatus: result.clearanceStatus }
+      data: { flightPlanId, afmluId, adcNumber, newStatus: result.status }
     })
 
     res.status(200).json({
       success:         true,
-      clearanceStatus: result.clearanceStatus,
+      clearanceStatus: result.status,
       message:         `ADC number ${adcNumber} recorded. Pilot app notified.`
     })
   } catch (e: unknown) {
@@ -113,12 +113,12 @@ router.post('/fic/push', async (req, res) => {
     })
 
     log.info('fic_push_accepted', {
-      data: { flightPlanId, firCode, ficNumber, newStatus: result.clearanceStatus }
+      data: { flightPlanId, firCode, ficNumber, newStatus: result.status }
     })
 
     res.status(200).json({
       success:         true,
-      clearanceStatus: result.clearanceStatus,
+      clearanceStatus: result.status,
       message:         `FIC number ${ficNumber} recorded. Pilot app notified.`
     })
   } catch (e: unknown) {

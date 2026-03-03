@@ -25,3 +25,7 @@ Thumbs.db
 
 # Zip archives (uploaded raw files)
 *.zip
+
+# Distribution packages (IP-protected output)
+jads-distribution/
+distribution-zips/
