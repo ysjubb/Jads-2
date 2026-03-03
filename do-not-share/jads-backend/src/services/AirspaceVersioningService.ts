@@ -179,6 +179,65 @@ export class AirspaceVersioningService {
       throw new Error('TWO_PERSON_RULE_VIOLATION: Approver cannot be the creator')
     }
 
+    // DEFENSE 5: Colluding admin pair prevention.
+    // An admin who PROVISIONED the approver cannot have their zones approved by that approver.
+    // Attack: Admin A creates Admin B account → Admin A creates zone → Admin B approves.
+    // This is a single person controlling two accounts — defeats two-person rule.
+    //
+    // Check: did the zone creator provision the approver's account?
+    const approverAccount = await this.prisma.specialUser.findUnique({
+      where: { id: approvingAdminId },
+      select: { createdByAdminId: true }
+    })
+    if (approverAccount?.createdByAdminId === draft.createdBy) {
+      await this.prisma.auditLog.create({
+        data: {
+          actorType:    'SPECIAL_USER', actorId: approvingAdminId,
+          action:       'drone_zone_approval_rejected_lineage',
+          resourceType: 'airspace_zone', resourceId: draftId,
+          errorCode:    'ADMIN_LINEAGE_VIOLATION',
+          detailJson: JSON.stringify({
+            draftId,
+            createdBy: draft.createdBy,
+            approver: approvingAdminId,
+            approverProvisionedBy: approverAccount.createdByAdminId,
+            reason: 'The zone creator provisioned the approver account — potential collusion',
+          })
+        }
+      })
+      throw new Error(
+        'ADMIN_LINEAGE_VIOLATION: Approver was provisioned by the zone creator. ' +
+        'A different admin not in the same provisioning chain must approve.'
+      )
+    }
+
+    // Also check the reverse: did the approver provision the creator?
+    const creatorAccount = await this.prisma.specialUser.findUnique({
+      where: { id: draft.createdBy },
+      select: { createdByAdminId: true }
+    })
+    if (creatorAccount?.createdByAdminId === approvingAdminId) {
+      await this.prisma.auditLog.create({
+        data: {
+          actorType:    'SPECIAL_USER', actorId: approvingAdminId,
+          action:       'drone_zone_approval_rejected_lineage',
+          resourceType: 'airspace_zone', resourceId: draftId,
+          errorCode:    'ADMIN_LINEAGE_VIOLATION',
+          detailJson: JSON.stringify({
+            draftId,
+            createdBy: draft.createdBy,
+            approver: approvingAdminId,
+            creatorProvisionedBy: creatorAccount.createdByAdminId,
+            reason: 'The approver provisioned the zone creator account — potential collusion',
+          })
+        }
+      })
+      throw new Error(
+        'ADMIN_LINEAGE_VIOLATION: Zone creator was provisioned by the approver. ' +
+        'A different admin not in the same provisioning chain must approve.'
+      )
+    }
+
     const zoneData = JSON.parse(draft.payloadJson) as DroneZoneData
 
     // Supersede any existing active version of this zone

@@ -8,17 +8,22 @@
 
 ```
 Jads-2/
-├── jads-backend/              Node.js TypeScript API server (Express + Prisma + PostgreSQL)
-├── jads-android/              Kotlin Android app — drone telemetry engine
-├── jads-admin-portal/         React (Vite) — Government admin interface
-├── jads-audit-portal/         React (Vite) — Forensic audit interface
-├── jads-user-app/             React Native — Pilot-facing mobile app (scaffold)
-├── e2e/                       End-to-end test suites
-├── ci/                        GitHub Actions pipeline (jads-platform-pipeline.yml)
-├── docker-compose.yml         Local Postgres 16
-├── README.md                  Quickstart and API overview
-├── KOTLIN_DEV_BRIEF.md        Android module development guide
-└── CLAUDE.md                  This file — AI assistant guide
+├── do-not-share/                    Source code & IP (CONFIDENTIAL)
+│   ├── jads-backend/                Node.js TypeScript API server (Express + Prisma + PostgreSQL)
+│   ├── jads-android/                Kotlin Android app — drone telemetry engine
+│   ├── jads-admin-portal/           React (Vite) — Government admin interface
+│   ├── jads-audit-portal/           React (Vite) — Forensic audit interface
+│   ├── jads-user-app/               React Native — Pilot-facing mobile app (scaffold)
+│   ├── agents/                      AI agent source
+│   ├── e2e/                         End-to-end test suites
+│   ├── ci/                          GitHub Actions pipeline
+│   ├── docker-compose.yml           Local Postgres 16
+│   ├── package-for-distribution.sh  Builds share-this from source
+│   ├── CLAUDE.md                    This file — AI assistant guide
+│   └── KOTLIN_DEV_BRIEF.md          Android module development guide
+├── share-this/                      Deployable artifacts (populated by packaging script)
+├── README.md                        GitHub-facing README
+└── .gitignore
 ```
 
 ## Tech Stack

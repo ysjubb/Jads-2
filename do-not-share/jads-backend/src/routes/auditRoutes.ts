@@ -5,6 +5,7 @@ import { PrismaClient }   from '@prisma/client'
 import { AuditService, AuditScopeError } from '../services/AuditService'
 import { ForensicVerifier }   from '../services/ForensicVerifier'
 import { EvidenceLedgerJob }  from '../jobs/EvidenceLedgerJob'
+import { createExternalAnchorService } from '../services/ExternalAnchorService'
 import { requireAuditAuth, requireRole } from '../middleware/authMiddleware'
 import { serializeForJson } from '../utils/bigintSerializer'
 
@@ -266,6 +267,47 @@ router.get('/ledger/log-integrity', requireRole(['PLATFORM_SUPER_ADMIN']), async
   } catch (e) {
     res.status(500).json({ error: 'LOG_INTEGRITY_CHECK_FAILED' })
   }
+})
+
+// GET /api/audit/ledger/:date/external-verify — verify anchor against external backends
+// Checks that the anchor for a given date exists in external trust stores
+// and has not been tampered with. This is the key defense against full backend compromise.
+router.get('/ledger/:date/external-verify', requireRole(['DGCA_AUDITOR', 'IAF_AUDITOR', 'PLATFORM_SUPER_ADMIN']), async (req, res) => {
+  try {
+    const dateStr = req.params.date
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      res.status(400).json({ error: 'INVALID_DATE_FORMAT', expected: 'YYYY-MM-DD' })
+      return
+    }
+
+    // Get the stored anchor from DB
+    const anchorDate = new Date(`${dateStr}T00:00:00.000Z`)
+    const stored = await prisma.evidenceLedger.findFirst({ where: { anchorDate } })
+    if (!stored) {
+      res.status(404).json({ error: 'NO_ANCHOR_FOR_DATE', anchorDate: dateStr })
+      return
+    }
+
+    // Verify against external backends
+    const extService = createExternalAnchorService()
+    const result = await extService.verifyAnchor(stored.anchorHash, dateStr)
+
+    // Also re-verify internally
+    const ledger = new EvidenceLedgerJob(prisma)
+    const internalResult = await ledger.verifyAnchor(anchorDate)
+
+    res.json(serializeForJson(withMeta({
+      anchorDate:       dateStr,
+      storedAnchorHash: stored.anchorHash,
+      internalVerification: internalResult,
+      externalVerification: result,
+      overallVerdict:   internalResult.verified && result.verified
+        ? 'FULLY_VERIFIED'
+        : internalResult.verified && !result.verified
+          ? 'INTERNAL_ONLY — external anchor not found or mismatched'
+          : 'VERIFICATION_FAILED',
+    }, req.auth!.role)))
+  } catch (e) { handleScopeError(res, e) }
 })
 
 // GET /api/audit/export/missions

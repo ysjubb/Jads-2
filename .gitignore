@@ -8,9 +8,9 @@ dist/
 *.tgz
 
 # Android
-jads-android/.gradle/
-jads-android/build/
-jads-android/app/build/
+do-not-share/jads-android/.gradle/
+do-not-share/jads-android/build/
+do-not-share/jads-android/app/build/
 *.apk
 local.properties
 
@@ -26,6 +26,6 @@ Thumbs.db
 # Zip archives (uploaded raw files)
 *.zip
 
-# Distribution packages (IP-protected output)
+# Distribution packages (build output from package-for-distribution.sh)
 jads-distribution/
 distribution-zips/
