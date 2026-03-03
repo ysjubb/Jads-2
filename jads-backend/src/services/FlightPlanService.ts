@@ -27,21 +27,25 @@ import { createServiceLogger }      from '../logger'
 const log = createServiceLogger('FlightPlanService')
 
 export class FlightPlanService {
-  private validator    = new OfplValidationService(this.prisma)
-  private routeEngine  = new RouteSemanticEngine(
-    this.prisma, new AirspaceVersioningService(this.prisma))
+  private validator:    OfplValidationService
+  private routeEngine:  RouteSemanticEngine
   private altEngine    = new AltitudeComplianceEngine()
   private firEngine    = new FirGeometryEngine()
   private msgBuilder   = new AftnMessageBuilder()
   private cnlBuilder   = new AftnCnlBuilder()
   private dlaBuilder   = new AftnDlaBuilder()
   private addresseeSvc = new AftnAddresseeService()
-  private notifySvc    = new FlightPlanNotificationService(this.prisma)
+  private notifySvc:    FlightPlanNotificationService
 
   constructor(
     private readonly prisma:      PrismaClient,
     private readonly aftnGateway: IAftnGateway = new AftnGatewayStub()
-  ) {}
+  ) {
+    this.validator   = new OfplValidationService(this.prisma)
+    this.routeEngine = new RouteSemanticEngine(
+      this.prisma, new AirspaceVersioningService(this.prisma))
+    this.notifySvc   = new FlightPlanNotificationService(this.prisma)
+  }
 
   async createAndFilePlan(
     input:                any,
@@ -169,11 +173,11 @@ export class FlightPlanService {
         cruisingLevel:                levelStr,
         route:                input.route,
         ades:          input.destinationIcao,
-        eet:                  this.hhmm2min(input.eet),
+        eet:                  String(this.hhmm2min(input.eet)),
         altn1:           input.alternate1 ?? null,
         altn2:           input.alternate2 ?? null,
         item18:            input.otherInfo ?? null,
-        endurance:            input.enduranceHHmm ? this.hhmm2min(input.enduranceHHmm) : null,
+        endurance:            input.enduranceHHmm ? String(this.hhmm2min(input.enduranceHHmm)) : null,
         personsOnBoard:       input.personsOnBoard ?? null,
         aftnMessage:            aftnMessage,
         permissionArtefactId: [...new Set(allUsedVersionIds)],
@@ -185,11 +189,9 @@ export class FlightPlanService {
           cruiseTasKts:      step2.cruiseTasKts,
         }),
         status:                     'VALIDATED' as any,
-        totalEet:            step2.totalEet,
-        route:            JSON.stringify(step4.crossings),
-        eet:      step4.eetPerFirJson,
-        filedBy:              userType === 'CIVILIAN' ? userId : null,
-        filedBy:       userType === 'SPECIAL'  ? userId : null,
+        totalEet:            String(Math.round(step2.totalEet)),
+        filedBy:              userId,
+        filedByType:          userType,
       }
     })
 
@@ -202,7 +204,7 @@ export class FlightPlanService {
       firSequence:    step4.crossings.map(c => ({
         firCode:       c.firCode,
         firName:       c.firName ?? c.firCode,
-        entryWaypoint: c.entryWaypoint ?? input.departureIcao,
+        entryWaypoint: c.entryPoint ?? input.departureIcao,
       })),
     })
     const addressees = addresseeStructure.actionAddressees.map(a => a.aftnAddress)

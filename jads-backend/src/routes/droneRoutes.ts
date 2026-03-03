@@ -287,8 +287,8 @@ router.get('/violations', requireAuth, async (req, res) => {
     const violations = await prisma.droneViolation.findMany({
       where: {
         missionId:       { in: missionIds },
-        ...(violationType && { violationType: violationType as string }),
-        ...(severity      && { severity:      severity      as string }),
+        ...(violationType && { violationType: violationType as any }),
+        ...(severity      && { severity:      severity      as any }),
       },
       orderBy: { timestampUtcMs: 'desc' },
       take: 200,

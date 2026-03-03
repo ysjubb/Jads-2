@@ -53,6 +53,7 @@ enum AirspaceDataSource {
   NOTAM_DERIVED
   IAF_CLASSIFIED
   ADMIN_OVERRIDE
+  MANUAL
 }
 
 enum AirspaceApprovalStatus {
@@ -61,6 +62,8 @@ enum AirspaceApprovalStatus {
   ACTIVE
   EXPIRED
   REJECTED
+  WITHDRAWN
+  SUPERSEDED
 }
 
 enum NpntClass {
@@ -120,6 +123,7 @@ enum FlightPlanStatus {
   DRAFT
   VALIDATED
   FILED
+  FILING_FAILED
   ACKNOWLEDGED
   ACTIVATED
   COMPLETED
@@ -127,6 +131,11 @@ enum FlightPlanStatus {
   DELAYED
   OVERDUE
   REJECTED_BY_ATC
+  CLEARANCE_REJECTED
+  PENDING_CLEARANCE
+  ADC_ISSUED
+  FIC_ISSUED
+  FULLY_CLEARED
 }
 
 // ═══════════════════════════════════════════════
@@ -134,61 +143,95 @@ enum FlightPlanStatus {
 // ═══════════════════════════════════════════════
 
 model CivilianUser {
-  id                  String                     @id @default(cuid())
-  aadhaarHash         String                     @unique
-  phone               String                     @unique
-  email               String?
-  role                UserRole                   @default(PILOT)
-  dgcaLicenseNumber   String?
-  dgcaLicenseExpiry   DateTime?
-  identityStatus      IdentityVerificationStatus @default(PENDING)
-  accountStatus       UserAccountStatus          @default(PENDING_APPROVAL)
-  createdAt           DateTime                   @default(now())
-  updatedAt           DateTime                   @updatedAt
-  lastLoginAt         DateTime?
-  annualReconfirmDue  DateTime?
+  id                    String                     @id @default(cuid())
+  aadhaarHash           String?                    @unique
+  phone                 String?
+  mobileNumber          String?                    @unique
+  email                 String?
+  role                  UserRole                   @default(PILOT)
+  dgcaLicenseNumber     String?
+  dgcaLicenseExpiry     DateTime?
+  pilotLicenceNumber    String?
+  uinNumber             String?
+  identityStatus        IdentityVerificationStatus @default(PENDING)
+  verificationStatus    IdentityVerificationStatus @default(PENDING)
+  accountStatus         UserAccountStatus          @default(PENDING_APPROVAL)
+  // Aadhaar fields
+  aadhaarLast4          String?
+  aadhaarUidToken       String?
+  aadhaarNextDueAt      DateTime?
+  aadhaarVerifiedAt     DateTime?
+  maskedAadhaarNumber   String?
+  // Verification timestamps
+  emailVerifiedAt       DateTime?
+  mobileVerifiedAt      DateTime?
+  lastVerificationAt    DateTime?
+  nextReverificationDue DateTime?
+  // Standard timestamps
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+  lastLoginAt           DateTime?
+  annualReconfirmDue    DateTime?
 
-  flightPlans         MannedFlightPlan[]         @relation("FiledByCivilian")
+  flightPlans           MannedFlightPlan[]         @relation("FiledByCivilian")
 }
 
 model SpecialUser {
-  id                  String            @id @default(cuid())
-  username            String            @unique
-  passwordHash        String
-  unitDesignator      String
-  entityCode          String
-  role                UserRole          @default(GOVT_DRONE_OPERATOR)
-  accountStatus       UserAccountStatus @default(ACTIVE)
-  provisionedBy       String
-  provisionedAt       DateTime          @default(now())
-  lastLoginAt         DateTime?
+  id                    String            @id @default(cuid())
+  username              String            @unique
+  passwordHash          String
+  unitDesignator        String
+  entityCode            String
+  role                  UserRole          @default(GOVT_DRONE_OPERATOR)
+  accountStatus         UserAccountStatus @default(ACTIVE)
+  provisionedBy         String
+  provisionedAt         DateTime          @default(now())
+  lastLoginAt           DateTime?
   passwordLastChanged   DateTime          @default(now())
   unitName              String?
   forcePasswordChange   Boolean           @default(false)
   unitType              String?
   baseLocation          String?
   createdBy             String?
+  createdAt             DateTime          @default(now())
   credentialsIssuedAt   DateTime?
   lastPasswordChangedAt DateTime?
   suspendedAt           DateTime?
   suspendedReason       String?
+  // Additional unit fields
+  serviceNumber         String?
+  officialEmail         String?
+  mobileNumber          String?
+  unitDesignation       String?
+  authorisedCallsigns   String[]          @default([])
+  // Reconfirmation fields
+  reconfirmationStatus  String?
+  lastReconfirmedAt     DateTime?
+  nextReconfirmDueAt    DateTime?
+  nextAdminReconfirmDue DateTime?
+  lastAdminReconfirmAt  DateTime?
+  annualReconfirmDue    DateTime?
+  createdByAdminId      String?
 
-  entityRights        GovtAdminEntityRights[]
-  flightPlans         MannedFlightPlan[]       @relation("FiledBySpecial")
+  entityRights          GovtAdminEntityRights[]
+  flightPlans           MannedFlightPlan[]       @relation("FiledBySpecial")
 }
 
 model GovtAdminEntityRights {
-  id                String      @id @default(cuid())
-  specialUserId     String
-  entityCode        String
-  canViewMissions   Boolean     @default(true)
-  canViewFlightPlans Boolean    @default(true)
-  canViewViolations Boolean     @default(true)
-  canExportForensic Boolean     @default(false)
-  grantedBy         String
-  grantedAt         DateTime    @default(now())
+  id                 String      @id @default(cuid())
+  specialUserId      String
+  adminUserId        String?
+  entityCode         String
+  canViewMissions    Boolean     @default(true)
+  canViewFlightPlans Boolean     @default(true)
+  canViewViolations  Boolean     @default(true)
+  canExportForensic  Boolean     @default(false)
+  isActive           Boolean     @default(true)
+  grantedBy          String
+  grantedByAdminId   String?
+  grantedAt          DateTime    @default(now())
 
-  specialUser       SpecialUser @relation(fields: [specialUserId], references: [id])
+  specialUser        SpecialUser @relation(fields: [specialUserId], references: [id])
 }
 
 model InvestigationAccess {
@@ -207,11 +250,14 @@ model AuditLog {
   timestamp      DateTime  @default(now())
   actorId        String
   actorType      String
+  actorRole      String?
   action         String
   resourceType   String
   resourceId     String?
   ipAddress      String?
   userAgent      String?
+  success        Boolean?
+  errorCode      String?
   detailJson     String
   sequenceNumber BigInt    @default(autoincrement())
 
@@ -233,87 +279,105 @@ model AdminUser {
 }
 
 model OtpRecord {
-  id        String    @id @default(cuid())
-  phone     String
-  otpHash   String
-  purpose   String
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
+  id         String    @id @default(cuid())
+  phone      String?
+  targetId   String?
+  targetType String?
+  otpHash    String
+  purpose    String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
 }
 
 model AirspaceVersion {
-  id             String                 @id @default(cuid())
-  dataType       String
-  versionNumber  Int
-  payloadJson    String
-  payloadHash    String
-  approvalStatus AirspaceApprovalStatus @default(DRAFT)
-  dataSource     AirspaceDataSource     @default(ADMIN_OVERRIDE)
-  airacCycle     String?
-  effectiveFrom  DateTime
-  effectiveTo    DateTime?
-  changeReason   String
-  createdBy      String
-  approvedBy     String?
-  rejectedBy     String?
-  createdAt      DateTime               @default(now())
-  approvedAt     DateTime?
-  rejectedAt     DateTime?
+  id              String                 @id @default(cuid())
+  dataType        String
+  versionNumber   Int
+  payloadJson     String
+  payloadHash     String?
+  approvalStatus  AirspaceApprovalStatus @default(DRAFT)
+  dataSource      AirspaceDataSource     @default(ADMIN_OVERRIDE)
+  airacCycle      String?
+  effectiveFrom   DateTime
+  effectiveTo     DateTime?
+  changeReason    String
+  createdBy       String
+  approvedBy      String?
+  rejectedBy      String?
+  createdAt       DateTime               @default(now())
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
   rejectionReason String?
-  supersededById String?
+  supersedes      String?
+  supersededById  String?
 
   @@index([dataType])
   @@index([approvalStatus])
 }
 
 model MannedFlightPlan {
-  id               String          @id @default(cuid())
-  filedBy          String
-  filedByType      String          @default("CIVILIAN")
-  aftnMessage      String?
-  aftnAddressees   String?
-  ficNumber        String?
-  adcNumber        String?
-  notifyEmail      String?
-  notifyMobile     String?
-  filedAt          DateTime?
-  clearedAt        DateTime?
-  item18           String?
-  item19           String?
-  status           FlightPlanStatus @default(DRAFT)
-  flightRules      FlightRules     @default(VFR)
-  flightType       FlightType      @default(G)
-  aircraftId       String
-  aircraftType     String
-  wakeTurbulence   String          @default("L")
-  equipment        String          @default("S")
-  survivalEquipment String?
-  adep             String
-  ades             String
-  altn1            String?
-  altn2            String?
-  eobt             DateTime
-  eet              String
-  totalEet         String?
-  endurance        String?
-  personsOnBoard   Int?
-  route            String
-  cruisingLevel    String
-  cruisingSpeed    String
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  id                       String           @id @default(cuid())
+  flightPlanId             BigInt?
+  filedBy                  String
+  filedByType              String           @default("CIVILIAN")
+  aftnMessage              String?
+  aftnAddressees           String?
+  aftnTransmissionId       String?
+  ficNumber                String?
+  adcNumber                String?
+  atsRef                   String?
+  notifyEmail              String?
+  notifyMobile             String?
+  filedAt                  DateTime?
+  clearedAt                DateTime?
+  item18                   String?
+  item19                   String?
+  item10Equipment          String[]         @default([])
+  item10Surveillance       String[]         @default([])
+  permissionArtefactId     String[]         @default([])
+  validatedAtUtc           DateTime?
+  validationResultJson     String?
+  status                   FlightPlanStatus @default(DRAFT)
+  flightRules              FlightRules      @default(VFR)
+  flightType               FlightType       @default(G)
+  aircraftId               String
+  aircraftType             String
+  wakeTurbulence           String           @default("L")
+  equipment                String           @default("S")
+  surveillance             String?
+  survivalEquipment        String?
+  adep                     String
+  ades                     String
+  altn1                    String?
+  altn2                    String?
+  eobt                     DateTime
+  eet                      String
+  totalEet                 String?
+  endurance                String?
+  personsOnBoard           Int?
+  route                    String
+  cruisingLevel            String
+  cruisingSpeed            String
+  // Notification status
+  confirmationEmailSentAt  DateTime?
+  confirmationEmailStatus  String?
+  confirmationSmsSentAt    DateTime?
+  confirmationSmsStatus    String?
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
 
-  // ── CNL/DLA tracking fields ──────────────────────────────────────────────
-  cancelledAt         DateTime?
-  cancelledBy         String?
-  cancellationReason  String?
-  delayedNewEobt      DateTime?
-  delayReason         String?
+  // CNL/DLA tracking fields
+  cancelledAt              DateTime?
+  cancelledBy              String?
+  cancellationReason       String?
+  delayedNewEobt           DateTime?
+  delayReason              String?
 
-  civilianFiler    CivilianUser?   @relation("FiledByCivilian", fields: [filedBy], references: [id], map: "MannedFlightPlan_civilianFiler_fkey")
-  specialFiler     SpecialUser?    @relation("FiledBySpecial", fields: [filedBy], references: [id], map: "MannedFlightPlan_specialFiler_fkey")
-  adcRecords       AdcRecord[]
+  civilianFiler            CivilianUser?    @relation("FiledByCivilian", fields: [filedBy], references: [id], map: "MannedFlightPlan_civilianFiler_fkey")
+  specialFiler             SpecialUser?     @relation("FiledBySpecial", fields: [filedBy], references: [id], map: "MannedFlightPlan_specialFiler_fkey")
+  adcRecords               AdcRecord[]
 
   @@index([filedBy])
   @@index([adep, ades])
@@ -335,7 +399,7 @@ model DroneMission {
   ntpOffsetMs             Int?
   certValidAtStart        Boolean             @default(false)
   certExpiryUtcMs         String?
-  deviceCertDer           String?             // DER-encoded device X.509 cert (base64) for post-hoc ECDSA re-verification
+  deviceCertDer           String?
   chainVerifiedByServer   Boolean             @default(false)
   chainFailureSequence    Int?
   uploadStatus            MissionUploadStatus @default(PENDING)
@@ -358,7 +422,6 @@ model DroneMission {
   @@index([uploadedAt])
 }
 
-
 model DroneTelemetryRecord {
   id                  String       @id @default(cuid())
   missionId           String
@@ -379,7 +442,6 @@ model DroneTelemetryRecord {
   @@index([sequence])
 }
 
-
 model DroneViolation {
   id              String            @id @default(cuid())
   missionId       String
@@ -397,7 +459,6 @@ model DroneViolation {
   @@index([missionId])
 }
 
-
 model DroneMissionOverride {
   id           String       @id @default(cuid())
   missionId    String
@@ -410,73 +471,128 @@ model DroneMissionOverride {
 }
 
 model AdcRecord {
-  id           String           @id @default(cuid())
-  flightPlanId String?
-  adcNumber    String           @unique
-  issuedBy     String
-  issuedAt     DateTime         @default(now())
-  validFrom    DateTime
-  validTo      DateTime
-  remarks      String?
+  id               String            @id @default(cuid())
+  flightPlanId     String?
+  afmluId          Int?
+  adcNumber        String            @unique
+  adcType          String?
+  areaGeoJson      String?
+  lowerFt          Int               @default(0)
+  lowerRef         String            @default("AGL")
+  upperFt          Int               @default(0)
+  upperRef         String            @default("AGL")
+  effectiveFrom    DateTime?
+  effectiveTo      DateTime?
+  activitySchedule String?
+  contactFrequency String?
+  issuedBy         String?
+  issuedAt         DateTime          @default(now())
+  validFrom        DateTime?
+  validTo          DateTime?
+  remarks          String?
+  isActive         Boolean           @default(true)
+  pulledAtUtc      DateTime          @default(now())
 
-  flightPlan   MannedFlightPlan? @relation(fields: [flightPlanId], references: [id])
+  flightPlan       MannedFlightPlan? @relation(fields: [flightPlanId], references: [id])
+
+  @@unique([afmluId, adcNumber])
 }
 
 model FicRecord {
-  id           String    @id @default(cuid())
-  ficNumber    String    @unique
-  firCode      String
-  subject      String
-  content      String
-  category     String    @default("GENERAL")
+  id            String    @id @default(cuid())
+  ficNumber     String    @unique
+  firCode       String
+  subject       String
+  content       String
+  category      String    @default("GENERAL")
   effectiveFrom DateTime
-  effectiveTo  DateTime?
-  issuedBy     String
-  issuedAtUtc  DateTime  @default(now())
-  fetchedAt    DateTime  @default(now())
+  effectiveTo   DateTime?
+  issuedBy      String
+  issuedAtUtc   DateTime  @default(now())
+  fetchedAt     DateTime  @default(now())
+  supersedes    String?
+  isActive      Boolean   @default(true)
+  lastFetchedAt DateTime?
 }
 
 model NotamRecord {
-  id            String    @id @default(cuid())
-  notamId       String    @unique
-  series        String
-  number        Int
-  year          Int
-  type          String
-  location      String
-  effectiveFrom DateTime
-  effectiveTo   DateTime?
-  content       String
-  fetchedAt     DateTime  @default(now())
+  id               String    @id @default(cuid())
+  notamId          String?   @unique
+  notamNumber      String?   @unique
+  notamSeries      String?
+  series           String?
+  number           Int?
+  year             Int?
+  type             String?
+  notamType        String?
+  firCode          String?
+  location         String?
+  subject          String?
+  condition        String?
+  traffic          String?
+  purpose          String?
+  scope            String?
+  lowerFl          Int?
+  upperFl          Int?
+  lowerFt          Int?
+  upperFt          Int?
+  areaGeoJson      String?
+  effectiveFrom    DateTime
+  effectiveTo      DateTime?
+  content          String?
+  rawText          String?
+  isActive         Boolean   @default(true)
+  issuingAuthority String?
+  lastFetchedAt    DateTime?
+  pulledAtUtc      DateTime?
+  fetchedAt        DateTime  @default(now())
 }
 
 model MetarRecord {
-  id            String    @id @default(cuid())
-  icao          String
-  rawMetar      String
-  observedAt    DateTime
-  windDirection Int?
-  windSpeedKt   Int?
-  visibilityM   Int?
-  tempC         Float?
-  dewpointC     Float?
-  qnhHpa        Float?
-  fetchedAt     DateTime  @default(now())
+  id              String    @id @default(cuid())
+  icao            String?
+  icaoCode        String?
+  rawMetar        String?
+  rawText         String?
+  observedAt      DateTime?
+  observationUtc  DateTime?
+  windDirection   Int?
+  windDirDeg      Int?
+  windSpeedKt     Int?
+  windGustKt      Int?
+  visibilityM     Int?
+  tempC           Float?
+  dewpointC       Float?
+  dewPointC       Float?
+  qnhHpa          Float?
+  altimeterHpa    Float?
+  isSpeci         Boolean   @default(false)
+  fetchedAt       DateTime  @default(now())
 }
 
 model AerodromeRecord {
-  id           String  @id @default(cuid())
-  icao         String  @unique
-  iata         String?
-  name         String
-  city         String
-  state        String?
-  country      String  @default("IN")
-  latitudeDeg  Float
-  longitudeDeg Float
-  elevationFt  Int?
-  type         String  @default("AIRPORT")
-  runways      String?
+  id                   String   @id @default(cuid())
+  icao                 String?  @unique
+  icaoCode             String?
+  iata                 String?
+  name                 String
+  city                 String
+  state                String?
+  country              String   @default("IN")
+  latitudeDeg          Float?
+  longitudeDeg         Float?
+  latDeg               Float?
+  lonDeg               Float?
+  elevationFt          Int?
+  magneticVariation    Float?
+  type                 String   @default("AIRPORT")
+  aerodromeType        String?
+  status               String?
+  firCode              String?
+  transitionAltitudeFt Int?
+  transitionLevelFl    Int?
+  isActive             Boolean  @default(true)
+  runways              String?
 }
 
 model EvidenceLedger {

@@ -317,12 +317,16 @@ export class OfplValidationService {
     const r = await this.prisma.aerodromeRecord.findFirst({ where: { icaoCode, isActive: true } })
     if (!r) return null
     return {
-      icaoCode: r.icaoCode, name: r.name, city: r.city,
-      latDeg: r.latDeg, lonDeg: r.lonDeg, elevationFt: r.elevationFt,
-      magneticVariation: r.magneticVariation, firCode: r.firCode,
-      transitionAltitudeFt: r.transitionAltitudeFt,
-      transitionLevelFl:    r.transitionLevelFl,
-      aerodromeType: r.aerodromeType, status: r.status
+      icaoCode: r.icaoCode ?? r.icao ?? '', name: r.name, city: r.city,
+      latDeg: r.latDeg ?? r.latitudeDeg ?? 0,
+      lonDeg: r.lonDeg ?? r.longitudeDeg ?? 0,
+      elevationFt: r.elevationFt ?? 0,
+      magneticVariation: r.magneticVariation ?? 0,
+      firCode: r.firCode ?? '',
+      transitionAltitudeFt: r.transitionAltitudeFt ?? null,
+      transitionLevelFl:    r.transitionLevelFl ?? null,
+      aerodromeType: r.aerodromeType ?? r.type ?? '',
+      status: r.status ?? 'ACTIVE'
     }
   }
 }

@@ -144,7 +144,6 @@ export class ClearanceService {
       afmluId:         input.afmluId,
       issuedAt:        input.issuedAt,
       status: newStatus,
-      allAdcRefs:      adcRefs,
     })
 
     log.info('adc_issued', {
@@ -178,13 +177,14 @@ export class ClearanceService {
     }
     ficRefs.push(newRef)
 
+    const adcRefs: ClearanceRef[] = plan.adcNumber ? JSON.parse(plan.adcNumber) : []
     const newStatus = computeClearanceStatus(adcRefs, ficRefs)
 
     await this.prisma.mannedFlightPlan.update({
       where: { id: input.flightPlanId },
       data:  {
         ficNumber: JSON.stringify(ficRefs),
-        status:   newStatus,
+        status:   newStatus as any,
       }
     })
 
