@@ -162,7 +162,16 @@ model SpecialUser {
   provisionedBy       String
   provisionedAt       DateTime          @default(now())
   lastLoginAt         DateTime?
-  passwordLastChanged DateTime          @default(now())
+  passwordLastChanged   DateTime          @default(now())
+  unitName              String?
+  forcePasswordChange   Boolean           @default(false)
+  unitType              String?
+  baseLocation          String?
+  createdBy             String?
+  credentialsIssuedAt   DateTime?
+  lastPasswordChangedAt DateTime?
+  suspendedAt           DateTime?
+  suspendedReason       String?
 
   entityRights        GovtAdminEntityRights[]
   flightPlans         MannedFlightPlan[]       @relation("FiledBySpecial")

@@ -5,7 +5,7 @@
  * SpecialUserIdGenerator tests removed — ID generator is now internal/unused.
  */
 
-import { SpecialUserAuthService } from '../../services/SpecialUserAuthService'
+import { SpecialUserAuthService } from '../services/SpecialUserAuthService'
 
 // ── Password generator tests (pure logic — no DB) ────────────────────────────
 describe('SpecialUserAuthService — password generation', () => {

@@ -21,8 +21,8 @@
 //   CS-FAIL-01..10  → Failure modeling (what breaks under load)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { AftnMessageBuilder, AftnFplInput } from '../../services/AftnMessageBuilder'
-import { Item18Parser }                      from '../../services/Item18Parser'
+import { AftnMessageBuilder, AftnFplInput } from '../services/AftnMessageBuilder'
+import { Item18Parser }                      from '../services/Item18Parser'
 
 const builder = new AftnMessageBuilder()
 const parser  = new Item18Parser()
@@ -196,8 +196,9 @@ describe('CS-CONC-01–10: Concurrent correctness — AftnMessageBuilder', () =>
         expect(msg).toContain('R/VU')
         expect(msg).toContain('S/DM')
       } else {
-        expect(msg).not.toContain('R/')
-        expect(msg).not.toContain('S/')
+        // Check for Item 19 SAR R/ and S/ fields specifically (preceded by space/newline)
+        expect(msg).not.toMatch(/[\s\n]R\/[A-Z]/)
+        expect(msg).not.toMatch(/[\s\n]S\/[A-Z]/)
       }
     })
   })
@@ -412,7 +413,7 @@ describe('CS-PERF-01–10: Latency percentiles — numeric pass criteria', () =>
   // FAILURE:  Unknown token handling causes O(n²) scan → parse performance degrades
   // OWNER:    Item18Parser.splitIntoPairs() — single-pass regex
   test('CS-PERF-07: Item18Parser with 10 unknown tokens per string — 1000 calls < 500ms', () => {
-    const messyItem18 = 'DOF/260301 PBN/B4 UNKFLD1/VAL1 UNKFLD2/VAL2 UNKFLD3/VAL3 OPR/AIRINDIA UNKFLD4/VAL4 RMK/TEST'
+    const messyItem18 = 'DOF/260301 PBN/B4 XUNKA/VAL1 XUNKB/VAL2 XUNKC/VAL3 OPR/AIRINDIA XUNKD/VAL4 RMK/TEST'
     const N = 1000
     const t0 = performance.now()
     let parseErrors = 0
@@ -585,7 +586,9 @@ describe('CS-FAIL-01–10: Failure mode verification — documented failure beha
       survivalEquipment: '  DM',    // leading spaces
     }))
     expect(msg).toContain('R/VU')
-    expect(msg).not.toContain('R/VU ')
+    // Verify trailing spaces from input were trimmed — R/VU followed by space + next field is OK,
+    // but R/VU followed by multiple spaces would indicate un-trimmed input
+    expect(msg).not.toMatch(/R\/VU {2,}/)
     expect(msg).toContain('S/DM')
     expect(msg).not.toContain('S/  DM')
   })

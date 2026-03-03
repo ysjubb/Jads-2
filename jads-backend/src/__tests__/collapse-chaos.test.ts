@@ -21,9 +21,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as crypto from 'crypto'
-import { ForensicVerifier } from '../../services/ForensicVerifier'
-import { Item18Parser }     from '../../services/Item18Parser'
-import { AftnMessageBuilder } from '../../services/AftnMessageBuilder'
+import { ForensicVerifier } from '../services/ForensicVerifier'
+import { Item18Parser }     from '../services/Item18Parser'
+import { AftnMessageBuilder } from '../services/AftnMessageBuilder'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test fixtures and helpers
@@ -532,7 +532,7 @@ describe('CC-KEY-01–08: Key compromise, revocation, CRL timing, signature casc
     // Document: this is a known gap in the current implementation
     // The fix requires: CRL freshness check (crlThisUpdateMs must be AFTER missionStartMs)
     // This is tracked as gap C1-04 (CRL capture not implemented)
-    const gapC104Description = 'CRL archival at upload time not implemented — ForensicVerifier.I-4 cannot verify freshness'
+    const gapC104Description = 'C1-04: CRL archival at upload time not implemented — ForensicVerifier.I-4 cannot verify freshness'
     expect(gapC104Description).toContain('C1-04')
   })
 

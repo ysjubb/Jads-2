@@ -27,9 +27,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import crypto from 'crypto'
-import { ForensicVerifier }  from '../../services/ForensicVerifier'
-import { AftnMessageBuilder } from '../../services/AftnMessageBuilder'
-import { Item18Parser }       from '../../services/Item18Parser'
+import { ForensicVerifier }  from '../services/ForensicVerifier'
+import { AftnMessageBuilder } from '../services/AftnMessageBuilder'
+import { Item18Parser }       from '../services/Item18Parser'
 
 // ── ForensicVerifier under test — no DB, methods called via (v as any) ───────
 
@@ -64,8 +64,11 @@ function buildValidChain(
 
 /** Build a 96-byte canonical payload with a valid CRC32 in bytes 92-95 */
 function buildCanonicalPayload(baseHex: string, _seq: number): string {
-  // 96 bytes: bytes 0-91 = data, bytes 92-95 = CRC32 of bytes 0-91, bytes for reserved already zero
-  const data = Buffer.alloc(92, 0xAB)   // 92 data bytes
+  // 96 bytes: bytes 0-64 = data, bytes 65-91 = reserved (must be zero), bytes 92-95 = CRC32
+  const data = Buffer.alloc(92, 0x00)
+  // Fill non-reserved bytes with test data
+  for (let i = 0; i < 65; i++) data[i] = 0xAB
+  // bytes 65-91 stay zero (reserved)
   const crcValue = crc32(data)
   const crcBuf = Buffer.alloc(4)
   crcBuf.writeUInt32BE(crcValue, 0)

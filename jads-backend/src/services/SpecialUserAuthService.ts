@@ -25,7 +25,7 @@ const SPECIAL_USER_SESSION_HOURS = 12
 export interface SpecialUserLoginResult {
   accessToken:         string
   expiresAt:           string
-  unitName:            string
+  unitName:            string | null
   entityCode:          string
   role:                string
   forcePasswordChange: boolean
@@ -128,7 +128,7 @@ export class SpecialUserAuthService {
       data: {
         passwordHash:          await bcrypt.hash(newPassword, BCRYPT_ROUNDS),
         forcePasswordChange:   false,
-        lastPasswordChangedAt: new Date(),
+        passwordLastChanged:   new Date(),
       },
     })
 
@@ -164,6 +164,8 @@ export class SpecialUserAuthService {
     const user = await this.prisma.specialUser.create({ data: {
       username,
       passwordHash:        await bcrypt.hash(initialPassword, BCRYPT_ROUNDS),
+      unitDesignator:      username,
+      provisionedBy:       adminId,
       unitName,
       entityCode,
       unitType,

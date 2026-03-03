@@ -136,8 +136,8 @@ export class RouteSemanticEngine {
   private async parseRouteIntoPoints(
     departureIcao: string, destinationIcao: string,
     routeString:   string,
-    depLat?: number, depLon?: number,
-    destLat?: number, destLon?: number,
+    depLat: number | undefined, depLon: number | undefined,
+    destLat: number | undefined, destLon: number | undefined,
     errors: any[], warnings: any[],
     usedVersionIds: string[]
   ): Promise<RoutePoint[]> {
