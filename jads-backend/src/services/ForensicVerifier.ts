@@ -1,4 +1,3 @@
-import crypto from 'crypto'
 // ForensicVerifier — runs all 8 forensic invariants against a stored mission.
 //
 // Called by:
@@ -72,7 +71,7 @@ export class ForensicVerifier {
 
     // ── I-1: Hash chain intact (CRITICAL) ────────────────────────────────
     // Re-derives HASH_0 from missionId and walks every link server-side.
-    const i1 = this.checkHashChain(mission.missionId, records)
+    const i1 = this.checkHashChain(mission.missionId, records, mission)
     invariants.push(i1)
     if (!i1.pass) failures.push(...i1.detail.split('; '))
 
@@ -168,7 +167,8 @@ export class ForensicVerifier {
 
   private checkHashChain(
     missionIdStr: string,
-    records: Array<{ sequence: number; canonicalPayloadHex: string; chainHashHex: string }>
+    records: Array<{ sequence: number; canonicalPayloadHex: string; chainHashHex: string }>,
+    mission: { deviceCertDer?: unknown; [key: string]: unknown } = {}
   ): InvariantResult {
     const errors: string[] = []
 
@@ -226,9 +226,12 @@ export class ForensicVerifier {
     // If deviceCertDer is present: attempt full ECDSA re-verification.
     // If absent (legacy missions): fall back to trusting chainVerifiedByServer boolean.
     if (mission.deviceCertDer && errors.length === 0) {
+      const certBase64 = Buffer.isBuffer(mission.deviceCertDer)
+        ? (mission.deviceCertDer as Buffer).toString('base64')
+        : String(mission.deviceCertDer)
       const sigErrors = this.verifyEcdsaSignatures(
-        mission.deviceCertDer,
-        sorted as Array<{ canonicalPayloadHex: string; signatureHex: string; sequence: number }>
+        certBase64,
+        sorted as unknown as Array<{ canonicalPayloadHex: string; signatureHex: string; sequence: number }>
       )
       errors.push(...sigErrors)
     }

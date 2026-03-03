@@ -19,8 +19,8 @@
 //   HW-ADMIN-01..06  Admin boundary — two-person logic, self-grant, privilege escalation
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { AuditService, AuditScopeError } from '../../services/AuditService'
-import { requireRole }                    from '../../middleware/authMiddleware'
+import { AuditService, AuditScopeError } from '../services/AuditService'
+import { requireRole }                    from '../middleware/authMiddleware'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Minimal Prisma mock — returns deterministic data, never hits the DB
@@ -299,13 +299,13 @@ describe('HW-INVEST-01–06: Investigation access — grant, revoke, scope, expi
   //           ENFORCEMENT REQUIRED: a second approver must revoke (not the grantor).
   //           Currently this is a PROCEDURAL gap — the system allows self-revocation.
   //           This test documents the gap and verifies the audit trail at minimum.
-  test('HW-INVEST-02: Self-revocation (same user grants and revokes) — both actions logged (two-person gap documented)', async () => {
-    const auditLogCreates: any[] = []
+  test('HW-INVEST-02: Self-revocation (same user grants and revokes) — blocked by two-person rule', async () => {
     const prisma = makePrisma({
       prisma: {
-        auditLog: { create: async (d: any) => { auditLogCreates.push(d); return d } },
+        auditLog: { create: async (d: any) => d },
         investigationAccess: {
           create: async (d: any) => ({ id: 'access-2', ...d.data }),
+          findUnique: async () => ({ grantedBy: 'dgca-user-001', grantedToUserId: 'officer-002' }),
           delete: async () => ({}),
         },
       }
@@ -319,16 +319,10 @@ describe('HW-INVEST-01–06: Investigation access — grant, revoke, scope, expi
       missionId:     'mission-001',
       expiresAt:     new Date(Date.now() + 3600_000).toISOString(),
     })
-    await audit.revokeAccess(sameUserId, 'access-2', 'Test revoke')
-
-    expect(auditLogCreates).toHaveLength(2)
-    // Both actions have the same actorId — an auditor reviewing the log can detect this
-    expect(auditLogCreates[0].data.actorId).toBe(sameUserId)
-    expect(auditLogCreates[1].data.actorId).toBe(sameUserId)
-    expect(auditLogCreates[0].data.action).toBe('investigation_access_granted')
-    expect(auditLogCreates[1].data.action).toBe('investigation_access_revoked')
-    // GAP: The system does not currently BLOCK self-revocation.
-    // Required enhancement: revokeAccess() must verify revokedByUserId !== grantedBy
+    // Self-revocation is now blocked — grantor cannot revoke their own grant
+    await expect(
+      audit.revokeAccess(sameUserId, 'access-2', 'Test revoke')
+    ).rejects.toThrow('original grantor cannot revoke')
   })
 
   // TRIGGER:  Two-person rule enforcement: revokedByUserId must differ from the original grantedBy
@@ -449,7 +443,7 @@ describe('HW-ADMIN-01–06: Admin privilege escalation and boundary misuse', () 
     }
 
     // The audit routes use requireAuditAuth which checks for specialUserId
-    function requireAuditAuthSimulated(auth: typeof civilianToken): boolean {
+    function requireAuditAuthSimulated(auth: { userType: string; [k: string]: unknown }): boolean {
       // Audit routes require userType = SPECIAL + specialUserId present
       return auth.userType === 'SPECIAL' && !!(auth as any).specialUserId
     }
@@ -465,33 +459,23 @@ describe('HW-ADMIN-01–06: Admin privilege escalation and boundary misuse', () 
   // FAILURE:  Admin grants themselves scoped access to a specific sensitive mission →
   //           unilateral access to targeted investigation data without oversight
   // OWNER:    AuditService.grantAccess() — required enhancement: officerUserId !== grantedByUserId
-  test('HW-ADMIN-02: Self-grant (admin grants themselves investigation access) — documented as gap', async () => {
-    const auditLogCreates: any[] = []
+  test('HW-ADMIN-02: Self-grant (admin grants themselves investigation access) — blocked by two-person rule', async () => {
     const prisma = makePrisma({
       prisma: {
-        auditLog: { create: async (d: any) => { auditLogCreates.push(d); return d } },
+        auditLog: { create: async (d: any) => d },
         investigationAccess: { create: async (d: any) => ({ id: 'access-self', ...d.data }) },
       }
     })
     const audit = new AuditService(prisma)
 
     const adminUserId = 'super-admin-001'
-    await audit.grantAccess(adminUserId, {
+    // Self-grant is now blocked — officerUserId === grantedByUserId throws
+    await expect(audit.grantAccess(adminUserId, {
       officerUserId: adminUserId,   // Same user — self-grant
       reason:        'Self-investigation',
       missionId:     'mission-self',
       expiresAt:     new Date(Date.now() + 3600_000).toISOString(),
-    })
-
-    expect(auditLogCreates).toHaveLength(1)
-    const logEntry = auditLogCreates[0].data
-    // Self-grant is detectable: grantedBy === officerUserId in the log detail
-    const detail = JSON.parse(logEntry.detailJson)
-    expect(detail.officerUserId).toBe(adminUserId)
-    expect(logEntry.actorId).toBe(adminUserId)
-    // Both sides are the same user — a monitoring job scanning auditLog for self-grants
-    // can detect this and raise an alert.
-    // GAP: grantAccess() must throw if officerUserId === grantedByUserId
+    })).rejects.toThrow()
   })
 
   // TRIGGER:  Two admins required for a privileged operation (conceptual two-person rule)

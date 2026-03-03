@@ -30,8 +30,8 @@
 //   AIRINDIA:   4 requirements tested
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { AftnMessageBuilder } from '../../services/AftnMessageBuilder'
-import { Item18Parser }       from '../../services/Item18Parser'
+import { AftnMessageBuilder } from '../services/AftnMessageBuilder'
+import { Item18Parser }       from '../services/Item18Parser'
 
 const builder = new AftnMessageBuilder()
 const parser  = new Item18Parser()

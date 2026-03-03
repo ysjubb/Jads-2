@@ -14,6 +14,8 @@ import { RouteSemanticEngine }      from './RouteSemanticEngine'
 import { AltitudeComplianceEngine } from './AltitudeComplianceEngine'
 import { FirGeometryEngine }        from './FirGeometryEngine'
 import { AftnMessageBuilder }       from './AftnMessageBuilder'
+import { AftnCnlBuilder }          from '../aftn/AftnCnlBuilder'
+import { AftnDlaBuilder }          from '../aftn/AftnDlaBuilder'
 import { AftnAddresseeService }     from './AftnAddresseeService'
 import { FlightPlanNotificationService } from './FlightPlanNotificationService'
 import { AftnGatewayStub }          from '../adapters/stubs/AftnGatewayStub'
@@ -31,6 +33,8 @@ export class FlightPlanService {
   private altEngine    = new AltitudeComplianceEngine()
   private firEngine    = new FirGeometryEngine()
   private msgBuilder   = new AftnMessageBuilder()
+  private cnlBuilder   = new AftnCnlBuilder()
+  private dlaBuilder   = new AftnDlaBuilder()
   private addresseeSvc = new AftnAddresseeService()
   private notifySvc    = new FlightPlanNotificationService(this.prisma)
 
@@ -289,6 +293,136 @@ export class FlightPlanService {
         status:  'PENDING_CLEARANCE',
       })
     }
+  }
+
+  // ── Cancel a filed flight plan (AFTN CNL) ─────────────────────────────────
+  async cancelPlan(
+    flightPlanId: string,
+    userId:       string,
+    userType:     'CIVILIAN' | 'SPECIAL',
+    reason:       string
+  ): Promise<{ success: boolean; status: string; cnlMessage?: string }> {
+    const plan = await this.prisma.mannedFlightPlan.findUnique({
+      where: { id: flightPlanId }
+    })
+
+    if (!plan) throw new Error('FLIGHT_PLAN_NOT_FOUND')
+    if (plan.filedBy !== userId) throw new Error('NOT_YOUR_FLIGHT_PLAN')
+
+    const cancellableStatuses = ['FILED', 'ACKNOWLEDGED', 'VALIDATED', 'DELAYED']
+    if (!cancellableStatuses.includes(plan.status)) {
+      throw new Error(`CANNOT_CANCEL: Plan is ${plan.status}`)
+    }
+
+    // Build AFTN CNL message
+    const eobtStr = this.formatEobt(plan.eobt)
+    const cnlMessage = this.cnlBuilder.build({
+      callsign:      plan.aircraftId,
+      departureIcao: plan.adep,
+      eobt:          eobtStr,
+      destination:   plan.ades,
+    })
+
+    // Transmit via AFTN gateway
+    const filingResult = await this.aftnGateway.fileFpl({
+      messageType:    'CNL',
+      priority:       'GG',
+      addressees:     this.msgBuilder.deriveAddressees(plan.adep, plan.ades),
+      originator:     'JADSZTZX',
+      filingTime:     eobtStr,
+      messageContent: cnlMessage,
+    })
+
+    // Update plan status
+    await this.prisma.mannedFlightPlan.update({
+      where: { id: flightPlanId },
+      data: {
+        status:             'CANCELLED' as any,
+        cancelledAt:        new Date(),
+        cancelledBy:        userId,
+        cancellationReason: reason,
+      }
+    })
+
+    await this.writeAuditLog(userId, userType, 'flight_plan_cancelled', flightPlanId, true, {
+      callsign: plan.aircraftId, reason, cnlAccepted: filingResult.accepted,
+    })
+
+    log.info('flight_plan_cancelled', {
+      data: { flightPlanId, callsign: plan.aircraftId, reason }
+    })
+
+    return { success: true, status: 'CANCELLED', cnlMessage }
+  }
+
+  // ── Delay a filed flight plan (AFTN DLA) ─────────────────────────────────
+  async delayPlan(
+    flightPlanId: string,
+    userId:       string,
+    userType:     'CIVILIAN' | 'SPECIAL',
+    newEobt:      string,    // DDHHmm format
+    reason:       string
+  ): Promise<{ success: boolean; status: string; dlaMessage?: string }> {
+    const plan = await this.prisma.mannedFlightPlan.findUnique({
+      where: { id: flightPlanId }
+    })
+
+    if (!plan) throw new Error('FLIGHT_PLAN_NOT_FOUND')
+    if (plan.filedBy !== userId) throw new Error('NOT_YOUR_FLIGHT_PLAN')
+
+    const delayableStatuses = ['FILED', 'ACKNOWLEDGED', 'DELAYED']
+    if (!delayableStatuses.includes(plan.status)) {
+      throw new Error(`CANNOT_DELAY: Plan is ${plan.status}`)
+    }
+
+    // Build AFTN DLA message
+    const originalEobtStr = this.formatEobt(plan.eobt)
+    const dlaMessage = this.dlaBuilder.build({
+      callsign:      plan.aircraftId,
+      departureIcao: plan.adep,
+      originalEobt:  originalEobtStr,
+      newEobt,
+      destination:   plan.ades,
+    })
+
+    // Transmit via AFTN gateway
+    const filingResult = await this.aftnGateway.fileFpl({
+      messageType:    'DLA',
+      priority:       'GG',
+      addressees:     this.msgBuilder.deriveAddressees(plan.adep, plan.ades),
+      originator:     'JADSZTZX',
+      filingTime:     originalEobtStr,
+      messageContent: dlaMessage,
+    })
+
+    // Update plan with new EOBT and DELAYED status
+    const newEobtDate = this.parseEobt(newEobt)
+    await this.prisma.mannedFlightPlan.update({
+      where: { id: flightPlanId },
+      data: {
+        status:         'DELAYED' as any,
+        delayedNewEobt: newEobtDate,
+        delayReason:    reason,
+        eobt:           newEobtDate,
+      }
+    })
+
+    await this.writeAuditLog(userId, userType, 'flight_plan_delayed', flightPlanId, true, {
+      callsign: plan.aircraftId, reason, newEobt, dlaAccepted: filingResult.accepted,
+    })
+
+    log.info('flight_plan_delayed', {
+      data: { flightPlanId, callsign: plan.aircraftId, newEobt, reason }
+    })
+
+    return { success: true, status: 'DELAYED', dlaMessage }
+  }
+
+  private formatEobt(eobt: Date): string {
+    const dd = String(eobt.getUTCDate()).padStart(2, '0')
+    const hh = String(eobt.getUTCHours()).padStart(2, '0')
+    const mm = String(eobt.getUTCMinutes()).padStart(2, '0')
+    return `${dd}${hh}${mm}`
   }
 
   private parseEobt(eobt: string): Date {

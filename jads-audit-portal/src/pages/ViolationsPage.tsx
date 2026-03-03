@@ -2,6 +2,18 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { useNavigate }              from 'react-router-dom'
 import { useAuditAuth, auditAxios } from '../hooks/useAuditAuth'
 
+const T = {
+  bg:         '#050A08',
+  surface:    '#0A120E',
+  border:     '#1A3020',
+  primary:    '#FFB800',
+  green:      '#00FF88',
+  red:        '#FF3B3B',
+  muted:      '#6A6040',
+  text:       '#c8b890',
+  textBright: '#e8d8b0',
+}
+
 interface Violation {
   id: string
   missionDbId: string
@@ -13,11 +25,12 @@ interface Violation {
 }
 
 const SEVERITY_COLOUR: Record<string, string> = {
-  CRITICAL: '#cf1322', HIGH: '#d46b08', MEDIUM: '#d4b106', LOW: '#389e0d', WARNING: '#d48806'
+  CRITICAL: '#FF3B3B', HIGH: '#FFB800', MEDIUM: '#FFB800', LOW: '#6A6040', WARNING: '#FFB800'
 }
 
 const SEVERITY_BG: Record<string, string> = {
-  CRITICAL: '#fff2f0', HIGH: '#fff7e6', MEDIUM: '#feffe6', LOW: '#f6ffed', WARNING: '#fffbe6'
+  CRITICAL: '#FF3B3B' + '15', HIGH: '#FFB800' + '15', MEDIUM: '#FFB800' + '10',
+  LOW: '#6A6040' + '15', WARNING: '#FFB800' + '10'
 }
 
 export function ViolationsPage() {
@@ -63,17 +76,19 @@ export function ViolationsPage() {
     <div style={{ padding: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between',
         alignItems: 'center', marginBottom: '1rem' }}>
-        <h2 style={{ margin: 0 }}>Violations</h2>
+        <h2 style={{ margin: 0, color: T.textBright, fontFamily: "'JetBrains Mono', monospace" }}>Violations</h2>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           {scopeApplied && (
-            <span style={{ fontSize: '0.8rem', background: '#e6f7ff',
-              border: '1px solid #91d5ff', color: '#0050b3',
-              padding: '0.2rem 0.6rem', borderRadius: '4px' }}>
+            <span style={{ fontSize: '0.8rem', background: T.primary + '15',
+              border: `1px solid ${T.primary}40`, color: T.primary,
+              padding: '0.2rem 0.6rem', borderRadius: '4px',
+              fontFamily: "'JetBrains Mono', monospace" }}>
               Scope: {scopeApplied}
             </span>
           )}
           {retrievedAt && (
-            <span style={{ fontSize: '0.75rem', color: '#8c8c8c' }}>
+            <span style={{ fontSize: '0.75rem', color: T.muted,
+              fontFamily: "'JetBrains Mono', monospace" }}>
               Retrieved: {retrievedAt}
             </span>
           )}
@@ -84,7 +99,9 @@ export function ViolationsPage() {
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
         <select value={filterType}
           onChange={e => { setFilterType(e.target.value); setPage(1) }}
-          style={{ padding: '0.4rem', border: '1px solid #d9d9d9', borderRadius: '4px' }}>
+          style={{ padding: '0.4rem', border: `1px solid ${T.border}`, borderRadius: '4px',
+            background: T.surface, color: T.text, fontFamily: "'JetBrains Mono', monospace",
+            fontSize: '0.85rem', outline: 'none' }}>
           <option value="">All types</option>
           <option value="AGL_EXCEEDED">AGL Exceeded</option>
           <option value="GEOFENCE_BREACH">Geofence Breach</option>
@@ -93,7 +110,9 @@ export function ViolationsPage() {
         </select>
         <select value={filterSeverity}
           onChange={e => { setFilterSeverity(e.target.value); setPage(1) }}
-          style={{ padding: '0.4rem', border: '1px solid #d9d9d9', borderRadius: '4px' }}>
+          style={{ padding: '0.4rem', border: `1px solid ${T.border}`, borderRadius: '4px',
+            background: T.surface, color: T.text, fontFamily: "'JetBrains Mono', monospace",
+            fontSize: '0.85rem', outline: 'none' }}>
           <option value="">All severities</option>
           <option value="CRITICAL">Critical</option>
           <option value="HIGH">High</option>
@@ -101,21 +120,26 @@ export function ViolationsPage() {
           <option value="LOW">Low</option>
         </select>
         <button onClick={fetchViolations}
-          style={{ padding: '0.4rem 0.75rem', border: '1px solid #d9d9d9',
-            borderRadius: '4px', cursor: 'pointer', background: 'white', fontSize: '0.85rem' }}>
-          ↻ Refresh
+          style={{ padding: '0.4rem 0.75rem', border: `1px solid ${T.border}`,
+            borderRadius: '4px', cursor: 'pointer', background: T.surface,
+            color: T.text, fontSize: '0.85rem',
+            fontFamily: "'JetBrains Mono', monospace" }}>
+          Refresh
         </button>
       </div>
 
       {error && (
-        <div style={{ color: '#cf1322', padding: '0.75rem', background: '#fff2f0',
-          border: '1px solid #ffccc7', borderRadius: '4px', marginBottom: '1rem' }}>
+        <div style={{ color: T.red, padding: '0.75rem', background: T.red + '15',
+          border: `1px solid ${T.red}40`, borderRadius: '4px', marginBottom: '1rem',
+          fontFamily: "'JetBrains Mono', monospace" }}>
           {error}
         </div>
       )}
-      {loading && <div style={{ color: '#8c8c8c', padding: '1rem' }}>Loading violations…</div>}
+      {loading && <div style={{ color: T.muted, padding: '1rem',
+        fontFamily: "'JetBrains Mono', monospace" }}>Loading violations...</div>}
       {!loading && !error && violations.length === 0 && (
-        <div style={{ color: '#8c8c8c', padding: '1rem' }}>No violations found.</div>
+        <div style={{ color: T.muted, padding: '1rem',
+          fontFamily: "'JetBrains Mono', monospace" }}>No violations found.</div>
       )}
 
       {!loading && violations.length > 0 && (
@@ -123,33 +147,38 @@ export function ViolationsPage() {
           {violations.map(v => (
             <div key={v.id}
               onClick={() => navigate(`/missions/${v.missionDbId}`)}
-              style={{ background: SEVERITY_BG[v.severity] ?? 'white',
-                border: `1px solid ${SEVERITY_COLOUR[v.severity] ?? '#d9d9d9'}`,
-                borderLeft: `4px solid ${SEVERITY_COLOUR[v.severity] ?? '#d9d9d9'}`,
+              style={{ background: SEVERITY_BG[v.severity] ?? T.surface,
+                border: `1px solid ${SEVERITY_COLOUR[v.severity] ?? T.border}40`,
+                borderLeft: `4px solid ${SEVERITY_COLOUR[v.severity] ?? T.border}`,
                 borderRadius: '6px', padding: '0.75rem 1rem', cursor: 'pointer',
-                display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+                display: 'flex', gap: '1.5rem', alignItems: 'flex-start',
+                boxShadow: '0 1px 4px rgba(255,184,0,0.05)' }}>
               <div style={{ minWidth: '120px' }}>
-                <div style={{ fontWeight: 700, color: SEVERITY_COLOUR[v.severity] }}>
+                <div style={{ fontWeight: 700, color: SEVERITY_COLOUR[v.severity],
+                  fontFamily: "'JetBrains Mono', monospace" }}>
                   {v.severity}
                 </div>
-                <div style={{ fontSize: '0.8rem', color: '#595959' }}>{v.violationType}</div>
+                <div style={{ fontSize: '0.8rem', color: T.text,
+                  fontFamily: "'JetBrains Mono', monospace" }}>{v.violationType}</div>
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: '0.8rem', fontFamily: 'monospace', color: '#595959' }}>
+                <div style={{ fontSize: '0.8rem', fontFamily: "'JetBrains Mono', monospace", color: T.text }}>
                   Mission: {v.missionDbId}
                 </div>
-                <div style={{ fontSize: '0.8rem', color: '#8c8c8c', marginTop: '0.2rem' }}>
+                <div style={{ fontSize: '0.8rem', color: T.muted, marginTop: '0.2rem',
+                  fontFamily: "'JetBrains Mono', monospace" }}>
                   Seq {v.sequence} ·{' '}
                   {new Date(parseInt(v.timestampUtcMs)).toISOString().replace('T', ' ').slice(0, 19)} UTC
                 </div>
               </div>
-              <div style={{ fontSize: '0.75rem', fontFamily: 'monospace',
-                color: '#8c8c8c', maxWidth: '300px', overflow: 'hidden',
+              <div style={{ fontSize: '0.75rem', fontFamily: "'JetBrains Mono', monospace",
+                color: T.muted, maxWidth: '300px', overflow: 'hidden',
                 textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {v.detailJson}
               </div>
-              <div style={{ fontSize: '0.75rem', color: '#1890ff', whiteSpace: 'nowrap' }}>
-                View mission →
+              <div style={{ fontSize: '0.75rem', color: T.primary, whiteSpace: 'nowrap',
+                fontFamily: "'JetBrains Mono', monospace" }}>
+                View mission
               </div>
             </div>
           ))}
@@ -158,15 +187,19 @@ export function ViolationsPage() {
 
       <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <button disabled={page === 1} onClick={() => setPage(p => p - 1)}
-          style={{ padding: '0.3rem 0.75rem', border: '1px solid #d9d9d9', borderRadius: '4px',
-            cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1 }}>
+          style={{ padding: '0.3rem 0.75rem', border: `1px solid ${T.border}`, borderRadius: '4px',
+            cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1,
+            background: T.surface, color: T.text, fontFamily: "'JetBrains Mono', monospace" }}>
           Prev
         </button>
-        <span style={{ color: '#595959' }}>Page {page} · {total} total violations</span>
+        <span style={{ color: T.muted, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
+          Page {page} · {total} total violations
+        </span>
         <button disabled={page * 25 >= total} onClick={() => setPage(p => p + 1)}
-          style={{ padding: '0.3rem 0.75rem', border: '1px solid #d9d9d9', borderRadius: '4px',
+          style={{ padding: '0.3rem 0.75rem', border: `1px solid ${T.border}`, borderRadius: '4px',
             cursor: page * 25 >= total ? 'not-allowed' : 'pointer',
-            opacity: page * 25 >= total ? 0.5 : 1 }}>
+            opacity: page * 25 >= total ? 0.5 : 1,
+            background: T.surface, color: T.text, fontFamily: "'JetBrains Mono', monospace" }}>
           Next
         </button>
       </div>

@@ -110,6 +110,74 @@ router.get('/', requireAuth, async (req, res) => {
   }
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/flight-plans/:id/cancel
+// Cancel a filed flight plan. Builds and transmits AFTN CNL message.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/cancel', requireAuth, async (req, res) => {
+  try {
+    const { reason } = req.body
+    if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+      res.status(400).json({ error: 'REASON_REQUIRED' })
+      return
+    }
+
+    const result = await fplService.cancelPlan(
+      req.params.id,
+      req.auth!.userId,
+      req.auth!.userType as 'CIVILIAN' | 'SPECIAL',
+      reason.trim()
+    )
+
+    res.json({ success: true, ...result })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    const status = msg.includes('NOT_FOUND') ? 404
+      : msg.includes('NOT_YOUR') ? 403
+      : msg.includes('CANNOT_CANCEL') ? 409
+      : 500
+    log.error('flight_plan_cancel_error', { data: { error: msg } })
+    res.status(status).json({ error: msg })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/flight-plans/:id/delay
+// Delay a filed flight plan. Builds and transmits AFTN DLA message.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/delay', requireAuth, async (req, res) => {
+  try {
+    const { newEobt, reason } = req.body
+    if (!newEobt || !/^\d{6}$/.test(newEobt)) {
+      res.status(400).json({ error: 'VALID_NEW_EOBT_REQUIRED', detail: 'Must be DDHHmm format' })
+      return
+    }
+    if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+      res.status(400).json({ error: 'REASON_REQUIRED' })
+      return
+    }
+
+    const result = await fplService.delayPlan(
+      req.params.id,
+      req.auth!.userId,
+      req.auth!.userType as 'CIVILIAN' | 'SPECIAL',
+      newEobt,
+      reason.trim()
+    )
+
+    res.json({ success: true, ...result })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    const status = msg.includes('NOT_FOUND') ? 404
+      : msg.includes('NOT_YOUR') ? 403
+      : msg.includes('CANNOT_DELAY') ? 409
+      : msg.includes('must differ') ? 422
+      : 500
+    log.error('flight_plan_delay_error', { data: { error: msg } })
+    res.status(status).json({ error: msg })
+  }
+})
+
 // GET /api/flight-plans/:id — full plan with ADC/FIC refs
 router.get('/:id', requireAuth, async (req, res) => {
   try {

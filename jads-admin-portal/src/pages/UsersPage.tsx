@@ -1,6 +1,18 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useAdminAuth, adminAxios } from '../hooks/useAdminAuth'
 
+const T = {
+  bg:       '#050A08',
+  surface:  '#0A120E',
+  border:   '#1A3020',
+  primary:  '#00FF88',
+  amber:    '#FFB800',
+  red:      '#FF3B3B',
+  muted:    '#4A7A5A',
+  text:     '#b0c8b8',
+  textBright: '#d0e8d8',
+}
+
 interface UserRow {
   id: string
   email: string
@@ -14,9 +26,9 @@ interface UserRow {
 }
 
 const STATUS_COLOUR: Record<string, string> = {
-  ACTIVE:               '#52c41a',
-  SUSPENDED:            '#ff4d4f',
-  PENDING_VERIFICATION: '#faad14',
+  ACTIVE:               T.primary,
+  SUSPENDED:            T.red,
+  PENDING_VERIFICATION: T.amber,
 }
 
 export function UsersPage() {
@@ -64,8 +76,8 @@ export function UsersPage() {
   return (
     <div style={{ padding: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h2 style={{ margin: 0 }}>Civilian Users</h2>
-        <span style={{ fontSize: '0.8rem', color: '#8c8c8c' }}>{total} total</span>
+        <h2 style={{ margin: 0, color: T.textBright }}>Civilian Users</h2>
+        <span style={{ fontSize: '0.8rem', color: T.muted }}>{total} total</span>
       </div>
 
       {/* Filters */}
@@ -74,12 +86,14 @@ export function UsersPage() {
           placeholder="Search email or mobile"
           value={search}
           onChange={e => { setSearch(e.target.value); setPage(1) }}
-          style={{ padding: '0.4rem 0.75rem', border: '1px solid #d9d9d9', borderRadius: '4px', flex: 1 }}
+          style={{ padding: '0.4rem 0.75rem', border: `1px solid ${T.border}`, borderRadius: '4px', flex: 1,
+            background: T.surface, color: T.text }}
         />
         <select
           value={status}
           onChange={e => { setStatus(e.target.value); setPage(1) }}
-          style={{ padding: '0.4rem', border: '1px solid #d9d9d9', borderRadius: '4px' }}
+          style={{ padding: '0.4rem', border: `1px solid ${T.border}`, borderRadius: '4px',
+            background: T.surface, color: T.text }}
         >
           <option value="">All statuses</option>
           <option value="ACTIVE">Active</option>
@@ -90,40 +104,40 @@ export function UsersPage() {
 
       {/* States */}
       {error && (
-        <div style={{ color: '#cf1322', padding: '0.75rem', background: '#fff2f0',
-          border: '1px solid #ffccc7', borderRadius: '4px', marginBottom: '1rem' }}>
+        <div style={{ color: T.red, padding: '0.75rem', background: T.red + '15',
+          border: `1px solid ${T.red}40`, borderRadius: '4px', marginBottom: '1rem' }}>
           Error: {error}
         </div>
       )}
-      {loading && <div style={{ color: '#8c8c8c', marginBottom: '1rem' }}>Loading users…</div>}
+      {loading && <div style={{ color: T.muted, marginBottom: '1rem' }}>Loading users...</div>}
       {!loading && !error && users.length === 0 && (
-        <div style={{ color: '#8c8c8c', padding: '2rem', textAlign: 'center' }}>No users found.</div>
+        <div style={{ color: T.muted, padding: '2rem', textAlign: 'center' }}>No users found.</div>
       )}
 
       {!loading && users.length > 0 && (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
           <thead>
-            <tr style={{ background: '#fafafa', borderBottom: '2px solid #f0f0f0' }}>
+            <tr style={{ background: T.surface, borderBottom: `2px solid ${T.border}` }}>
               {['Email', 'Mobile', 'Role', 'Status', 'Aadhaar', 'Last Login', 'Actions'].map(h => (
-                <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600 }}>{h}</th>
+                <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: T.textBright }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {users.map(u => (
-              <tr key={u.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                <td style={{ padding: '0.5rem 0.75rem' }}>{u.email}</td>
-                <td style={{ padding: '0.5rem 0.75rem' }}>{u.mobileNumber}</td>
-                <td style={{ padding: '0.5rem 0.75rem' }}>{u.role}</td>
+              <tr key={u.id} style={{ borderBottom: `1px solid ${T.border}` }}>
+                <td style={{ padding: '0.5rem 0.75rem', color: T.text }}>{u.email}</td>
+                <td style={{ padding: '0.5rem 0.75rem', color: T.text }}>{u.mobileNumber}</td>
+                <td style={{ padding: '0.5rem 0.75rem', color: T.text }}>{u.role}</td>
                 <td style={{ padding: '0.5rem 0.75rem' }}>
-                  <span style={{ color: STATUS_COLOUR[u.accountStatus] ?? '#8c8c8c', fontWeight: 500 }}>
+                  <span style={{ color: STATUS_COLOUR[u.accountStatus] ?? T.muted, fontWeight: 500 }}>
                     {u.accountStatus}
                   </span>
                 </td>
-                <td style={{ padding: '0.5rem 0.75rem' }}>
+                <td style={{ padding: '0.5rem 0.75rem', color: T.text }}>
                   {u.aadhaarLast4 ? `****${u.aadhaarLast4}` : '—'}
                 </td>
-                <td style={{ padding: '0.5rem 0.75rem' }}>
+                <td style={{ padding: '0.5rem 0.75rem', color: T.text }}>
                   {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString() : '—'}
                 </td>
                 <td style={{ padding: '0.5rem 0.75rem' }}>
@@ -132,8 +146,8 @@ export function UsersPage() {
                     ? (
                       <button
                         onClick={() => updateStatus(u.id, 'SUSPENDED')}
-                        style={{ padding: '0.25rem 0.5rem', background: '#fff1f0',
-                          border: '1px solid #ffccc7', color: '#cf1322',
+                        style={{ padding: '0.25rem 0.5rem', background: T.red + '15',
+                          border: `1px solid ${T.red}40`, color: T.red,
                           borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                       >
                         Suspend
@@ -141,8 +155,8 @@ export function UsersPage() {
                     ) : (
                       <button
                         onClick={() => updateStatus(u.id, 'ACTIVE')}
-                        style={{ padding: '0.25rem 0.5rem', background: '#f6ffed',
-                          border: '1px solid #b7eb8f', color: '#389e0d',
+                        style={{ padding: '0.25rem 0.5rem', background: T.primary + '15',
+                          border: `1px solid ${T.primary}40`, color: T.primary,
                           borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                       >
                         Reinstate
@@ -161,18 +175,20 @@ export function UsersPage() {
         <button
           disabled={page === 1}
           onClick={() => setPage(p => p - 1)}
-          style={{ padding: '0.3rem 0.75rem', border: '1px solid #d9d9d9', borderRadius: '4px',
-            cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1 }}
+          style={{ padding: '0.3rem 0.75rem', border: `1px solid ${T.border}`, borderRadius: '4px',
+            cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1,
+            background: 'transparent', color: T.text }}
         >
           Prev
         </button>
-        <span>Page {page} · {total} total users</span>
+        <span style={{ color: T.text }}>Page {page} · {total} total users</span>
         <button
           disabled={page * 50 >= total}
           onClick={() => setPage(p => p + 1)}
-          style={{ padding: '0.3rem 0.75rem', border: '1px solid #d9d9d9', borderRadius: '4px',
+          style={{ padding: '0.3rem 0.75rem', border: `1px solid ${T.border}`, borderRadius: '4px',
             cursor: page * 50 >= total ? 'not-allowed' : 'pointer',
-            opacity: page * 50 >= total ? 0.5 : 1 }}
+            opacity: page * 50 >= total ? 0.5 : 1,
+            background: 'transparent', color: T.text }}
         >
           Next
         </button>

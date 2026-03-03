@@ -5,6 +5,12 @@
 function requireEnv(key: string): string {
   const value = process.env[key]
   if (!value || value.trim() === '') {
+    // In test mode, return a safe placeholder so pure-logic tests can import
+    // services without crashing.  Integration tests that need real env vars
+    // should set them in their own setup.
+    if (process.env.NODE_ENV === 'test') {
+      return `__test_placeholder_${key}__`
+    }
     process.stderr.write(
       `FATAL: Missing required environment variable: ${key}\n` +
       `Copy .env.example to .env and fill in all values.\n`

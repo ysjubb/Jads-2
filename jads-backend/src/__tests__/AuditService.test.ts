@@ -1,7 +1,7 @@
 // Unit tests for AuditService role scoping.
 // These tests do NOT hit the database — they verify the scope rules inline.
 
-import { AuditScopeError } from '../../services/AuditService'
+import { AuditScopeError } from '../services/AuditService'
 
 // ── Inline scope rules matching AuditService.assertDroneMissionAccess ────────
 function assertDroneMissionAccess(role: string): void {

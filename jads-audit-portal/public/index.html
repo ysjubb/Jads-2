@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>JADS Audit Portal v4.0</title>
 
+    <!-- JetBrains Mono — forensic monospace font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
     <!-- Leaflet CSS — loaded via CDN per P7C spec.
          Government must not depend on commercial map APIs.
          Leaflet + OpenStreetMap tiles are used exclusively. -->
@@ -17,9 +22,36 @@
 
     <style>
       * { box-sizing: border-box; }
-      body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+      body {
+        margin: 0;
+        font-family: 'JetBrains Mono', monospace;
+        background: #050A08;
+        color: #c8b890;
+      }
       /* Leaflet map container must have explicit height */
       .leaflet-container { min-height: 400px; }
+
+      /* ── Scanline overlay ── */
+      body::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 9999;
+        background: repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(255, 184, 0, 0.015) 2px,
+          rgba(255, 184, 0, 0.015) 4px
+        );
+      }
+
+      /* Scrollbar styling */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: #0A120E; }
+      ::-webkit-scrollbar-thumb { background: #1A3020; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #FFB800; }
     </style>
   </head>
   <body>

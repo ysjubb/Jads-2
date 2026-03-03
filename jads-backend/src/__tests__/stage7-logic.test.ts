@@ -3,11 +3,11 @@
 // AltitudeComplianceEngine semicircular rule, FirGeometryEngine ray casting,
 // AftnMessageBuilder format, Item18Parser.
 
-import { RouteSemanticEngine }      from '../../services/RouteSemanticEngine'
-import { AltitudeComplianceEngine } from '../../services/AltitudeComplianceEngine'
-import { FirGeometryEngine }        from '../../services/FirGeometryEngine'
-import { AftnMessageBuilder }       from '../../services/AftnMessageBuilder'
-import { Item18Parser }             from '../../services/Item18Parser'
+import { RouteSemanticEngine }      from '../services/RouteSemanticEngine'
+import { AltitudeComplianceEngine } from '../services/AltitudeComplianceEngine'
+import { FirGeometryEngine }        from '../services/FirGeometryEngine'
+import { AftnMessageBuilder }       from '../services/AftnMessageBuilder'
+import { Item18Parser }             from '../services/Item18Parser'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ describe('RouteSemanticEngine — geodesics', () => {
 
   test('RS-05: Magnetic variation easterly (positive) is subtracted from true track', () => {
     expect(eng.applyMagneticVariation(210, 0.5)).toBeCloseTo(209.5, 4)
-    expect(eng.applyMagneticVariation(010, 2.0)).toBeCloseTo(8.0, 4)
+    expect(eng.applyMagneticVariation(10, 2.0)).toBeCloseTo(8.0, 4)
   })
 
   test('RS-06: Magnetic variation wrap around 360', () => {
@@ -100,30 +100,32 @@ describe('RouteSemanticEngine — geodesics', () => {
       destLatDeg: 19.0896, destLonDeg: 72.8656,
     })
     expect(result.errors.find(e => e.code === 'WAYPOINT_NOT_FOUND')).toBeUndefined()
-    expect(result.totalDistanceNm).toBeGreaterThan(600)
+    const totalDistanceNm = result.legs.reduce((sum, leg) => sum + leg.distanceNm, 0)
+    expect(totalDistanceNm).toBeGreaterThan(600)
   })
 
-  test('RS-13: Unknown waypoint XXXXXX → WAYPOINT_NOT_FOUND warning (not error)', async () => {
+  test('RS-13: Unknown waypoint XXXXX → WAYPOINT_NOT_FOUND warning (not error)', async () => {
     const result = await makeRouteEngine().validateAndCompute({
       departureIcao: 'VIDP', destinationIcao: 'VABB',
-      routeString: 'XXXXXX',
+      routeString: 'XXXXX',
       speedIndicator: 'N', speedValue: '0450',
       depLatDeg: 28.5665, depLonDeg: 77.1031, depMagVar: 0,
       destLatDeg: 19.0896, destLonDeg: 72.8656,
     })
+    // 5-letter token matches waypoint regex [A-Z]{2,5} but not found → WAYPOINT_NOT_FOUND
     expect(result.warnings.find(w => w.code === 'WAYPOINT_NOT_FOUND')).toBeDefined()
-    // It's a warning not an error — valid field still false? No, waypoint not found is warning only
     expect(result.errors.find(e => e.code === 'WAYPOINT_NOT_FOUND')).toBeUndefined()
   })
 
-  test('RS-14: Unknown airway ZZ99 → AIRWAY_NOT_FOUND error', async () => {
+  test('RS-14: Unknown airway Z999 → AIRWAY_NOT_FOUND error', async () => {
     const result = await makeRouteEngine().validateAndCompute({
       departureIcao: 'VIDP', destinationIcao: 'VABB',
-      routeString: 'ZZ99',
+      routeString: 'Z999',
       speedIndicator: 'N', speedValue: '0450',
       depLatDeg: 28.5665, depLonDeg: 77.1031, depMagVar: 0,
       destLatDeg: 19.0896, destLonDeg: 72.8656,
     })
+    // Single letter + digits matches airway regex [A-Z]\d{1,3} → AIRWAY_NOT_FOUND
     expect(result.errors.find(e => e.code === 'AIRWAY_NOT_FOUND')).toBeDefined()
   })
 })
@@ -178,7 +180,7 @@ describe('AltitudeComplianceEngine — semicircular rule', () => {
   test('AC-06: FL350 eastbound with W equipment → RVSM_COMPLIANT', () => {
     const r = eng.checkCompliance({
       flightRules: 'I', levelIndicator: 'F', levelValue: '350',
-      magneticTrackDeg: 090, equipment: 'SDFGW'
+      magneticTrackDeg: 90, equipment: 'SDFGW'
     })
     expect(r.errors.find(e => e.code === 'RVSM_EQUIPMENT_MISSING')).toBeUndefined()
     expect(r.info.find(i => i.code === 'RVSM_COMPLIANT')).toBeDefined()
@@ -187,7 +189,7 @@ describe('AltitudeComplianceEngine — semicircular rule', () => {
   test('AC-07: FL350 eastbound without W → RVSM_EQUIPMENT_MISSING error', () => {
     const r = eng.checkCompliance({
       flightRules: 'I', levelIndicator: 'F', levelValue: '350',
-      magneticTrackDeg: 090, equipment: 'SDFG'
+      magneticTrackDeg: 90, equipment: 'SDFG'
     })
     expect(r.errors.find(e => e.code === 'RVSM_EQUIPMENT_MISSING')).toBeDefined()
   })
@@ -195,7 +197,7 @@ describe('AltitudeComplianceEngine — semicircular rule', () => {
   test('AC-08: VFR → hemispherical advisory info, no semicircular errors', () => {
     const r = eng.checkCompliance({
       flightRules: 'V', levelIndicator: 'F', levelValue: '085',
-      magneticTrackDeg: 090, equipment: 'S'
+      magneticTrackDeg: 90, equipment: 'S'
     })
     expect(r.errors.length).toBe(0)
     expect(r.info.find(i => i.code === 'VFR_HEMISPHERICAL_ADVISORY')).toBeDefined()
@@ -225,7 +227,7 @@ describe('AltitudeComplianceEngine — semicircular rule', () => {
   test('AC-11: FL290 eastbound → in EASTBOUND_VALID_FL_RVSM → compliant', () => {
     const r = eng.checkCompliance({
       flightRules: 'I', levelIndicator: 'F', levelValue: '290',
-      magneticTrackDeg: 090, equipment: 'SDFGW'
+      magneticTrackDeg: 90, equipment: 'SDFGW'
     })
     expect(r.errors.find(e => e.code === 'SEMICIRCULAR_RULE_VIOLATION')).toBeUndefined()
   })
@@ -233,7 +235,7 @@ describe('AltitudeComplianceEngine — semicircular rule', () => {
   test('AC-12: FL270 eastbound → in EASTBOUND_VALID_FL_BELOW_RVSM → compliant', () => {
     const r = eng.checkCompliance({
       flightRules: 'I', levelIndicator: 'F', levelValue: '270',
-      magneticTrackDeg: 090, equipment: 'S'
+      magneticTrackDeg: 90, equipment: 'S'
     })
     expect(r.errors.find(e => e.code === 'SEMICIRCULAR_RULE_VIOLATION')).toBeUndefined()
   })
@@ -241,7 +243,7 @@ describe('AltitudeComplianceEngine — semicircular rule', () => {
   test('AC-13: FL460 → LEVEL_ABOVE_FL450 warning', () => {
     const r = eng.checkCompliance({
       flightRules: 'I', levelIndicator: 'F', levelValue: '460',
-      magneticTrackDeg: 090, equipment: 'SDFGW'
+      magneticTrackDeg: 90, equipment: 'SDFGW'
     })
     expect(r.warnings.find(w => w.code === 'LEVEL_ABOVE_FL450')).toBeDefined()
   })
@@ -377,7 +379,7 @@ describe('AftnMessageBuilder', () => {
     expect(msg).toContain('PBN/B4D3S1')
   })
 
-  test('AB-05: Empty Item 18 → 0 placeholder', () => {
+  test('AB-05: Empty Item 18 → DOF auto-generated (mandatory per ICAO)', () => {
     const msg = builder.build({
       callsign: 'AI101', flightRules: 'I', flightType: 'S',
       aircraftType: 'B738', wakeTurbulence: 'M',
@@ -387,7 +389,8 @@ describe('AftnMessageBuilder', () => {
       destination: 'VABB', eet: '0130',
       item18Parsed: parser.parse(null),
     })
-    expect(msg).toContain('-0)')
+    // DOF is auto-generated even when Item 18 is empty — mandatory per ICAO
+    expect(msg).toContain('DOF/')
   })
 
   test('AB-06: Alternates included in Item 16', () => {
