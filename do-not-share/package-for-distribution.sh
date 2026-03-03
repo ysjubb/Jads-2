@@ -59,7 +59,7 @@ echo -e "${BOLD}${CYAN}── PHASE 1: Building Projects ──${NC}"
 # ── Build Backend ────────────────────────────────────────────────────────────
 BACKEND_BUILT=false
 echo -e "${YELLOW}[1/3] Building backend (TypeScript → JavaScript)...${NC}"
-cd "$PROJECT_ROOT/jads-backend"
+cd "$PROJECT_ROOT/do-not-share/jads-backend"
 if [ ! -d "node_modules" ]; then
     echo "  Installing dependencies..."
     npm install --silent 2>/dev/null || npm install
@@ -80,7 +80,7 @@ fi
 # ── Build Admin Portal ──────────────────────────────────────────────────────
 ADMIN_BUILT=false
 echo -e "${YELLOW}[2/3] Building admin portal (Vite → static HTML/JS)...${NC}"
-cd "$PROJECT_ROOT/jads-admin-portal"
+cd "$PROJECT_ROOT/do-not-share/jads-admin-portal"
 if [ ! -d "node_modules" ]; then
     echo "  Installing dependencies..."
     npm install --silent 2>/dev/null || npm install
@@ -95,7 +95,7 @@ fi
 # ── Build Audit Portal ──────────────────────────────────────────────────────
 AUDIT_BUILT=false
 echo -e "${YELLOW}[3/3] Building audit portal (Vite → static HTML/JS)...${NC}"
-cd "$PROJECT_ROOT/jads-audit-portal"
+cd "$PROJECT_ROOT/do-not-share/jads-audit-portal"
 if [ ! -d "node_modules" ]; then
     echo "  Installing dependencies..."
     npm install --silent 2>/dev/null || npm install
@@ -117,15 +117,15 @@ echo -e "${BOLD}${CYAN}── PHASE 2: Packaging 'share-this' (deployable) ─�
 
 # ── Infrastructure ───────────────────────────────────────────────────────────
 echo "  Copying infrastructure files..."
-cp "$PROJECT_ROOT/docker-compose.yml" "$SHARE/"
+cp "$PROJECT_ROOT/do-not-share/docker-compose.yml" "$SHARE/"
 
 # ── Backend (compiled only) ──────────────────────────────────────────────────
 echo "  Packaging backend..."
 mkdir -p "$SHARE/jads-backend"
 
 # Copy compiled JS if build succeeded
-if [ "$BACKEND_BUILT" = true ] && [ -d "$PROJECT_ROOT/jads-backend/dist" ]; then
-    cp -r "$PROJECT_ROOT/jads-backend/dist" "$SHARE/jads-backend/dist"
+if [ "$BACKEND_BUILT" = true ] && [ -d "$PROJECT_ROOT/do-not-share/jads-backend/dist" ]; then
+    cp -r "$PROJECT_ROOT/do-not-share/jads-backend/dist" "$SHARE/jads-backend/dist"
 fi
 
 # Production package.json (no devDependencies exposed)
@@ -156,11 +156,11 @@ PKGJSON
 
 # Prisma migrations (needed to set up DB)
 mkdir -p "$SHARE/jads-backend/prisma"
-cp -r "$PROJECT_ROOT/jads-backend/prisma/migrations" "$SHARE/jads-backend/prisma/migrations"
-cp "$PROJECT_ROOT/jads-backend/prisma/schema.prisma" "$SHARE/jads-backend/prisma/schema.prisma"
+cp -r "$PROJECT_ROOT/do-not-share/jads-backend/prisma/migrations" "$SHARE/jads-backend/prisma/migrations"
+cp "$PROJECT_ROOT/do-not-share/jads-backend/prisma/schema.prisma" "$SHARE/jads-backend/prisma/schema.prisma"
 
 # .env.example (no real secrets)
-cp "$PROJECT_ROOT/jads-backend/.env.example" "$SHARE/jads-backend/.env.example"
+cp "$PROJECT_ROOT/do-not-share/jads-backend/.env.example" "$SHARE/jads-backend/.env.example"
 
 # Prisma client generation script
 cat > "$SHARE/jads-backend/setup.sh" << 'SETUP'
@@ -182,8 +182,8 @@ chmod +x "$SHARE/jads-backend/setup.sh"
 echo "  Packaging admin portal..."
 mkdir -p "$SHARE/jads-admin-portal"
 
-if [ "$ADMIN_BUILT" = true ] && [ -d "$PROJECT_ROOT/jads-admin-portal/dist" ]; then
-    cp -r "$PROJECT_ROOT/jads-admin-portal/dist" "$SHARE/jads-admin-portal/dist"
+if [ "$ADMIN_BUILT" = true ] && [ -d "$PROJECT_ROOT/do-not-share/jads-admin-portal/dist" ]; then
+    cp -r "$PROJECT_ROOT/do-not-share/jads-admin-portal/dist" "$SHARE/jads-admin-portal/dist"
     # Include a simple serve script
     cat > "$SHARE/jads-admin-portal/serve.sh" << 'SERVE'
 #!/usr/bin/env bash
@@ -195,16 +195,16 @@ SERVE
     chmod +x "$SHARE/jads-admin-portal/serve.sh"
 else
     echo "    (Build failed — including minimal package for manual build)"
-    cp "$PROJECT_ROOT/jads-admin-portal/package.json" "$SHARE/jads-admin-portal/"
-    cp "$PROJECT_ROOT/jads-admin-portal/index.html" "$SHARE/jads-admin-portal/" 2>/dev/null || true
+    cp "$PROJECT_ROOT/do-not-share/jads-admin-portal/package.json" "$SHARE/jads-admin-portal/"
+    cp "$PROJECT_ROOT/do-not-share/jads-admin-portal/index.html" "$SHARE/jads-admin-portal/" 2>/dev/null || true
 fi
 
 # ── Audit Portal (static build) ─────────────────────────────────────────────
 echo "  Packaging audit portal..."
 mkdir -p "$SHARE/jads-audit-portal"
 
-if [ "$AUDIT_BUILT" = true ] && [ -d "$PROJECT_ROOT/jads-audit-portal/dist" ]; then
-    cp -r "$PROJECT_ROOT/jads-audit-portal/dist" "$SHARE/jads-audit-portal/dist"
+if [ "$AUDIT_BUILT" = true ] && [ -d "$PROJECT_ROOT/do-not-share/jads-audit-portal/dist" ]; then
+    cp -r "$PROJECT_ROOT/do-not-share/jads-audit-portal/dist" "$SHARE/jads-audit-portal/dist"
     cat > "$SHARE/jads-audit-portal/serve.sh" << 'SERVE'
 #!/usr/bin/env bash
 # Serve audit portal static files
@@ -214,12 +214,12 @@ SERVE
     chmod +x "$SHARE/jads-audit-portal/serve.sh"
 else
     echo "    (Build failed — including minimal package for manual build)"
-    cp "$PROJECT_ROOT/jads-audit-portal/package.json" "$SHARE/jads-audit-portal/"
+    cp "$PROJECT_ROOT/do-not-share/jads-audit-portal/package.json" "$SHARE/jads-audit-portal/"
 fi
 
 # ── Android APK (if available) ───────────────────────────────────────────────
 echo "  Checking for Android APK..."
-APK_PATH="$PROJECT_ROOT/jads-android/app/build/outputs/apk/debug/app-debug.apk"
+APK_PATH="$PROJECT_ROOT/do-not-share/jads-android/app/build/outputs/apk/debug/app-debug.apk"
 if [ -f "$APK_PATH" ]; then
     mkdir -p "$SHARE/jads-android"
     cp "$APK_PATH" "$SHARE/jads-android/jads-v4.0-demo.apk"
@@ -232,7 +232,7 @@ fi
 
 # ── CI/CD Pipeline ───────────────────────────────────────────────────────────
 mkdir -p "$SHARE/ci"
-cp "$PROJECT_ROOT/ci/jads-platform-pipeline.yml" "$SHARE/ci/" 2>/dev/null || true
+cp "$PROJECT_ROOT/do-not-share/ci/jads-platform-pipeline.yml" "$SHARE/ci/" 2>/dev/null || true
 
 # ── Master startup script ───────────────────────────────────────────────────
 cat > "$SHARE/start-demo.sh" << 'STARTDEMO'
@@ -382,73 +382,73 @@ echo -e "${BOLD}${CYAN}── PHASE 3: Packaging 'do-not-share' (your IP) ──
 # ── Backend Source Code ──────────────────────────────────────────────────────
 echo "  Copying backend source code..."
 mkdir -p "$PRIVATE/jads-backend"
-cp -r "$PROJECT_ROOT/jads-backend/src" "$PRIVATE/jads-backend/src"
-cp "$PROJECT_ROOT/jads-backend/package.json" "$PRIVATE/jads-backend/package.json"
-cp "$PROJECT_ROOT/jads-backend/tsconfig.json" "$PRIVATE/jads-backend/tsconfig.json"
-cp "$PROJECT_ROOT/jads-backend/tsconfig.check.json" "$PRIVATE/jads-backend/" 2>/dev/null || true
-cp "$PROJECT_ROOT/jads-backend/tsconfig.stage1.json" "$PRIVATE/jads-backend/" 2>/dev/null || true
-cp "$PROJECT_ROOT/jads-backend/jest.config.js" "$PRIVATE/jads-backend/" 2>/dev/null || true
+cp -r "$PROJECT_ROOT/do-not-share/jads-backend/src" "$PRIVATE/jads-backend/src"
+cp "$PROJECT_ROOT/do-not-share/jads-backend/package.json" "$PRIVATE/jads-backend/package.json"
+cp "$PROJECT_ROOT/do-not-share/jads-backend/tsconfig.json" "$PRIVATE/jads-backend/tsconfig.json"
+cp "$PROJECT_ROOT/do-not-share/jads-backend/tsconfig.check.json" "$PRIVATE/jads-backend/" 2>/dev/null || true
+cp "$PROJECT_ROOT/do-not-share/jads-backend/tsconfig.stage1.json" "$PRIVATE/jads-backend/" 2>/dev/null || true
+cp "$PROJECT_ROOT/do-not-share/jads-backend/jest.config.js" "$PRIVATE/jads-backend/" 2>/dev/null || true
 
 # Prisma schema (the DB design is IP)
 mkdir -p "$PRIVATE/jads-backend/prisma"
-cp "$PROJECT_ROOT/jads-backend/prisma/schema.prisma" "$PRIVATE/jads-backend/prisma/"
-cp "$PROJECT_ROOT/jads-backend/prisma/seed.ts" "$PRIVATE/jads-backend/prisma/"
-cp -r "$PROJECT_ROOT/jads-backend/prisma/migrations" "$PRIVATE/jads-backend/prisma/migrations"
+cp "$PROJECT_ROOT/do-not-share/jads-backend/prisma/schema.prisma" "$PRIVATE/jads-backend/prisma/"
+cp "$PROJECT_ROOT/do-not-share/jads-backend/prisma/seed.ts" "$PRIVATE/jads-backend/prisma/"
+cp -r "$PROJECT_ROOT/do-not-share/jads-backend/prisma/migrations" "$PRIVATE/jads-backend/prisma/migrations"
 
 # ── Android Source Code ──────────────────────────────────────────────────────
 echo "  Copying Android source code..."
 mkdir -p "$PRIVATE/jads-android"
-cp -r "$PROJECT_ROOT/jads-android/app" "$PRIVATE/jads-android/app"
-cp "$PROJECT_ROOT/jads-android/build.gradle.kts" "$PRIVATE/jads-android/" 2>/dev/null || true
-cp "$PROJECT_ROOT/jads-android/settings.gradle.kts" "$PRIVATE/jads-android/" 2>/dev/null || true
-cp "$PROJECT_ROOT/jads-android/gradle.properties" "$PRIVATE/jads-android/" 2>/dev/null || true
+cp -r "$PROJECT_ROOT/do-not-share/jads-android/app" "$PRIVATE/jads-android/app"
+cp "$PROJECT_ROOT/do-not-share/jads-android/build.gradle.kts" "$PRIVATE/jads-android/" 2>/dev/null || true
+cp "$PROJECT_ROOT/do-not-share/jads-android/settings.gradle.kts" "$PRIVATE/jads-android/" 2>/dev/null || true
+cp "$PROJECT_ROOT/do-not-share/jads-android/gradle.properties" "$PRIVATE/jads-android/" 2>/dev/null || true
 # Exclude build outputs from private copy
 rm -rf "$PRIVATE/jads-android/app/build" 2>/dev/null || true
 
 # ── Admin Portal Source ──────────────────────────────────────────────────────
 echo "  Copying admin portal source..."
 mkdir -p "$PRIVATE/jads-admin-portal"
-cp -r "$PROJECT_ROOT/jads-admin-portal/src" "$PRIVATE/jads-admin-portal/src"
-cp "$PROJECT_ROOT/jads-admin-portal/package.json" "$PRIVATE/jads-admin-portal/"
-cp "$PROJECT_ROOT/jads-admin-portal/tsconfig.json" "$PRIVATE/jads-admin-portal/"
-cp "$PROJECT_ROOT/jads-admin-portal/vite.config.ts" "$PRIVATE/jads-admin-portal/"
-cp "$PROJECT_ROOT/jads-admin-portal/index.html" "$PRIVATE/jads-admin-portal/" 2>/dev/null || true
+cp -r "$PROJECT_ROOT/do-not-share/jads-admin-portal/src" "$PRIVATE/jads-admin-portal/src"
+cp "$PROJECT_ROOT/do-not-share/jads-admin-portal/package.json" "$PRIVATE/jads-admin-portal/"
+cp "$PROJECT_ROOT/do-not-share/jads-admin-portal/tsconfig.json" "$PRIVATE/jads-admin-portal/"
+cp "$PROJECT_ROOT/do-not-share/jads-admin-portal/vite.config.ts" "$PRIVATE/jads-admin-portal/"
+cp "$PROJECT_ROOT/do-not-share/jads-admin-portal/index.html" "$PRIVATE/jads-admin-portal/" 2>/dev/null || true
 
 # ── Audit Portal Source ──────────────────────────────────────────────────────
 echo "  Copying audit portal source..."
 mkdir -p "$PRIVATE/jads-audit-portal"
-cp -r "$PROJECT_ROOT/jads-audit-portal/src" "$PRIVATE/jads-audit-portal/src"
-cp "$PROJECT_ROOT/jads-audit-portal/package.json" "$PRIVATE/jads-audit-portal/"
-cp "$PROJECT_ROOT/jads-audit-portal/tsconfig.json" "$PRIVATE/jads-audit-portal/"
-cp "$PROJECT_ROOT/jads-audit-portal/vite.config.ts" "$PRIVATE/jads-audit-portal/"
+cp -r "$PROJECT_ROOT/do-not-share/jads-audit-portal/src" "$PRIVATE/jads-audit-portal/src"
+cp "$PROJECT_ROOT/do-not-share/jads-audit-portal/package.json" "$PRIVATE/jads-audit-portal/"
+cp "$PROJECT_ROOT/do-not-share/jads-audit-portal/tsconfig.json" "$PRIVATE/jads-audit-portal/"
+cp "$PROJECT_ROOT/do-not-share/jads-audit-portal/vite.config.ts" "$PRIVATE/jads-audit-portal/"
 
 # ── User App Source ──────────────────────────────────────────────────────────
 echo "  Copying user app source..."
-if [ -d "$PROJECT_ROOT/jads-user-app/src" ]; then
+if [ -d "$PROJECT_ROOT/do-not-share/jads-user-app/src" ]; then
     mkdir -p "$PRIVATE/jads-user-app"
-    cp -r "$PROJECT_ROOT/jads-user-app/src" "$PRIVATE/jads-user-app/src"
+    cp -r "$PROJECT_ROOT/do-not-share/jads-user-app/src" "$PRIVATE/jads-user-app/src"
 fi
 
 # ── AI Agents Source ─────────────────────────────────────────────────────────
 echo "  Copying AI agents source..."
-if [ -d "$PROJECT_ROOT/agents" ]; then
-    cp -r "$PROJECT_ROOT/agents" "$PRIVATE/agents"
+if [ -d "$PROJECT_ROOT/do-not-share/agents" ]; then
+    cp -r "$PROJECT_ROOT/do-not-share/agents" "$PRIVATE/agents"
 fi
 
 # ── E2E Tests ────────────────────────────────────────────────────────────────
 echo "  Copying E2E test suites..."
-if [ -d "$PROJECT_ROOT/e2e" ]; then
-    cp -r "$PROJECT_ROOT/e2e" "$PRIVATE/e2e"
+if [ -d "$PROJECT_ROOT/do-not-share/e2e" ]; then
+    cp -r "$PROJECT_ROOT/do-not-share/e2e" "$PRIVATE/e2e"
 fi
 
 # ── Architecture & Documentation (IP) ───────────────────────────────────────
 echo "  Copying architecture documentation..."
-cp "$PROJECT_ROOT/CLAUDE.md" "$PRIVATE/" 2>/dev/null || true
-cp "$PROJECT_ROOT/KOTLIN_DEV_BRIEF.md" "$PRIVATE/" 2>/dev/null || true
+cp "$PROJECT_ROOT/do-not-share/CLAUDE.md" "$PRIVATE/" 2>/dev/null || true
+cp "$PROJECT_ROOT/do-not-share/KOTLIN_DEV_BRIEF.md" "$PRIVATE/" 2>/dev/null || true
 
 # ── Dev Container Config ────────────────────────────────────────────────────
-if [ -d "$PROJECT_ROOT/.devcontainer" ]; then
-    cp -r "$PROJECT_ROOT/.devcontainer" "$PRIVATE/.devcontainer"
+if [ -d "$PROJECT_ROOT/do-not-share/.devcontainer" ]; then
+    cp -r "$PROJECT_ROOT/do-not-share/.devcontainer" "$PRIVATE/.devcontainer"
 fi
 
 

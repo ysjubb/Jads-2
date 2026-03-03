@@ -260,6 +260,10 @@ model AuditLog {
   errorCode      String?
   detailJson     String
   sequenceNumber BigInt    @default(autoincrement())
+  // Defense 6: Row-level hash for tamper detection.
+  // Computed on INSERT as SHA-256(id || sequenceNumber || timestamp || actorId || action || detailJson).
+  // If an attacker with DB access modifies any field, the hash won't match on re-verification.
+  rowHash        String?
 
   @@index([actorId])
   @@index([resourceType, resourceId])

@@ -33,6 +33,8 @@ import fs                      from 'fs'
 import path                    from 'path'
 import { PrismaClient }        from '@prisma/client'
 import { createServiceLogger } from '../logger'
+import { ExternalAnchorService, createExternalAnchorService } from '../services/ExternalAnchorService'
+import type { AnchorPayload, AnchorReceipt } from '../services/ExternalAnchorService'
 
 const log = createServiceLogger('EvidenceLedgerJob')
 
@@ -48,8 +50,11 @@ const EVIDENCE_LOG_PATH = process.env.EVIDENCE_LOG_PATH
 
 export class EvidenceLedgerJob {
   private task: ReturnType<typeof cron.schedule> | null = null
+  private readonly externalAnchor: ExternalAnchorService
 
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(private readonly prisma: PrismaClient, externalAnchor?: ExternalAnchorService) {
+    this.externalAnchor = externalAnchor ?? createExternalAnchorService()
+  }
 
   start(): void {
     log.info('evidence_ledger_job_started', { data: { schedule: CRON_SCHEDULE } })
@@ -188,7 +193,40 @@ export class EvidenceLedgerJob {
       })
     }
 
-    return { status: 'ANCHORED', anchorDate: dateStr, missionCount, anchorHash, prevAnchorHash }
+    // ── 9. Publish to external trust anchors ──────────────────────────
+    // Defense against Threat 2 (external trust anchoring absence) and
+    // Threat 3 (long-term rewrite with total stack control).
+    // External anchors cannot be rewritten by an attacker who controls this server.
+    const anchorPayload: AnchorPayload = {
+      anchorDate:        dateStr,
+      missionCount,
+      missionIdsCsvHash,
+      anchorHash,
+      prevAnchorHash,
+      computedAtUtc:     now.toISOString(),
+      jobRunId,
+      platformVersion:   'JADS-4.0',
+    }
+
+    let externalReceipts: AnchorReceipt[] = []
+    try {
+      const result = await this.externalAnchor.publishAnchor(anchorPayload)
+      externalReceipts = result.receipts
+      if (result.published) {
+        log.info('external_anchor_published', {
+          data: { anchorDate: dateStr, backends: externalReceipts.filter(r => r.success).map(r => r.backend) }
+        })
+      }
+    } catch (extErr) {
+      log.error('external_anchor_error', {
+        data: { error: extErr instanceof Error ? extErr.message : String(extErr) }
+      })
+    }
+
+    return {
+      status: 'ANCHORED', anchorDate: dateStr, missionCount, anchorHash, prevAnchorHash,
+      externalReceipts,
+    }
   }
 
   // ── Forensic verification: recompute and compare a stored anchor ──────────
@@ -253,11 +291,12 @@ export class EvidenceLedgerJob {
 // ── Return types ──────────────────────────────────────────────────────────────
 
 export interface LedgerRunResult {
-  status:          'ANCHORED' | 'ALREADY_ANCHORED'
-  anchorDate:      string
-  missionCount?:   number
-  anchorHash:      string
-  prevAnchorHash?: string
+  status:            'ANCHORED' | 'ALREADY_ANCHORED'
+  anchorDate:        string
+  missionCount?:     number
+  anchorHash:        string
+  prevAnchorHash?:   string
+  externalReceipts?: AnchorReceipt[]
 }
 
 export interface AnchorVerificationResult {

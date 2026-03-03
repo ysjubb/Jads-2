@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAdminAuth, adminAxios } from '../hooks/useAdminAuth'
 import { useNavigate } from 'react-router-dom'
 
