@@ -2,6 +2,18 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAdminAuth } from '../hooks/useAdminAuth'
 
+const T = {
+  bg:       '#050A08',
+  surface:  '#0A120E',
+  border:   '#1A3020',
+  primary:  '#00FF88',
+  amber:    '#FFB800',
+  red:      '#FF3B3B',
+  muted:    '#4A7A5A',
+  text:     '#b0c8b8',
+  textBright: '#d0e8d8',
+}
+
 export function LoginPage() {
   const { login, error, loading } = useAdminAuth()
   const navigate = useNavigate()
@@ -17,20 +29,21 @@ export function LoginPage() {
   return (
     <div style={{
       display: 'flex', justifyContent: 'center', alignItems: 'center',
-      minHeight: '100vh', background: '#f0f2f5'
+      minHeight: '100vh', background: T.bg
     }}>
       <div style={{
-        background: 'white', padding: '2rem', borderRadius: '8px',
-        width: '360px', boxShadow: '0 2px 12px rgba(0,0,0,0.1)'
+        background: T.surface, padding: '2rem', borderRadius: '8px',
+        width: '360px', boxShadow: `0 2px 12px rgba(0,255,136,0.08)`,
+        border: `1px solid ${T.border}`
       }}>
         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1890ff' }}>JADS</div>
-          <div style={{ fontSize: '0.9rem', color: '#8c8c8c' }}>Government Admin Portal</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: T.primary }}>JADS</div>
+          <div style={{ fontSize: '0.9rem', color: T.muted }}>Government Admin Portal</div>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500, fontSize: '0.875rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500, fontSize: '0.875rem', color: T.text }}>
               Username
             </label>
             <input
@@ -39,14 +52,15 @@ export function LoginPage() {
               required autoFocus disabled={loading}
               style={{
                 width: '100%', padding: '0.5rem',
-                border: '1px solid #d9d9d9', borderRadius: '4px',
-                boxSizing: 'border-box', fontSize: '0.9rem'
+                border: `1px solid ${T.border}`, borderRadius: '4px',
+                boxSizing: 'border-box', fontSize: '0.9rem',
+                background: T.surface, color: T.text
               }}
             />
           </div>
 
           <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500, fontSize: '0.875rem' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500, fontSize: '0.875rem', color: T.text }}>
               Password
             </label>
             <input
@@ -55,15 +69,16 @@ export function LoginPage() {
               required disabled={loading}
               style={{
                 width: '100%', padding: '0.5rem',
-                border: '1px solid #d9d9d9', borderRadius: '4px',
-                boxSizing: 'border-box', fontSize: '0.9rem'
+                border: `1px solid ${T.border}`, borderRadius: '4px',
+                boxSizing: 'border-box', fontSize: '0.9rem',
+                background: T.surface, color: T.text
               }}
             />
           </div>
 
           {error && (
             <div style={{
-              background: '#fff2f0', border: '1px solid #ffccc7', color: '#cf1322',
+              background: T.red + '15', border: `1px solid ${T.red}`, color: T.red,
               padding: '0.5rem 0.75rem', borderRadius: '4px',
               marginBottom: '1rem', fontSize: '0.875rem'
             }}>
@@ -75,17 +90,17 @@ export function LoginPage() {
             type="submit" disabled={loading}
             style={{
               width: '100%', padding: '0.6rem',
-              background: loading ? '#69c0ff' : '#1890ff', color: 'white',
+              background: loading ? T.muted : T.primary, color: T.bg,
               border: 'none', borderRadius: '4px',
               cursor: loading ? 'not-allowed' : 'pointer',
               fontSize: '1rem', fontWeight: 500
             }}
           >
-            {loading ? 'Signing in…' : 'Sign In'}
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
 
-        <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '0.75rem', color: '#8c8c8c' }}>
+        <div style={{ marginTop: '1rem', textAlign: 'center', fontSize: '0.75rem', color: T.muted }}>
           Sessions expire after 2 hours
         </div>
       </div>

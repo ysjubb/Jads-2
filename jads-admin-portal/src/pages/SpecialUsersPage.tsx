@@ -1,6 +1,18 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useAdminAuth, adminAxios } from '../hooks/useAdminAuth'
 
+const T = {
+  bg:       '#050A08',
+  surface:  '#0A120E',
+  border:   '#1A3020',
+  primary:  '#00FF88',
+  amber:    '#FFB800',
+  red:      '#FF3B3B',
+  muted:    '#4A7A5A',
+  text:     '#b0c8b8',
+  textBright: '#d0e8d8',
+}
+
 interface SpecialUser {
   id: string
   specialUserId: string
@@ -18,9 +30,9 @@ interface SpecialUser {
 }
 
 const STATUS_COLOUR: Record<string, string> = {
-  ACTIVE:    '#52c41a',
-  SUSPENDED: '#ff4d4f',
-  EXPIRED:   '#faad14',
+  ACTIVE:    T.primary,
+  SUSPENDED: T.red,
+  EXPIRED:   T.amber,
 }
 
 export function SpecialUsersPage() {
@@ -81,8 +93,8 @@ export function SpecialUsersPage() {
   return (
     <div style={{ padding: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h2 style={{ margin: 0 }}>Special Users</h2>
-        <span style={{ fontSize: '0.8rem', color: '#8c8c8c' }}>{total} total</span>
+        <h2 style={{ margin: 0, color: T.textBright }}>Special Users</h2>
+        <span style={{ fontSize: '0.8rem', color: T.muted }}>{total} total</span>
       </div>
 
       {/* Entity filter */}
@@ -90,7 +102,8 @@ export function SpecialUsersPage() {
         <select
           value={entityFilter}
           onChange={e => { setEntity(e.target.value); setPage(1) }}
-          style={{ padding: '0.4rem', border: '1px solid #d9d9d9', borderRadius: '4px' }}
+          style={{ padding: '0.4rem', border: `1px solid ${T.border}`, borderRadius: '4px',
+            background: T.surface, color: T.text }}
         >
           <option value="">All entities</option>
           <option value="IAF">IAF</option>
@@ -102,56 +115,56 @@ export function SpecialUsersPage() {
       </div>
 
       {error && (
-        <div style={{ color: '#cf1322', padding: '0.75rem', background: '#fff2f0',
-          border: '1px solid #ffccc7', borderRadius: '4px', marginBottom: '1rem' }}>
+        <div style={{ color: T.red, padding: '0.75rem', background: T.red + '15',
+          border: `1px solid ${T.red}40`, borderRadius: '4px', marginBottom: '1rem' }}>
           Error: {error}
         </div>
       )}
-      {loading && <div style={{ color: '#8c8c8c', marginBottom: '1rem' }}>Loading…</div>}
+      {loading && <div style={{ color: T.muted, marginBottom: '1rem' }}>Loading...</div>}
       {!loading && !error && users.length === 0 && (
-        <div style={{ color: '#8c8c8c', padding: '2rem', textAlign: 'center' }}>No special users found.</div>
+        <div style={{ color: T.muted, padding: '2rem', textAlign: 'center' }}>No special users found.</div>
       )}
 
       {!loading && users.length > 0 && (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
-            <tr style={{ background: '#fafafa', borderBottom: '2px solid #f0f0f0' }}>
+            <tr style={{ background: T.surface, borderBottom: `2px solid ${T.border}` }}>
               {['Special ID', 'Entity', 'Unit', 'Role', 'Status', 'Reconfirm Due', 'Callsigns', 'Actions'].map(h => (
-                <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600 }}>{h}</th>
+                <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: T.textBright }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {users.map(u => (
-              <tr key={u.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+              <tr key={u.id} style={{ borderBottom: `1px solid ${T.border}` }}>
+                <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.8rem', color: T.text }}>
                   {u.specialUserId}
                 </td>
-                <td style={{ padding: '0.5rem 0.75rem' }}>{u.entityCode}</td>
-                <td style={{ padding: '0.5rem 0.75rem' }}>{u.unitDesignation}</td>
-                <td style={{ padding: '0.5rem 0.75rem' }}>{u.role}</td>
+                <td style={{ padding: '0.5rem 0.75rem', color: T.text }}>{u.entityCode}</td>
+                <td style={{ padding: '0.5rem 0.75rem', color: T.text }}>{u.unitDesignation}</td>
+                <td style={{ padding: '0.5rem 0.75rem', color: T.text }}>{u.role}</td>
                 <td style={{ padding: '0.5rem 0.75rem' }}>
-                  <span style={{ color: STATUS_COLOUR[u.accountStatus] ?? '#8c8c8c', fontWeight: 500 }}>
+                  <span style={{ color: STATUS_COLOUR[u.accountStatus] ?? T.muted, fontWeight: 500 }}>
                     {u.accountStatus}
                   </span>
                 </td>
                 <td style={{ padding: '0.5rem 0.75rem',
-                  color: isDueSoon(u.nextAdminReconfirmDue) ? '#d48806' : 'inherit' }}>
+                  color: isDueSoon(u.nextAdminReconfirmDue) ? T.amber : T.text }}>
                   {u.nextAdminReconfirmDue
                     ? new Date(u.nextAdminReconfirmDue).toLocaleDateString()
                     : '—'}
                   {isDueSoon(u.nextAdminReconfirmDue) && (
-                    <span style={{ marginLeft: '0.25rem', fontSize: '0.75rem' }}>⚠</span>
+                    <span style={{ marginLeft: '0.25rem', fontSize: '0.75rem' }}>!</span>
                   )}
                 </td>
-                <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: '#595959' }}>
+                <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: T.text }}>
                   {u.authorisedCallsigns.join(', ') || '—'}
                 </td>
                 <td style={{ padding: '0.5rem 0.75rem', display: 'flex', gap: '0.25rem' }}>
                   <button
                     onClick={() => reconfirm(u.id)}
-                    style={{ padding: '0.2rem 0.45rem', background: '#e6f7ff',
-                      border: '1px solid #91d5ff', color: '#0050b3',
+                    style={{ padding: '0.2rem 0.45rem', background: T.primary + '15',
+                      border: `1px solid ${T.primary}40`, color: T.primary,
                       borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem' }}
                   >
                     Reconfirm
@@ -159,8 +172,8 @@ export function SpecialUsersPage() {
                   {u.accountStatus === 'ACTIVE' && (
                     <button
                       onClick={() => suspend(u.id)}
-                      style={{ padding: '0.2rem 0.45rem', background: '#fff1f0',
-                        border: '1px solid #ffccc7', color: '#cf1322',
+                      style={{ padding: '0.2rem 0.45rem', background: T.red + '15',
+                        border: `1px solid ${T.red}40`, color: T.red,
                         borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem' }}
                     >
                       Suspend
@@ -175,15 +188,17 @@ export function SpecialUsersPage() {
 
       <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <button disabled={page === 1} onClick={() => setPage(p => p - 1)}
-          style={{ padding: '0.3rem 0.75rem', border: '1px solid #d9d9d9', borderRadius: '4px',
-            cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1 }}>
+          style={{ padding: '0.3rem 0.75rem', border: `1px solid ${T.border}`, borderRadius: '4px',
+            cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1,
+            background: 'transparent', color: T.text }}>
           Prev
         </button>
-        <span>Page {page} · {total} total</span>
+        <span style={{ color: T.text }}>Page {page} · {total} total</span>
         <button disabled={page * 50 >= total} onClick={() => setPage(p => p + 1)}
-          style={{ padding: '0.3rem 0.75rem', border: '1px solid #d9d9d9', borderRadius: '4px',
+          style={{ padding: '0.3rem 0.75rem', border: `1px solid ${T.border}`, borderRadius: '4px',
             cursor: page * 50 >= total ? 'not-allowed' : 'pointer',
-            opacity: page * 50 >= total ? 0.5 : 1 }}>
+            opacity: page * 50 >= total ? 0.5 : 1,
+            background: 'transparent', color: T.text }}>
           Next
         </button>
       </div>

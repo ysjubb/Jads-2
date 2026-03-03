@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
 import { AuditLoginPage }    from './pages/AuditLoginPage'
 import { MissionsPage }      from './pages/MissionsPage'
@@ -7,29 +7,125 @@ import { FlightPlansPage }   from './pages/FlightPlansPage'
 import { ViolationsPage }    from './pages/ViolationsPage'
 import { useAuditAuth }      from './hooks/useAuditAuth'
 
-function NavBar() {
+const T = {
+  bg:         '#050A08',
+  surface:    '#0A120E',
+  border:     '#1A3020',
+  primary:    '#FFB800',
+  green:      '#00FF88',
+  red:        '#FF3B3B',
+  muted:      '#6A6040',
+  text:       '#c8b890',
+  textBright: '#e8d8b0',
+}
+
+const NAV_ITEMS = [
+  { to: '/missions',     label: 'Missions',     icon: 'M3 3h18v2H3V3zm0 8h18v2H3v-2zm0 8h18v2H3v-2z' },
+  { to: '/flight-plans', label: 'Flight Plans',  icon: 'M21 16v-2l-8-5V3.5A1.5 1.5 0 0011.5 2 1.5 1.5 0 0010 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z' },
+  { to: '/violations',   label: 'Violations',    icon: 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z' },
+]
+
+function SidebarNav() {
   const { logout } = useAuditAuth()
   const loc = useLocation()
-  const link = (to: string, label: string) => (
-    <Link to={to} style={{
-      padding: '0 1rem', textDecoration: 'none',
-      color: loc.pathname.startsWith(to) ? '#1890ff' : '#595959',
-      fontWeight: loc.pathname.startsWith(to) ? 600 : 400
-    }}>{label}</Link>
-  )
+  const [collapsed, setCollapsed] = useState(false)
+
   return (
-    <nav style={{ background: 'white', borderBottom: '1px solid #f0f0f0',
-      padding: '0.6rem 1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-      <span style={{ fontWeight: 700, marginRight: '1rem', color: '#262626' }}>JADS Audit Portal</span>
-      {link('/missions', 'Missions')}
-      {link('/flight-plans', 'Flight Plans')}
-      {link('/violations', 'Violations')}
-      <span style={{ flex: 1 }} />
-      <button onClick={logout}
-        style={{ padding: '0.25rem 0.75rem', border: '1px solid #d9d9d9',
-          borderRadius: '4px', cursor: 'pointer', background: 'white', color: '#595959' }}>
-        Sign Out
-      </button>
+    <nav style={{
+      width: collapsed ? '56px' : '200px',
+      minHeight: '100vh',
+      background: T.surface,
+      borderRight: `1px solid ${T.border}`,
+      display: 'flex',
+      flexDirection: 'column',
+      transition: 'width 0.2s ease',
+      flexShrink: 0,
+    }}>
+      {/* Brand */}
+      <div style={{
+        padding: collapsed ? '1rem 0.5rem' : '1.25rem 1rem',
+        borderBottom: `1px solid ${T.border}`,
+        textAlign: collapsed ? 'center' : 'left',
+      }}>
+        <div style={{
+          fontWeight: 700,
+          fontSize: collapsed ? '0.75rem' : '0.95rem',
+          color: T.primary,
+          letterSpacing: '0.08em',
+          fontFamily: "'JetBrains Mono', monospace",
+        }}>
+          {collapsed ? 'JA' : 'JADS'}
+        </div>
+        {!collapsed && (
+          <div style={{ fontSize: '0.65rem', color: T.muted, marginTop: '0.15rem',
+            fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em' }}>
+            AUDIT PORTAL v4.0
+          </div>
+        )}
+      </div>
+
+      {/* Nav links */}
+      <div style={{ flex: 1, padding: '0.5rem 0' }}>
+        {NAV_ITEMS.map(item => {
+          const active = loc.pathname.startsWith(item.to)
+          return (
+            <Link key={item.to} to={item.to} style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem',
+              padding: collapsed ? '0.7rem 0' : '0.6rem 1rem',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              textDecoration: 'none',
+              color: active ? T.primary : T.text,
+              background: active ? T.primary + '15' : 'transparent',
+              borderRight: active ? `2px solid ${T.primary}` : '2px solid transparent',
+              fontSize: '0.8rem',
+              fontWeight: active ? 600 : 400,
+              fontFamily: "'JetBrains Mono', monospace",
+              transition: 'all 0.15s ease',
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill={active ? T.primary : T.muted}
+                style={{ flexShrink: 0 }}>
+                <path d={item.icon} />
+              </svg>
+              {!collapsed && item.label}
+            </Link>
+          )
+        })}
+      </div>
+
+      {/* Collapse toggle + Sign out */}
+      <div style={{ borderTop: `1px solid ${T.border}`, padding: '0.5rem' }}>
+        <button onClick={() => setCollapsed(c => !c)}
+          style={{
+            width: '100%',
+            padding: '0.4rem',
+            background: 'transparent',
+            border: `1px solid ${T.border}`,
+            borderRadius: '4px',
+            color: T.muted,
+            cursor: 'pointer',
+            fontSize: '0.75rem',
+            fontFamily: "'JetBrains Mono', monospace",
+            marginBottom: '0.4rem',
+          }}>
+          {collapsed ? '>>' : '<< Collapse'}
+        </button>
+        <button onClick={logout}
+          style={{
+            width: '100%',
+            padding: '0.4rem',
+            background: 'transparent',
+            border: `1px solid ${T.border}`,
+            borderRadius: '4px',
+            color: T.red,
+            cursor: 'pointer',
+            fontSize: '0.75rem',
+            fontFamily: "'JetBrains Mono', monospace",
+          }}>
+          {collapsed ? 'X' : 'Sign Out'}
+        </button>
+      </div>
     </nav>
   )
 }
@@ -41,12 +137,12 @@ function Protected({ children }: { children: React.ReactNode }) {
 
 function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <>
-      <NavBar />
-      <main style={{ minHeight: 'calc(100vh - 49px)', background: '#f5f5f5' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: T.bg }}>
+      <SidebarNav />
+      <main style={{ flex: 1, minHeight: '100vh', background: T.bg, overflow: 'auto' }}>
         {children}
       </main>
-    </>
+    </div>
   )
 }
 

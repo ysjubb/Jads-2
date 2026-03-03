@@ -14,6 +14,7 @@ import adminRoutes       from './routes/adminRoutes'
 import adcFicRoutes      from './routes/adcFicRoutes'
 import adapterWebhookRoutes from './routes/adapterWebhookRoutes'
 import systemRoutes      from './routes/systemRoutes'
+import agentRoutes       from './routes/agentRoutes'
 
 const app = express()
 
@@ -51,6 +52,7 @@ api.use('/adapter',      adapterWebhookRoutes)
 api.use('/audit',        auditRoutes)
 api.use('/admin',        adminRoutes)
 api.use('/system',       systemRoutes)
+api.use('/agents',       agentRoutes)
 app.use('/api', api)
 
 app.use((_req, res) => {

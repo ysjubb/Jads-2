@@ -6,6 +6,18 @@ import { useAuditAuth, auditAxios, droneAxios } from '../hooks/useAuditAuth'
 // Government installations must not depend on commercial map APIs.
 declare const L: any
 
+const T = {
+  bg:         '#050A08',
+  surface:    '#0A120E',
+  border:     '#1A3020',
+  primary:    '#FFB800',
+  green:      '#00FF88',
+  red:        '#FF3B3B',
+  muted:      '#6A6040',
+  text:       '#c8b890',
+  textBright: '#e8d8b0',
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface DecodedFields {
@@ -81,17 +93,17 @@ interface InvariantResult {
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const SEVERITY_COLOURS: Record<string, string> = {
-  CRITICAL: '#cf1322',
-  HIGH:     '#d46b08',
-  MEDIUM:   '#d4b106',
-  WARNING:  '#d4b106',
-  LOW:      '#389e0d',
+  CRITICAL: '#FF3B3B',
+  HIGH:     '#FFB800',
+  MEDIUM:   '#FFB800',
+  WARNING:  '#FFB800',
+  LOW:      '#6A6040',
 }
 
 const NPNT_STYLE: Record<string, { bg: string; color: string; border: string }> = {
-  GREEN:  { bg: '#f6ffed', color: '#389e0d', border: '#b7eb8f' },
-  YELLOW: { bg: '#fffbe6', color: '#d46b08', border: '#ffe58f' },
-  RED:    { bg: '#fff2f0', color: '#cf1322', border: '#ffccc7' },
+  GREEN:  { bg: '#00FF88' + '15', color: '#00FF88', border: '#00FF88' + '40' },
+  YELLOW: { bg: '#FFB800' + '15', color: '#FFB800', border: '#FFB800' + '40' },
+  RED:    { bg: '#FF3B3B' + '15', color: '#FF3B3B', border: '#FF3B3B' + '40' },
 }
 
 // ── 8-Invariant Evaluator ─────────────────────────────────────────────────────
@@ -241,27 +253,31 @@ function ForensicReportPanel({
   const anyFail      = invariants.some(i => !i.passed)
   const passCount    = invariants.filter(i => i.passed).length
 
-  const panelColour  = criticalFail ? '#cf1322' : anyFail ? '#d46b08' : '#389e0d'
-  const panelBg      = criticalFail ? '#fff2f0' : anyFail ? '#fff7e6' : '#f6ffed'
-  const panelBorder  = criticalFail ? '#ffccc7' : anyFail ? '#ffd591' : '#b7eb8f'
+  // Green header = all pass; Orange/amber header = warnings; Red header = critical failures
+  const panelColour  = criticalFail ? T.red : anyFail ? T.primary : T.green
+  const panelBg      = criticalFail ? T.red + '20' : anyFail ? T.primary + '20' : T.green + '20'
+  const panelBorder  = criticalFail ? T.red + '40' : anyFail ? T.primary + '40' : T.green + '40'
 
   const overallLabel = criticalFail
-    ? '✗ CRITICAL FORENSIC FAILURE'
+    ? 'CRITICAL FORENSIC FAILURE'
     : anyFail
-      ? '⚠ FORENSIC WARNINGS'
-      : '✓ ALL INVARIANTS HOLD'
+      ? 'FORENSIC WARNINGS'
+      : 'ALL INVARIANTS HOLD'
 
   return (
-    <div style={{ background: panelBg, border: `1px solid ${panelBorder}`,
-      borderRadius: '8px', overflow: 'hidden' }}>
+    <div style={{ background: T.surface, border: `1px solid ${panelBorder}`,
+      borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 4px rgba(255,184,0,0.05)' }}>
 
       {/* Panel header */}
-      <div style={{ padding: '0.75rem 1rem', background: panelColour,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ color: 'white', fontWeight: 700, fontSize: '0.875rem' }}>
-          {overallLabel}
+      <div style={{ padding: '0.75rem 1rem', background: panelBg,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        borderBottom: `1px solid ${panelBorder}` }}>
+        <span style={{ color: panelColour, fontWeight: 700, fontSize: '0.875rem',
+          fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.03em' }}>
+          {criticalFail ? '\u2717' : anyFail ? '\u26A0' : '\u2713'} {overallLabel}
         </span>
-        <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.75rem' }}>
+        <span style={{ color: panelColour, fontSize: '0.75rem', opacity: 0.85,
+          fontFamily: "'JetBrains Mono', monospace" }}>
           {passCount}/{invariants.length} passed
         </span>
       </div>
@@ -269,8 +285,8 @@ function ForensicReportPanel({
       {/* Invariant rows */}
       <div style={{ padding: '0.5rem' }}>
         {invariants.map((inv, i) => {
-          const rowColour = inv.passed ? '#389e0d' : inv.critical ? '#cf1322' : '#d46b08'
-          const rowBg     = inv.passed ? 'transparent' : inv.critical ? '#fff2f0' : '#fff7e6'
+          const rowColour = inv.passed ? T.green : inv.critical ? T.red : T.primary
+          const rowBg     = inv.passed ? 'transparent' : inv.critical ? T.red + '10' : T.primary + '10'
           return (
             <div key={i} style={{
               display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
@@ -281,30 +297,34 @@ function ForensicReportPanel({
               <span style={{
                 fontSize: '0.95rem', lineHeight: 1,
                 color: rowColour, flexShrink: 0, marginTop: '0.1rem',
-                fontWeight: 700,
+                fontWeight: 700, fontFamily: "'JetBrains Mono', monospace",
               }}>
-                {inv.passed ? '✓' : inv.critical ? '✗' : '⚠'}
+                {inv.passed ? '\u2713' : inv.critical ? '\u2717' : '\u26A0'}
               </span>
 
               {/* Content */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between',
                   alignItems: 'baseline', gap: '0.5rem' }}>
-                  <span style={{ fontWeight: 600, fontSize: '0.8rem', color: '#1d1d1d' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.8rem', color: T.textBright,
+                    fontFamily: "'JetBrains Mono', monospace" }}>
                     {inv.label}
                   </span>
                   {inv.critical && !inv.passed && (
-                    <span style={{ fontSize: '0.65rem', background: '#cf1322', color: 'white',
-                      padding: '0.1rem 0.3rem', borderRadius: '2px', flexShrink: 0 }}>
+                    <span style={{ fontSize: '0.65rem', background: T.red, color: T.bg,
+                      padding: '0.1rem 0.3rem', borderRadius: '2px', flexShrink: 0,
+                      fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}>
                       CRITICAL
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#595959', marginTop: '0.15rem' }}>
+                <div style={{ fontSize: '0.72rem', color: T.muted, marginTop: '0.15rem',
+                  fontFamily: "'JetBrains Mono', monospace" }}>
                   {inv.description}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: rowColour,
-                  marginTop: '0.2rem', fontWeight: inv.passed ? 400 : 500 }}>
+                  marginTop: '0.2rem', fontWeight: inv.passed ? 400 : 500,
+                  fontFamily: "'JetBrains Mono', monospace" }}>
                   {inv.detail}
                 </div>
               </div>
@@ -315,8 +335,8 @@ function ForensicReportPanel({
 
       {/* Footer — compliance anchor */}
       {complianceAnchor && (
-        <div style={{ padding: '0.5rem 1rem', borderTop: `1px solid ${panelBorder}`,
-          fontSize: '0.7rem', color: '#8c8c8c' }}>
+        <div style={{ padding: '0.5rem 1rem', borderTop: `1px solid ${T.border}`,
+          fontSize: '0.7rem', color: T.muted, fontFamily: "'JetBrains Mono', monospace" }}>
           Compliance anchor: {complianceAnchor}
         </div>
       )}
@@ -393,24 +413,24 @@ export function MissionDetailPage() {
 
     const latlngs = validPts.map(t => [t.decoded.latitudeDeg, t.decoded.longitudeDeg])
 
-    // Blue track line
-    L.polyline(latlngs, { color: '#1890ff', weight: 2.5, opacity: 0.85 }).addTo(map)
+    // Amber track line
+    L.polyline(latlngs, { color: T.primary, weight: 2.5, opacity: 0.85 }).addTo(map)
 
     // Start — green
     L.circleMarker(latlngs[0], {
-      radius: 8, fillColor: '#52c41a', color: 'white', fillOpacity: 1, weight: 2,
+      radius: 8, fillColor: T.green, color: T.bg, fillOpacity: 1, weight: 2,
     }).bindTooltip('Mission Start').addTo(map)
 
-    // End — grey
+    // End — muted
     L.circleMarker(latlngs[latlngs.length - 1], {
-      radius: 8, fillColor: '#8c8c8c', color: 'white', fillOpacity: 1, weight: 2,
+      radius: 8, fillColor: T.muted, color: T.bg, fillOpacity: 1, weight: 2,
     }).bindTooltip('Mission End').addTo(map)
 
     // Track points — clickable
     validPts.forEach(pt => {
       const mk = L.circleMarker(
         [pt.decoded.latitudeDeg, pt.decoded.longitudeDeg],
-        { radius: 4, fillColor: '#1890ff', color: 'white', fillOpacity: 0.7, weight: 1 }
+        { radius: 4, fillColor: T.primary, color: T.bg, fillOpacity: 0.7, weight: 1 }
       )
       mk.on('click', () => setSelectedSeq(pt.sequence))
       mk.bindTooltip(`Seq ${pt.sequence} · ${pt.decoded.altitudeDisplay}`)
@@ -423,9 +443,9 @@ export function MissionDetailPage() {
       if (!pt) return
       L.circleMarker(
         [pt.decoded.latitudeDeg, pt.decoded.longitudeDeg],
-        { radius: 11, fillColor: SEVERITY_COLOURS[v.severity] ?? '#cf1322',
-          color: 'white', fillOpacity: 0.9, weight: 2 }
-      ).bindTooltip(`⚠ ${v.violationType} (${v.severity})`).addTo(map)
+        { radius: 11, fillColor: SEVERITY_COLOURS[v.severity] ?? T.red,
+          color: T.bg, fillOpacity: 0.9, weight: 2 }
+      ).bindTooltip(`${v.violationType} (${v.severity})`).addTo(map)
     })
 
     if (bbox) {
@@ -452,13 +472,13 @@ export function MissionDetailPage() {
   // ── Render ───────────────────────────────────────────────────────────────────
 
   if (loading) return (
-    <div style={{ padding: '2rem', color: '#8c8c8c' }}>Loading mission data…</div>
+    <div style={{ padding: '2rem', color: T.muted, fontFamily: "'JetBrains Mono', monospace" }}>Loading mission data...</div>
   )
   if (error) return (
-    <div style={{ padding: '2rem', color: '#cf1322' }}>Error: {error}</div>
+    <div style={{ padding: '2rem', color: T.red, fontFamily: "'JetBrains Mono', monospace" }}>Error: {error}</div>
   )
   if (!mission) return (
-    <div style={{ padding: '2rem' }}>Mission not found.</div>
+    <div style={{ padding: '2rem', color: T.text, fontFamily: "'JetBrains Mono', monospace" }}>Mission not found.</div>
   )
 
   const npntStyle = NPNT_STYLE[mission.npntClassification] ?? NPNT_STYLE.GREEN
@@ -470,50 +490,57 @@ export function MissionDetailPage() {
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem',
         flexWrap: 'wrap' }}>
         <button onClick={() => navigate('/missions')}
-          style={{ padding: '0.3rem 0.75rem', border: '1px solid #d9d9d9',
-            borderRadius: '4px', cursor: 'pointer', background: 'white', flexShrink: 0 }}>
-          ← Missions
+          style={{ padding: '0.3rem 0.75rem', border: `1px solid ${T.border}`,
+            borderRadius: '4px', cursor: 'pointer', background: T.surface, color: T.text,
+            flexShrink: 0, fontFamily: "'JetBrains Mono', monospace" }}>
+          Missions
         </button>
-        <h2 style={{ margin: 0, fontSize: '1.1rem', fontFamily: 'monospace' }}>
+        <h2 style={{ margin: 0, fontSize: '1.1rem', fontFamily: "'JetBrains Mono', monospace",
+          color: T.textBright }}>
           {mission.missionId}
         </h2>
         <span style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.78rem',
           fontWeight: 600, background: npntStyle.bg, color: npntStyle.color,
-          border: `1px solid ${npntStyle.border}`, flexShrink: 0 }}>
+          border: `1px solid ${npntStyle.border}`, flexShrink: 0,
+          fontFamily: "'JetBrains Mono', monospace" }}>
           {mission.npntClassification}
         </span>
         {mission.isDuplicate && (
           <span style={{ padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.78rem',
-            fontWeight: 700, background: '#fff2f0', color: '#cf1322',
-            border: '1px solid #ffccc7', flexShrink: 0 }}>
+            fontWeight: 700, background: T.red + '15', color: T.red,
+            border: `1px solid ${T.red}40`, flexShrink: 0,
+            fontFamily: "'JetBrains Mono', monospace" }}>
             DUPLICATE / REPLAY
           </span>
         )}
-        <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#8c8c8c' }}>
+        <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: T.muted,
+          fontFamily: "'JetBrains Mono', monospace" }}>
           {auth?.role} · Read-only
         </span>
       </div>
 
       {/* ── Summary bar ── */}
       <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1.25rem',
-        background: 'white', padding: '0.75rem 1rem', borderRadius: '6px',
-        border: '1px solid #f0f0f0', fontSize: '0.82rem', flexWrap: 'wrap' }}>
-        <span>Device: <strong style={{ fontFamily:'monospace' }}>
+        background: T.surface, padding: '0.75rem 1rem', borderRadius: '6px',
+        border: `1px solid ${T.border}`, fontSize: '0.82rem', flexWrap: 'wrap',
+        color: T.text, fontFamily: "'JetBrains Mono', monospace",
+        boxShadow: '0 1px 4px rgba(255,184,0,0.05)' }}>
+        <span>Device: <strong style={{ fontFamily: "'JetBrains Mono', monospace", color: T.textBright }}>
           {mission.deviceId}{mission.deviceModel ? ` (${mission.deviceModel})` : ''}</strong></span>
-        <span>Records: <strong>{track.length}</strong></span>
-        <span>Violations: <strong style={{ color: violations.length > 0 ? '#cf1322' : 'inherit' }}>
+        <span>Records: <strong style={{ color: T.textBright }}>{track.length}</strong></span>
+        <span>Violations: <strong style={{ color: violations.length > 0 ? T.red : T.textBright }}>
           {violations.length}</strong></span>
-        {durationMin !== null && <span>Duration: <strong>{durationMin} min</strong></span>}
-        <span>Chain: <strong style={{ color: mission.chainVerifiedByServer ? '#389e0d' : '#cf1322' }}>
-          {mission.chainVerifiedByServer ? '✓ Verified' : '✗ Failed'}</strong></span>
-        <span>Cert: <strong style={{ color: mission.certValidAtStart ? '#389e0d' : '#cf1322' }}>
-          {mission.certValidAtStart ? '✓ Valid' : '✗ Invalid'}</strong></span>
+        {durationMin !== null && <span>Duration: <strong style={{ color: T.textBright }}>{durationMin} min</strong></span>}
+        <span>Chain: <strong style={{ color: mission.chainVerifiedByServer ? T.green : T.red }}>
+          {mission.chainVerifiedByServer ? 'Verified' : 'Failed'}</strong></span>
+        <span>Cert: <strong style={{ color: mission.certValidAtStart ? T.green : T.red }}>
+          {mission.certValidAtStart ? 'Valid' : 'Invalid'}</strong></span>
         <span>NTP: <strong style={{
-          color: mission.ntpSyncStatus === 'SYNCED' ? '#389e0d' :
-                 mission.ntpSyncStatus === 'DEGRADED' ? '#d48806' : '#cf1322' }}>
-          {mission.ntpSyncStatus}{mission.ntpOffsetMs != null ? ` (±${mission.ntpOffsetMs}ms)` : ''}
+          color: mission.ntpSyncStatus === 'SYNCED' ? T.green :
+                 mission.ntpSyncStatus === 'DEGRADED' ? T.primary : T.red }}>
+          {mission.ntpSyncStatus}{mission.ntpOffsetMs != null ? ` (${mission.ntpOffsetMs}ms)` : ''}
         </strong></span>
-        <span>Android: <strong>{mission.androidVersionAtUpload ?? '—'}</strong></span>
+        <span>Android: <strong style={{ color: T.textBright }}>{mission.androidVersionAtUpload ?? '—'}</strong></span>
       </div>
 
       {/* ── Main layout ── */}
@@ -522,10 +549,11 @@ export function MissionDetailPage() {
         {/* ── Left: Map ── */}
         <div style={{ flex: 2, minWidth: 0 }}>
           <div style={{ height: '480px', borderRadius: '6px', overflow: 'hidden',
-            border: '1px solid #d9d9d9', background: '#f0f0f0' }}>
+            border: `1px solid ${T.border}`, background: T.bg }}>
             {track.length === 0
               ? <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  height: '100%', color: '#8c8c8c', fontSize: '0.9rem' }}>
+                  height: '100%', color: T.muted, fontSize: '0.9rem',
+                  fontFamily: "'JetBrains Mono', monospace" }}>
                   No GPS track data available.
                 </div>
               : <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
@@ -534,27 +562,31 @@ export function MissionDetailPage() {
 
           {/* Selected track point detail below map */}
           {selectedPoint && (
-            <div style={{ marginTop: '0.75rem', background: 'white', border: '1px solid #d9d9d9',
-              borderRadius: '6px', padding: '0.75rem 1rem', fontSize: '0.8rem' }}>
-              <div style={{ fontWeight: 600, marginBottom: '0.4rem' }}>
+            <div style={{ marginTop: '0.75rem', background: T.surface, border: `1px solid ${T.border}`,
+              borderRadius: '6px', padding: '0.75rem 1rem', fontSize: '0.8rem',
+              boxShadow: '0 1px 4px rgba(255,184,0,0.05)' }}>
+              <div style={{ fontWeight: 600, marginBottom: '0.4rem', color: T.primary,
+                fontFamily: "'JetBrains Mono', monospace" }}>
                 Record #{selectedPoint.sequence}
               </div>
               {selectedPoint.decodeError
-                ? <span style={{ color: '#cf1322' }}>Decode error: {selectedPoint.decodeError}</span>
+                ? <span style={{ color: T.red, fontFamily: "'JetBrains Mono', monospace" }}>
+                    Decode error: {selectedPoint.decodeError}
+                  </span>
                 : <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem 1.5rem',
-                    color: '#595959', lineHeight: 1.7 }}>
-                    <span>Time: <strong>{selectedPoint.decoded.timestampIso.replace('T',' ').slice(0,19)} UTC</strong></span>
-                    <span>Speed: <strong>{selectedPoint.decoded.groundspeedKph} km/h</strong></span>
-                    <span>Lat: <strong>{selectedPoint.decoded.latitudeDisplay}</strong></span>
-                    <span>Sats: <strong>{selectedPoint.decoded.satelliteCount} ({selectedPoint.decoded.fixTypeLabel})</strong></span>
-                    <span>Lon: <strong>{selectedPoint.decoded.longitudeDisplay}</strong></span>
-                    <span>HDOP: <strong>{selectedPoint.decoded.hdop}</strong></span>
-                    <span>Alt: <strong>{selectedPoint.decoded.altitudeDisplay}</strong></span>
-                    <span>CRC32: <strong style={{ color: selectedPoint.decoded.crc32Valid ? '#389e0d' : '#cf1322' }}>
-                      {selectedPoint.decoded.crc32Valid ? '✓ Valid' : '✗ Invalid'}</strong></span>
-                    <span style={{ gridColumn: '1 / -1', fontFamily: 'monospace',
-                      fontSize: '0.7rem', color: '#8c8c8c' }}>
-                      Hash: {selectedPoint.chainHashHex.slice(0, 32)}…
+                    color: T.text, lineHeight: 1.7, fontFamily: "'JetBrains Mono', monospace" }}>
+                    <span>Time: <strong style={{ color: T.textBright }}>{selectedPoint.decoded.timestampIso.replace('T',' ').slice(0,19)} UTC</strong></span>
+                    <span>Speed: <strong style={{ color: T.textBright }}>{selectedPoint.decoded.groundspeedKph} km/h</strong></span>
+                    <span>Lat: <strong style={{ color: T.textBright }}>{selectedPoint.decoded.latitudeDisplay}</strong></span>
+                    <span>Sats: <strong style={{ color: T.textBright }}>{selectedPoint.decoded.satelliteCount} ({selectedPoint.decoded.fixTypeLabel})</strong></span>
+                    <span>Lon: <strong style={{ color: T.textBright }}>{selectedPoint.decoded.longitudeDisplay}</strong></span>
+                    <span>HDOP: <strong style={{ color: T.textBright }}>{selectedPoint.decoded.hdop}</strong></span>
+                    <span>Alt: <strong style={{ color: T.textBright }}>{selectedPoint.decoded.altitudeDisplay}</strong></span>
+                    <span>CRC32: <strong style={{ color: selectedPoint.decoded.crc32Valid ? T.green : T.red }}>
+                      {selectedPoint.decoded.crc32Valid ? 'Valid' : 'Invalid'}</strong></span>
+                    <span style={{ gridColumn: '1 / -1', fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: '0.7rem', color: T.muted }}>
+                      Hash: {selectedPoint.chainHashHex.slice(0, 32)}...
                     </span>
                   </div>
               }
@@ -575,32 +607,36 @@ export function MissionDetailPage() {
           />
 
           {/* Violation timeline */}
-          <div style={{ background: 'white', border: '1px solid #d9d9d9',
-            borderRadius: '6px', padding: '0.75rem', maxHeight: '260px', overflowY: 'auto' }}>
-            <div style={{ fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.85rem' }}>
+          <div style={{ background: T.surface, border: `1px solid ${T.border}`,
+            borderRadius: '6px', padding: '0.75rem', maxHeight: '260px', overflowY: 'auto',
+            boxShadow: '0 1px 4px rgba(255,184,0,0.05)' }}>
+            <div style={{ fontWeight: 600, marginBottom: '0.5rem', fontSize: '0.85rem',
+              color: T.textBright, fontFamily: "'JetBrains Mono', monospace" }}>
               Violations ({violations.length})
             </div>
             {violations.length === 0
-              ? <div style={{ color: '#8c8c8c', fontSize: '0.8rem' }}>No violations.</div>
+              ? <div style={{ color: T.muted, fontSize: '0.8rem',
+                  fontFamily: "'JetBrains Mono', monospace" }}>No violations.</div>
               : violations.map(v => (
                   <div key={v.id}
                     onClick={() => setSelectedSeq(Number(v.sequence))}
-                    style={{ borderLeft: `3px solid ${SEVERITY_COLOURS[v.severity] ?? '#d9d9d9'}`,
+                    style={{ borderLeft: `3px solid ${SEVERITY_COLOURS[v.severity] ?? T.border}`,
                       paddingLeft: '0.6rem', marginBottom: '0.6rem', cursor: 'pointer',
                       userSelect: 'none' }}>
                     <div style={{ fontWeight: 600, fontSize: '0.8rem',
-                      color: SEVERITY_COLOURS[v.severity] }}>
+                      color: SEVERITY_COLOURS[v.severity], fontFamily: "'JetBrains Mono', monospace" }}>
                       {v.violationType}
                       <span style={{ fontWeight: 400, marginLeft: '0.4rem', fontSize: '0.75rem' }}>
                         {v.severity}
                       </span>
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: '#8c8c8c' }}>
+                    <div style={{ fontSize: '0.72rem', color: T.muted,
+                      fontFamily: "'JetBrains Mono', monospace" }}>
                       Seq {v.sequence} · {new Date(parseInt(v.timestampUtcMs))
                         .toISOString().replace('T',' ').slice(0,19)} UTC
                     </div>
-                    <div style={{ fontSize: '0.7rem', color: '#8c8c8c', marginTop: '0.15rem',
-                      fontFamily: 'monospace', wordBreak: 'break-word' }}>
+                    <div style={{ fontSize: '0.7rem', color: T.muted, marginTop: '0.15rem',
+                      fontFamily: "'JetBrains Mono', monospace", wordBreak: 'break-word' }}>
                       {(() => { try { return JSON.stringify(JSON.parse(v.detailJson), null, 0) } catch { return v.detailJson } })()}
                     </div>
                   </div>

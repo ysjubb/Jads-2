@@ -1,6 +1,18 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useAdminAuth, adminAxios } from '../hooks/useAdminAuth'
 
+const T = {
+  bg:       '#050A08',
+  surface:  '#0A120E',
+  border:   '#1A3020',
+  primary:  '#00FF88',
+  amber:    '#FFB800',
+  red:      '#FF3B3B',
+  muted:    '#4A7A5A',
+  text:     '#b0c8b8',
+  textBright: '#d0e8d8',
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface FlightPlan {
@@ -31,15 +43,15 @@ interface FlightPlan {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_COLOUR: Record<string, string> = {
-  DRAFT:           '#8c8c8c',
-  VALIDATED:       '#1890ff',
-  FILED:           '#faad14',
-  ACKNOWLEDGED:    '#722ed1',
-  ACTIVATED:       '#52c41a',
-  COMPLETED:       '#389e0d',
-  CANCELLED:       '#ff4d4f',
-  OVERDUE:         '#ff4d4f',
-  REJECTED_BY_ATC: '#cf1322',
+  DRAFT:           T.muted,
+  VALIDATED:       T.primary,
+  FILED:           T.amber,
+  ACKNOWLEDGED:    '#B060FF',
+  ACTIVATED:       T.primary,
+  COMPLETED:       T.primary,
+  CANCELLED:       T.red,
+  OVERDUE:         T.red,
+  REJECTED_BY_ATC: T.red,
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -72,44 +84,45 @@ function AftnPanel({ plan, onClose }: { plan: FlightPlan; onClose: () => void })
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
     }}>
       <div style={{
-        background: 'white', borderRadius: '8px', width: '680px', maxWidth: '95vw',
+        background: T.surface, borderRadius: '8px', width: '680px', maxWidth: '95vw',
         maxHeight: '90vh', display: 'flex', flexDirection: 'column',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+        boxShadow: `0 8px 32px rgba(0,255,136,0.1)`,
+        border: `1px solid ${T.border}`,
       }}>
         {/* Header */}
         <div style={{
-          padding: '1rem 1.25rem', borderBottom: '1px solid #f0f0f0',
+          padding: '1rem 1.25rem', borderBottom: `1px solid ${T.border}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <div>
-            <span style={{ fontWeight: 700, fontSize: '1rem' }}>AFTN Message</span>
+            <span style={{ fontWeight: 700, fontSize: '1rem', color: T.textBright }}>AFTN Message</span>
             <span style={{ marginLeft: '0.75rem', fontFamily: 'monospace',
-              fontSize: '0.85rem', color: '#8c8c8c' }}>
+              fontSize: '0.85rem', color: T.muted }}>
               {plan.aircraftId} · {plan.adep} → {plan.ades}
             </span>
           </div>
           <button onClick={onClose}
             style={{ border: 'none', background: 'none', fontSize: '1.25rem',
-              cursor: 'pointer', color: '#8c8c8c', lineHeight: 1 }}>
+              cursor: 'pointer', color: T.muted, lineHeight: 1 }}>
             ×
           </button>
         </div>
 
         {/* Addressees */}
         {plan.aftnAddressees && (
-          <div style={{ padding: '0.75rem 1.25rem', background: '#fafafa',
-            borderBottom: '1px solid #f0f0f0', fontSize: '0.8rem' }}>
-            <span style={{ color: '#8c8c8c', marginRight: '0.5rem' }}>Addressees:</span>
+          <div style={{ padding: '0.75rem 1.25rem', background: T.bg,
+            borderBottom: `1px solid ${T.border}`, fontSize: '0.8rem' }}>
+            <span style={{ color: T.muted, marginRight: '0.5rem' }}>Addressees:</span>
             {plan.aftnAddressees.split(' ').map(addr => (
               <span key={addr} style={{
                 display: 'inline-block', marginRight: '0.4rem', marginBottom: '0.2rem',
-                padding: '0.1rem 0.4rem', background: '#e6f7ff',
-                border: '1px solid #91d5ff', borderRadius: '3px',
-                fontFamily: 'monospace', fontSize: '0.75rem', color: '#0050b3',
+                padding: '0.1rem 0.4rem', background: T.primary + '15',
+                border: `1px solid ${T.primary}30`, borderRadius: '3px',
+                fontFamily: 'monospace', fontSize: '0.75rem', color: T.primary,
               }}>
                 {addr}
               </span>
@@ -129,7 +142,7 @@ function AftnPanel({ plan, onClose }: { plan: FlightPlan; onClose: () => void })
               {plan.aftnMessage}
             </pre>
           ) : (
-            <div style={{ color: '#8c8c8c', padding: '2rem', textAlign: 'center' }}>
+            <div style={{ color: T.muted, padding: '2rem', textAlign: 'center' }}>
               No AFTN message generated yet. File the flight plan to generate.
             </div>
           )}
@@ -138,29 +151,29 @@ function AftnPanel({ plan, onClose }: { plan: FlightPlan; onClose: () => void })
         {/* Clearance details */}
         {(plan.ficNumber || plan.adcNumber) && (
           <div style={{
-            padding: '0.75rem 1.25rem', borderTop: '1px solid #f0f0f0',
-            background: '#f6ffed', display: 'flex', gap: '2rem', fontSize: '0.85rem',
+            padding: '0.75rem 1.25rem', borderTop: `1px solid ${T.border}`,
+            background: T.primary + '15', display: 'flex', gap: '2rem', fontSize: '0.85rem',
           }}>
             {plan.ficNumber && (
               <div>
-                <span style={{ color: '#8c8c8c' }}>FIC: </span>
-                <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#389e0d' }}>
+                <span style={{ color: T.muted }}>FIC: </span>
+                <span style={{ fontFamily: 'monospace', fontWeight: 600, color: T.primary }}>
                   {plan.ficNumber}
                 </span>
               </div>
             )}
             {plan.adcNumber && (
               <div>
-                <span style={{ color: '#8c8c8c' }}>ADC: </span>
-                <span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#389e0d' }}>
+                <span style={{ color: T.muted }}>ADC: </span>
+                <span style={{ fontFamily: 'monospace', fontWeight: 600, color: T.primary }}>
                   {plan.adcNumber}
                 </span>
               </div>
             )}
             {plan.clearedAt && (
               <div>
-                <span style={{ color: '#8c8c8c' }}>Cleared: </span>
-                <span style={{ color: '#389e0d' }}>
+                <span style={{ color: T.muted }}>Cleared: </span>
+                <span style={{ color: T.primary }}>
                   {new Date(plan.clearedAt).toLocaleString()}
                 </span>
               </div>
@@ -170,22 +183,24 @@ function AftnPanel({ plan, onClose }: { plan: FlightPlan; onClose: () => void })
 
         {/* Footer */}
         <div style={{
-          padding: '0.75rem 1.25rem', borderTop: '1px solid #f0f0f0',
+          padding: '0.75rem 1.25rem', borderTop: `1px solid ${T.border}`,
           display: 'flex', justifyContent: 'flex-end', gap: '0.5rem',
         }}>
           {plan.aftnMessage && (
             <button onClick={copy}
               style={{
                 padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer',
-                border: '1px solid #91d5ff', background: copied ? '#f6ffed' : '#e6f7ff',
-                color: copied ? '#389e0d' : '#0050b3', fontSize: '0.875rem',
+                border: `1px solid ${T.primary}40`,
+                background: copied ? T.primary + '15' : T.primary + '15',
+                color: copied ? T.primary : T.primary, fontSize: '0.875rem',
               }}>
               {copied ? '✓ Copied' : 'Copy Message'}
             </button>
           )}
           <button onClick={onClose}
             style={{ padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer',
-              border: '1px solid #d9d9d9', background: 'white', fontSize: '0.875rem' }}>
+              border: `1px solid ${T.border}`, background: 'transparent',
+              color: T.text, fontSize: '0.875rem' }}>
             Close
           </button>
         </div>
@@ -241,8 +256,8 @@ export function FlightPlansPage() {
       {/* Header */}
       <div style={{ display:'flex', justifyContent:'space-between',
         alignItems:'center', marginBottom:'1rem' }}>
-        <h2 style={{ margin: 0 }}>Manned Flight Plans</h2>
-        <span style={{ fontSize:'0.8rem', color:'#8c8c8c' }}>{total} total</span>
+        <h2 style={{ margin: 0, color: T.textBright }}>Manned Flight Plans</h2>
+        <span style={{ fontSize:'0.8rem', color: T.muted }}>{total} total</span>
       </div>
 
       {/* Filters */}
@@ -251,12 +266,14 @@ export function FlightPlansPage() {
           placeholder="Search aircraft ID or callsign…"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          style={{ padding:'0.4rem 0.75rem', border:'1px solid #d9d9d9',
-            borderRadius:'4px', flex: 1, minWidth: '200px' }}
+          style={{ padding:'0.4rem 0.75rem', border: `1px solid ${T.border}`,
+            borderRadius:'4px', flex: 1, minWidth: '200px',
+            background: T.surface, color: T.text }}
         />
         <select value={statusFilter}
           onChange={e => { setStatus(e.target.value); setPage(1) }}
-          style={{ padding:'0.4rem', border:'1px solid #d9d9d9', borderRadius:'4px' }}>
+          style={{ padding:'0.4rem', border: `1px solid ${T.border}`, borderRadius:'4px',
+            background: T.surface, color: T.text }}>
           <option value="">All statuses</option>
           <option value="DRAFT">Draft</option>
           <option value="VALIDATED">Validated</option>
@@ -269,7 +286,8 @@ export function FlightPlansPage() {
         </select>
         <select value={typeFilter}
           onChange={e => { setType(e.target.value); setPage(1) }}
-          style={{ padding:'0.4rem', border:'1px solid #d9d9d9', borderRadius:'4px' }}>
+          style={{ padding:'0.4rem', border: `1px solid ${T.border}`, borderRadius:'4px',
+            background: T.surface, color: T.text }}>
           <option value="">All types</option>
           <option value="G">General Aviation</option>
           <option value="M">Military</option>
@@ -280,14 +298,14 @@ export function FlightPlansPage() {
 
       {/* Error / loading states */}
       {error && (
-        <div style={{ color:'#cf1322', padding:'0.75rem', background:'#fff2f0',
-          border:'1px solid #ffccc7', borderRadius:'4px', marginBottom:'1rem' }}>
+        <div style={{ color: T.red, padding:'0.75rem', background: T.red + '15',
+          border: `1px solid ${T.red}40`, borderRadius:'4px', marginBottom:'1rem' }}>
           Error: {error}
         </div>
       )}
-      {loading && <div style={{ color:'#8c8c8c', marginBottom:'1rem' }}>Loading…</div>}
+      {loading && <div style={{ color: T.muted, marginBottom:'1rem' }}>Loading…</div>}
       {!loading && !error && plans.length === 0 && (
-        <div style={{ color:'#8c8c8c', padding:'3rem', textAlign:'center' }}>
+        <div style={{ color: T.muted, padding:'3rem', textAlign:'center' }}>
           No flight plans found.
         </div>
       )}
@@ -297,65 +315,66 @@ export function FlightPlansPage() {
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'0.85rem' }}>
             <thead>
-              <tr style={{ background:'#fafafa', borderBottom:'2px solid #f0f0f0' }}>
+              <tr style={{ background: T.surface, borderBottom: `2px solid ${T.border}` }}>
                 {['Aircraft', 'Type', 'Rules', 'ADEP', 'ADES', 'EOBT', 'Status',
                   'Filed By', 'FIC', 'ADC', 'AFTN', 'Filed At'].map(h => (
                   <th key={h} style={{ padding:'0.5rem 0.75rem',
-                    textAlign:'left', fontWeight:600, whiteSpace:'nowrap' }}>{h}</th>
+                    textAlign:'left', fontWeight:600, whiteSpace:'nowrap', color: T.textBright }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {plans.map(p => (
-                <tr key={p.id} style={{ borderBottom:'1px solid #f0f0f0' }}>
+                <tr key={p.id} style={{ borderBottom: `1px solid ${T.border}` }}>
                   <td style={{ padding:'0.5rem 0.75rem', fontFamily:'monospace',
-                    fontWeight:600, fontSize:'0.8rem' }}>
+                    fontWeight:600, fontSize:'0.8rem', color: T.textBright }}>
                     {p.aircraftId}
                     <div style={{ fontFamily:'sans-serif', fontWeight:400,
-                      fontSize:'0.7rem', color:'#8c8c8c' }}>{p.aircraftType}</div>
+                      fontSize:'0.7rem', color: T.muted }}>{p.aircraftType}</div>
                   </td>
-                  <td style={{ padding:'0.5rem 0.75rem', fontSize:'0.75rem', color:'#595959' }}>
+                  <td style={{ padding:'0.5rem 0.75rem', fontSize:'0.75rem', color: T.text }}>
                     {FTYPE_LABELS[p.flightType] ?? p.flightType}
                   </td>
                   <td style={{ padding:'0.5rem 0.75rem', fontFamily:'monospace',
-                    fontSize:'0.8rem' }}>{p.flightRules}</td>
+                    fontSize:'0.8rem', color: T.text }}>{p.flightRules}</td>
                   <td style={{ padding:'0.5rem 0.75rem', fontFamily:'monospace',
-                    fontWeight:600, fontSize:'0.8rem', color:'#1890ff' }}>{p.adep}</td>
+                    fontWeight:600, fontSize:'0.8rem', color: T.primary }}>{p.adep}</td>
                   <td style={{ padding:'0.5rem 0.75rem', fontFamily:'monospace',
-                    fontWeight:600, fontSize:'0.8rem', color:'#722ed1' }}>{p.ades}</td>
-                  <td style={{ padding:'0.5rem 0.75rem', fontSize:'0.8rem', whiteSpace:'nowrap' }}>
+                    fontWeight:600, fontSize:'0.8rem', color:'#B060FF' }}>{p.ades}</td>
+                  <td style={{ padding:'0.5rem 0.75rem', fontSize:'0.8rem', whiteSpace:'nowrap', color: T.text }}>
                     {new Date(p.eobt).toLocaleString(undefined, {
                       day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit',
                     })}
                   </td>
                   <td style={{ padding:'0.5rem 0.75rem' }}>
                     <span style={{
-                      color: STATUS_COLOUR[p.status] ?? '#8c8c8c',
+                      color: STATUS_COLOUR[p.status] ?? T.muted,
                       fontWeight:500, fontSize:'0.8rem',
-                      background: (STATUS_COLOUR[p.status] ?? '#8c8c8c') + '18',
+                      background: (STATUS_COLOUR[p.status] ?? T.muted) + '18',
                       padding:'0.15rem 0.45rem', borderRadius:'3px',
                     }}>
                       {STATUS_LABELS[p.status] ?? p.status}
                     </span>
                   </td>
-                  <td style={{ padding:'0.5rem 0.75rem', fontSize:'0.75rem', color:'#595959' }}>
+                  <td style={{ padding:'0.5rem 0.75rem', fontSize:'0.75rem', color: T.text }}>
                     {p.filedByType}
                   </td>
                   <td style={{ padding:'0.5rem 0.75rem', fontFamily:'monospace',
-                    fontSize:'0.72rem', color: p.ficNumber ? '#389e0d' : '#bfbfbf' }}>
+                    fontSize:'0.72rem', color: p.ficNumber ? T.primary : T.muted }}>
                     {p.ficNumber ?? '—'}
                   </td>
                   <td style={{ padding:'0.5rem 0.75rem', fontFamily:'monospace',
-                    fontSize:'0.72rem', color: p.adcNumber ? '#389e0d' : '#bfbfbf' }}>
+                    fontSize:'0.72rem', color: p.adcNumber ? T.primary : T.muted }}>
                     {p.adcNumber ?? '—'}
                   </td>
                   <td style={{ padding:'0.5rem 0.75rem' }}>
                     <button
                       onClick={() => setSelected(p)}
                       style={{
-                        padding:'0.2rem 0.5rem', background: p.aftnMessage ? '#e6f7ff' : '#fafafa',
-                        border:`1px solid ${p.aftnMessage ? '#91d5ff' : '#d9d9d9'}`,
-                        color: p.aftnMessage ? '#0050b3' : '#8c8c8c',
+                        padding:'0.2rem 0.5rem',
+                        background: p.aftnMessage ? T.primary + '15' : 'transparent',
+                        border: `1px solid ${p.aftnMessage ? T.primary + '40' : T.border}`,
+                        color: p.aftnMessage ? T.primary : T.muted,
                         borderRadius:'4px', cursor:'pointer', fontSize:'0.75rem',
                       }}
                     >
@@ -363,7 +382,7 @@ export function FlightPlansPage() {
                     </button>
                   </td>
                   <td style={{ padding:'0.5rem 0.75rem', fontSize:'0.75rem',
-                    color:'#8c8c8c', whiteSpace:'nowrap' }}>
+                    color: T.muted, whiteSpace:'nowrap' }}>
                     {p.filedAt
                       ? new Date(p.filedAt).toLocaleString(undefined, {
                           day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit',
@@ -380,15 +399,17 @@ export function FlightPlansPage() {
       {/* Pagination */}
       <div style={{ marginTop:'1rem', display:'flex', alignItems:'center', gap:'0.5rem' }}>
         <button disabled={page === 1} onClick={() => setPage(p => p - 1)}
-          style={{ padding:'0.3rem 0.75rem', border:'1px solid #d9d9d9', borderRadius:'4px',
-            cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1 }}>
+          style={{ padding:'0.3rem 0.75rem', border: `1px solid ${T.border}`, borderRadius:'4px',
+            cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1,
+            background: 'transparent', color: T.text }}>
           Prev
         </button>
-        <span style={{ fontSize:'0.85rem' }}>Page {page} · {total} total</span>
+        <span style={{ fontSize:'0.85rem', color: T.text }}>Page {page} · {total} total</span>
         <button disabled={page * 30 >= total} onClick={() => setPage(p => p + 1)}
-          style={{ padding:'0.3rem 0.75rem', border:'1px solid #d9d9d9', borderRadius:'4px',
+          style={{ padding:'0.3rem 0.75rem', border: `1px solid ${T.border}`, borderRadius:'4px',
             cursor: page * 30 >= total ? 'not-allowed' : 'pointer',
-            opacity: page * 30 >= total ? 0.5 : 1 }}>
+            opacity: page * 30 >= total ? 0.5 : 1,
+            background: 'transparent', color: T.text }}>
           Next
         </button>
       </div>

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom'
 import { LoginPage }        from './pages/LoginPage'
 import { DashboardPage }    from './pages/DashboardPage'
@@ -9,30 +9,80 @@ import { FlightPlansPage }  from './pages/FlightPlansPage'
 import { DroneZonesPage }   from './pages/DroneZonesPage'
 import { useAdminAuth }     from './hooks/useAdminAuth'
 
-function NavBar() {
+// ── HUD Theme Constants ─────────────────────────────────────────────────────
+export const T = {
+  bg:         '#050A08',
+  surface:    '#0A120E',
+  border:     '#1A3020',
+  primary:    '#00FF88',
+  amber:      '#FFB800',
+  red:        '#FF3B3B',
+  muted:      '#4A7A5A',
+  text:       '#b0c8b8',
+  textBright: '#d0e8d8',
+}
+
+const NAV_ITEMS = [
+  { to: '/',              label: 'DASHBOARD',     icon: '///' },
+  { to: '/users',         label: 'USERS',         icon: 'USR' },
+  { to: '/special-users', label: 'SPECIAL USERS', icon: 'GOV' },
+  { to: '/airspace',      label: 'AIRSPACE',      icon: 'AIR' },
+  { to: '/drone-zones',   label: 'DRONE ZONES',   icon: 'DRN' },
+  { to: '/flight-plans',  label: 'FLIGHT PLANS',  icon: 'FPL' },
+]
+
+function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const { logout } = useAdminAuth()
-  const linkStyle = ({ isActive }: { isActive: boolean }) => ({
-    padding: '0.4rem 0.75rem',
-    background: isActive ? '#e6f7ff' : 'transparent',
-    color: isActive ? '#1890ff' : '#262626',
-    borderRadius: '4px', textDecoration: 'none',
-    fontSize: '0.875rem', fontWeight: isActive ? 600 : 400,
-  })
+  const w = collapsed ? '52px' : '200px'
+
   return (
-    <nav style={{ display:'flex', alignItems:'center', gap:'0.25rem',
-      padding:'0.75rem 1.5rem', background:'white',
-      borderBottom:'1px solid #f0f0f0', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-      <span style={{ fontWeight:700, color:'#1890ff', marginRight:'1rem', fontSize:'1rem' }}>JADS Admin</span>
-      <NavLink to="/"              style={linkStyle} end>Dashboard</NavLink>
-      <NavLink to="/users"         style={linkStyle}>Users</NavLink>
-      <NavLink to="/special-users" style={linkStyle}>Special Users</NavLink>
-      <NavLink to="/airspace"      style={linkStyle}>Airspace</NavLink>
-      <NavLink to="/drone-zones"   style={linkStyle}>Drone Zones</NavLink>
-      <NavLink to="/flight-plans"  style={linkStyle}>Flight Plans</NavLink>
+    <nav style={{
+      width: w, minWidth: w, height: '100vh', position: 'sticky', top: 0,
+      background: T.surface, borderRight: `1px solid ${T.border}`,
+      display: 'flex', flexDirection: 'column', transition: 'width 0.2s',
+      overflow: 'hidden',
+    }}>
+      <div onClick={onToggle}
+        style={{
+          padding: collapsed ? '1rem 0.5rem' : '1rem',
+          borderBottom: `1px solid ${T.border}`, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: '0.5rem',
+          justifyContent: collapsed ? 'center' : 'flex-start',
+        }}>
+        <span style={{ color: T.primary, fontWeight: 700, fontSize: '1rem' }}>
+          {collapsed ? 'J' : 'JADS'}
+        </span>
+        {!collapsed && <span style={{ fontSize: '0.65rem', color: T.muted }}>ADMIN v4.0</span>}
+      </div>
+
+      <div style={{ flex: 1, padding: '0.5rem 0' }}>
+        {NAV_ITEMS.map(item => (
+          <NavLink key={item.to} to={item.to} end={item.to === '/'}
+            style={({ isActive }) => ({
+              display: 'flex', alignItems: 'center', gap: '0.6rem',
+              padding: collapsed ? '0.6rem 0' : '0.6rem 1rem',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              textDecoration: 'none', fontSize: '0.75rem', fontWeight: 500,
+              color: isActive ? T.primary : T.muted,
+              background: isActive ? T.primary + '10' : 'transparent',
+              borderLeft: isActive ? `2px solid ${T.primary}` : '2px solid transparent',
+              transition: 'all 0.15s',
+            })}>
+            <span style={{ fontSize: '0.65rem', fontWeight: 700, width: '24px', textAlign: 'center' }}>
+              {item.icon}
+            </span>
+            {!collapsed && <span>{item.label}</span>}
+          </NavLink>
+        ))}
+      </div>
+
       <button onClick={logout}
-        style={{ marginLeft:'auto', padding:'0.3rem 0.75rem', border:'1px solid #d9d9d9',
-          borderRadius:'4px', cursor:'pointer', fontSize:'0.875rem', background:'white' }}>
-        Logout
+        style={{
+          padding: '0.75rem', border: 'none', borderTop: `1px solid ${T.border}`,
+          background: 'transparent', color: T.red, cursor: 'pointer',
+          fontSize: '0.7rem', fontWeight: 600,
+        }}>
+        {collapsed ? 'X' : 'SIGN OUT'}
       </button>
     </nav>
   )
@@ -40,12 +90,13 @@ function NavBar() {
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const { token } = useAdminAuth()
+  const [collapsed, setCollapsed] = useState(false)
   if (!token) return <Navigate to="/login" replace />
   return (
-    <>
-      <NavBar />
-      <main style={{ minHeight:'calc(100vh - 49px)', background:'#f5f5f5' }}>{children}</main>
-    </>
+    <div style={{ display: 'flex', minHeight: '100vh', background: T.bg }}>
+      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
+      <main style={{ flex: 1, minHeight: '100vh', overflow: 'auto' }}>{children}</main>
+    </div>
   )
 }
 

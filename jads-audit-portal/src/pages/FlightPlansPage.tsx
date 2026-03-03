@@ -1,6 +1,18 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useAuditAuth, auditAxios } from '../hooks/useAuditAuth'
 
+const T = {
+  bg:         '#050A08',
+  surface:    '#0A120E',
+  border:     '#1A3020',
+  primary:    '#FFB800',
+  green:      '#00FF88',
+  red:        '#FF3B3B',
+  muted:      '#6A6040',
+  text:       '#c8b890',
+  textBright: '#e8d8b0',
+}
+
 interface FlightPlan {
   id: string
   arcid: string
@@ -17,8 +29,8 @@ interface FlightPlan {
 }
 
 const STATE_COLOUR: Record<string, string> = {
-  FILED: '#1890ff', ACTIVE: '#52c41a', CLOSED: '#8c8c8c',
-  CANCELLED: '#ff4d4f', DELAYED: '#faad14'
+  FILED: '#FFB800', ACTIVE: '#00FF88', CLOSED: '#6A6040',
+  CANCELLED: '#FF3B3B', DELAYED: '#FFB800'
 }
 
 export function FlightPlansPage() {
@@ -59,47 +71,57 @@ export function FlightPlansPage() {
     <div style={{ padding: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between',
         alignItems: 'center', marginBottom: '1rem' }}>
-        <h2 style={{ margin: 0 }}>Flight Plans</h2>
+        <h2 style={{ margin: 0, color: T.textBright, fontFamily: "'JetBrains Mono', monospace" }}>Flight Plans</h2>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           {scopeApplied && (
-            <span style={{ fontSize: '0.8rem', background: '#e6f7ff',
-              border: '1px solid #91d5ff', color: '#0050b3',
-              padding: '0.2rem 0.6rem', borderRadius: '4px' }}>
+            <span style={{ fontSize: '0.8rem', background: T.primary + '15',
+              border: `1px solid ${T.primary}40`, color: T.primary,
+              padding: '0.2rem 0.6rem', borderRadius: '4px',
+              fontFamily: "'JetBrains Mono', monospace" }}>
               Scope: {scopeApplied}
             </span>
           )}
           {retrievedAt && (
-            <span style={{ fontSize: '0.75rem', color: '#8c8c8c' }}>
+            <span style={{ fontSize: '0.75rem', color: T.muted,
+              fontFamily: "'JetBrains Mono', monospace" }}>
               Retrieved: {retrievedAt}
             </span>
           )}
           <button onClick={fetchPlans}
-            style={{ padding: '0.25rem 0.75rem', border: '1px solid #d9d9d9',
-              borderRadius: '4px', cursor: 'pointer', background: 'white', fontSize: '0.85rem' }}>
-            ↻ Refresh
+            style={{ padding: '0.25rem 0.75rem', border: `1px solid ${T.border}`,
+              borderRadius: '4px', cursor: 'pointer', background: T.surface,
+              color: T.text, fontSize: '0.85rem',
+              fontFamily: "'JetBrains Mono', monospace" }}>
+            Refresh
           </button>
         </div>
       </div>
 
       {error && (
-        <div style={{ color: '#cf1322', padding: '0.75rem', background: '#fff2f0',
-          border: '1px solid #ffccc7', borderRadius: '4px', marginBottom: '1rem' }}>
+        <div style={{ color: T.red, padding: '0.75rem', background: T.red + '15',
+          border: `1px solid ${T.red}40`, borderRadius: '4px', marginBottom: '1rem',
+          fontFamily: "'JetBrains Mono', monospace" }}>
           {error}
         </div>
       )}
-      {loading && <div style={{ color: '#8c8c8c', padding: '1rem' }}>Loading flight plans…</div>}
+      {loading && <div style={{ color: T.muted, padding: '1rem',
+        fontFamily: "'JetBrains Mono', monospace" }}>Loading flight plans...</div>}
       {!loading && !error && plans.length === 0 && (
-        <div style={{ color: '#8c8c8c', padding: '1rem' }}>No flight plans found.</div>
+        <div style={{ color: T.muted, padding: '1rem',
+          fontFamily: "'JetBrains Mono', monospace" }}>No flight plans found.</div>
       )}
 
       {!loading && plans.length > 0 && (
-        <div style={{ background: 'white', borderRadius: '6px',
-          border: '1px solid #f0f0f0', overflow: 'hidden' }}>
+        <div style={{ background: T.surface, borderRadius: '6px',
+          border: `1px solid ${T.border}`, overflow: 'hidden',
+          boxShadow: '0 1px 4px rgba(255,184,0,0.05)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>
-              <tr style={{ background: '#fafafa', borderBottom: '2px solid #f0f0f0' }}>
+              <tr style={{ background: T.bg, borderBottom: `2px solid ${T.border}` }}>
                 {['ARCID', 'State', 'ADEP', 'ADES', 'EOBT', 'ETT', 'WTC', 'RVSM', 'Filed'].map(h => (
-                  <th key={h} style={{ padding: '0.6rem 0.75rem', textAlign: 'left', fontWeight: 600 }}>
+                  <th key={h} style={{ padding: '0.6rem 0.75rem', textAlign: 'left', fontWeight: 600,
+                    color: T.primary, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.78rem',
+                    letterSpacing: '0.03em' }}>
                     {h}
                   </th>
                 ))}
@@ -107,26 +129,37 @@ export function FlightPlansPage() {
             </thead>
             <tbody>
               {plans.map(p => (
-                <tr key={p.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                  <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontWeight: 600 }}>
+                <tr key={p.id} style={{ borderBottom: `1px solid ${T.border}` }}
+                  onMouseEnter={e => (e.currentTarget.style.background = T.primary + '08')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  <td style={{ padding: '0.5rem 0.75rem', fontFamily: "'JetBrains Mono', monospace",
+                    fontWeight: 600, color: T.textBright }}>
                     {p.arcid}
                   </td>
                   <td style={{ padding: '0.5rem 0.75rem' }}>
-                    <span style={{ color: STATE_COLOUR[p.fplState] ?? '#595959', fontWeight: 500 }}>
+                    <span style={{ color: STATE_COLOUR[p.fplState] ?? T.text, fontWeight: 500,
+                      fontFamily: "'JetBrains Mono', monospace" }}>
                       {p.fplState}
                     </span>
                   </td>
-                  <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace' }}>{p.adep}</td>
-                  <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace' }}>{p.ades}</td>
-                  <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '0.5rem 0.75rem', fontFamily: "'JetBrains Mono', monospace",
+                    color: T.text }}>{p.adep}</td>
+                  <td style={{ padding: '0.5rem 0.75rem', fontFamily: "'JetBrains Mono', monospace",
+                    color: T.text }}>{p.ades}</td>
+                  <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', whiteSpace: 'nowrap',
+                    color: T.text, fontFamily: "'JetBrains Mono', monospace" }}>
                     {new Date(p.eobt).toISOString().replace('T', ' ').slice(0, 16)}
                   </td>
-                  <td style={{ padding: '0.5rem 0.75rem' }}>{p.ttlHhMm}</td>
-                  <td style={{ padding: '0.5rem 0.75rem' }}>{p.wtc}</td>
-                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center' }}>
-                    {p.rvsm ? <span style={{ color: '#389e0d' }}>✓</span> : '—'}
+                  <td style={{ padding: '0.5rem 0.75rem', color: T.text,
+                    fontFamily: "'JetBrains Mono', monospace" }}>{p.ttlHhMm}</td>
+                  <td style={{ padding: '0.5rem 0.75rem', color: T.text,
+                    fontFamily: "'JetBrains Mono', monospace" }}>{p.wtc}</td>
+                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center',
+                    fontFamily: "'JetBrains Mono', monospace" }}>
+                    {p.rvsm ? <span style={{ color: T.green }}>PASS</span> : <span style={{ color: T.muted }}>—</span>}
                   </td>
-                  <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem' }}>
+                  <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: T.muted,
+                    fontFamily: "'JetBrains Mono', monospace" }}>
                     {new Date(p.createdAt).toLocaleDateString()}
                   </td>
                 </tr>
@@ -138,15 +171,19 @@ export function FlightPlansPage() {
 
       <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <button disabled={page === 1} onClick={() => setPage(p => p - 1)}
-          style={{ padding: '0.3rem 0.75rem', border: '1px solid #d9d9d9', borderRadius: '4px',
-            cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1 }}>
+          style={{ padding: '0.3rem 0.75rem', border: `1px solid ${T.border}`, borderRadius: '4px',
+            cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1,
+            background: T.surface, color: T.text, fontFamily: "'JetBrains Mono', monospace" }}>
           Prev
         </button>
-        <span style={{ color: '#595959' }}>Page {page} · {total} total</span>
+        <span style={{ color: T.muted, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.85rem' }}>
+          Page {page} · {total} total
+        </span>
         <button disabled={page * 25 >= total} onClick={() => setPage(p => p + 1)}
-          style={{ padding: '0.3rem 0.75rem', border: '1px solid #d9d9d9', borderRadius: '4px',
+          style={{ padding: '0.3rem 0.75rem', border: `1px solid ${T.border}`, borderRadius: '4px',
             cursor: page * 25 >= total ? 'not-allowed' : 'pointer',
-            opacity: page * 25 >= total ? 0.5 : 1 }}>
+            opacity: page * 25 >= total ? 0.5 : 1,
+            background: T.surface, color: T.text, fontFamily: "'JetBrains Mono', monospace" }}>
           Next
         </button>
       </div>

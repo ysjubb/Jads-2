@@ -1,6 +1,18 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useAdminAuth, adminAxios } from '../hooks/useAdminAuth'
 
+const T = {
+  bg:       '#050A08',
+  surface:  '#0A120E',
+  border:   '#1A3020',
+  primary:  '#00FF88',
+  amber:    '#FFB800',
+  red:      '#FF3B3B',
+  muted:    '#4A7A5A',
+  text:     '#b0c8b8',
+  textBright: '#d0e8d8',
+}
+
 interface AirspaceVersion {
   id: string
   dataType: string
@@ -13,11 +25,11 @@ interface AirspaceVersion {
 }
 
 const STATUS_COLOUR: Record<string, string> = {
-  ACTIVE:   '#52c41a',
-  PENDING:  '#faad14',
-  DRAFT:    '#1890ff',
-  EXPIRED:  '#8c8c8c',
-  REJECTED: '#ff4d4f',
+  ACTIVE:   T.primary,
+  PENDING:  T.amber,
+  DRAFT:    T.primary,
+  EXPIRED:  T.muted,
+  REJECTED: T.red,
 }
 
 export function AirspacePage() {
@@ -62,8 +74,8 @@ export function AirspacePage() {
   return (
     <div style={{ padding: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h2 style={{ margin: 0 }}>Airspace Versions</h2>
-        <span style={{ fontSize: '0.8rem', color: '#8c8c8c' }}>{total} total</span>
+        <h2 style={{ margin: 0, color: T.textBright }}>Airspace Versions</h2>
+        <span style={{ fontSize: '0.8rem', color: T.muted }}>{total} total</span>
       </div>
 
       {/* Filters */}
@@ -71,7 +83,8 @@ export function AirspacePage() {
         <select
           value={dataType}
           onChange={e => { setDataType(e.target.value); setPage(1) }}
-          style={{ padding: '0.4rem', border: '1px solid #d9d9d9', borderRadius: '4px' }}
+          style={{ padding: '0.4rem', border: `1px solid ${T.border}`, borderRadius: '4px',
+            background: T.surface, color: T.text }}
         >
           <option value="">All types</option>
           <option value="WAYPOINTS">Waypoints</option>
@@ -83,54 +96,54 @@ export function AirspacePage() {
       </div>
 
       {error && (
-        <div style={{ color: '#cf1322', padding: '0.75rem', background: '#fff2f0',
-          border: '1px solid #ffccc7', borderRadius: '4px', marginBottom: '1rem' }}>
+        <div style={{ color: T.red, padding: '0.75rem', background: T.red + '15',
+          border: `1px solid ${T.red}40`, borderRadius: '4px', marginBottom: '1rem' }}>
           Error: {error}
         </div>
       )}
-      {loading && <div style={{ color: '#8c8c8c', marginBottom: '1rem' }}>Loading…</div>}
+      {loading && <div style={{ color: T.muted, marginBottom: '1rem' }}>Loading...</div>}
       {!loading && !error && versions.length === 0 && (
-        <div style={{ color: '#8c8c8c', padding: '2rem', textAlign: 'center' }}>No airspace versions found.</div>
+        <div style={{ color: T.muted, padding: '2rem', textAlign: 'center' }}>No airspace versions found.</div>
       )}
 
       {!loading && versions.length > 0 && (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
-            <tr style={{ background: '#fafafa', borderBottom: '2px solid #f0f0f0' }}>
+            <tr style={{ background: T.surface, borderBottom: `2px solid ${T.border}` }}>
               {['Type', 'Status', 'Effective From', 'AIRAC', 'Reason', 'Created By', 'Created At', 'Actions'].map(h => (
-                <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600 }}>{h}</th>
+                <th key={h} style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 600, color: T.textBright }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {versions.map(v => (
-              <tr key={v.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                <td style={{ padding: '0.5rem 0.75rem' }}>{v.dataType}</td>
+              <tr key={v.id} style={{ borderBottom: `1px solid ${T.border}` }}>
+                <td style={{ padding: '0.5rem 0.75rem', color: T.text }}>{v.dataType}</td>
                 <td style={{ padding: '0.5rem 0.75rem' }}>
-                  <span style={{ color: STATUS_COLOUR[v.approvalStatus] ?? '#8c8c8c', fontWeight: 500 }}>
+                  <span style={{ color: STATUS_COLOUR[v.approvalStatus] ?? T.muted, fontWeight: 500 }}>
                     {v.approvalStatus}
                   </span>
                 </td>
-                <td style={{ padding: '0.5rem 0.75rem' }}>
+                <td style={{ padding: '0.5rem 0.75rem', color: T.text }}>
                   {new Date(v.effectiveFrom).toLocaleDateString()}
                 </td>
-                <td style={{ padding: '0.5rem 0.75rem' }}>{v.airacCycle ?? '—'}</td>
+                <td style={{ padding: '0.5rem 0.75rem', color: T.text }}>{v.airacCycle ?? '—'}</td>
                 <td style={{ padding: '0.5rem 0.75rem', maxWidth: '200px',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: T.text }}>
                   {v.changeReason}
                 </td>
-                <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                  {v.createdBy.slice(0, 8)}…
+                <td style={{ padding: '0.5rem 0.75rem', fontFamily: 'monospace', fontSize: '0.75rem', color: T.text }}>
+                  {v.createdBy.slice(0, 8)}...
                 </td>
-                <td style={{ padding: '0.5rem 0.75rem' }}>
+                <td style={{ padding: '0.5rem 0.75rem', color: T.text }}>
                   {new Date(v.createdAt).toLocaleDateString()}
                 </td>
                 <td style={{ padding: '0.5rem 0.75rem' }}>
                   {v.approvalStatus === 'PENDING' && (
                     <button
                       onClick={() => approve(v.id)}
-                      style={{ padding: '0.2rem 0.5rem', background: '#f6ffed',
-                        border: '1px solid #b7eb8f', color: '#389e0d',
+                      style={{ padding: '0.2rem 0.5rem', background: T.primary + '15',
+                        border: `1px solid ${T.primary}40`, color: T.primary,
                         borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}
                     >
                       Approve
@@ -145,15 +158,17 @@ export function AirspacePage() {
 
       <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <button disabled={page === 1} onClick={() => setPage(p => p - 1)}
-          style={{ padding: '0.3rem 0.75rem', border: '1px solid #d9d9d9', borderRadius: '4px',
-            cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1 }}>
+          style={{ padding: '0.3rem 0.75rem', border: `1px solid ${T.border}`, borderRadius: '4px',
+            cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1,
+            background: 'transparent', color: T.text }}>
           Prev
         </button>
-        <span>Page {page} · {total} total</span>
+        <span style={{ color: T.text }}>Page {page} · {total} total</span>
         <button disabled={page * 30 >= total} onClick={() => setPage(p => p + 1)}
-          style={{ padding: '0.3rem 0.75rem', border: '1px solid #d9d9d9', borderRadius: '4px',
+          style={{ padding: '0.3rem 0.75rem', border: `1px solid ${T.border}`, borderRadius: '4px',
             cursor: page * 30 >= total ? 'not-allowed' : 'pointer',
-            opacity: page * 30 >= total ? 0.5 : 1 }}>
+            opacity: page * 30 >= total ? 0.5 : 1,
+            background: 'transparent', color: T.text }}>
           Next
         </button>
       </div>

@@ -124,6 +124,7 @@ enum FlightPlanStatus {
   ACTIVATED
   COMPLETED
   CANCELLED
+  DELAYED
   OVERDUE
   REJECTED_BY_ATC
 }
@@ -291,8 +292,15 @@ model MannedFlightPlan {
   route            String
   cruisingLevel    String
   cruisingSpeed    String
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  // ── CNL/DLA tracking fields ──────────────────────────────────────────────
+  cancelledAt         DateTime?
+  cancelledBy         String?
+  cancellationReason  String?
+  delayedNewEobt      DateTime?
+  delayReason         String?
 
   civilianFiler    CivilianUser?   @relation("FiledByCivilian", fields: [filedBy], references: [id], map: "MannedFlightPlan_civilianFiler_fkey")
   specialFiler     SpecialUser?    @relation("FiledBySpecial", fields: [filedBy], references: [id], map: "MannedFlightPlan_specialFiler_fkey")

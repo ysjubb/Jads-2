@@ -1,0 +1,18 @@
+{
+  "name": "jads-anomaly-advisor",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npx ts-node index.ts",
+    "build": "npx tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2"
+  }
+}
