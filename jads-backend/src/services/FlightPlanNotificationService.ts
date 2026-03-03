@@ -225,7 +225,7 @@ export class FlightPlanNotificationService {
     </style></head><body>
     <div class="header">
       <div style="font-size:20px;font-weight:700">JADS — Flight Plan Filing Confirmation</div>
-      <div style="font-size:12px;opacity:.8;margin-top:4px">Joint Aviation Data System | Government of India | Platform v4.0</div>
+      <div style="font-size:12px;opacity:.8;margin-top:4px">Joint Airspace Drone System | Government of India | Platform v4.0</div>
     </div>
     <div class="body">
       <div class="ok">✓ Flight Plan Successfully Filed</div>

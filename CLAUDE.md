@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**JADS (Joint Aviation Data System)** is a forensic-grade UTM (Unmanned Traffic Management) and flight planning platform for Indian airspace. It handles drone mission telemetry with cryptographic integrity, manned flight plan filing (ICAO format), airspace management with two-person approval, and forensic audit capabilities.
+**JADS (Joint Airspace Drone System)** is a forensic-grade UTM (Unmanned Traffic Management) and flight planning platform for Indian airspace. It handles drone mission telemetry with cryptographic integrity, manned flight plan filing (ICAO format), airspace management with two-person approval, and forensic audit capabilities.
 
 ## Repository Structure
 

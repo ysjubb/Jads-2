@@ -1,5 +1,5 @@
 # JADS Platform v4.0
-**Joint Aviation Data System** — Forensic-grade UTM & Flight Planning Platform
+**Joint Airspace Drone System** — Forensic-grade UTM & Flight Planning Platform
 
 ---
 
