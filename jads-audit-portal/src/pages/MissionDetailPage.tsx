@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate }              from 'react-router-dom'
 import { useAuditAuth, auditAxios, droneAxios } from '../hooks/useAuditAuth'
 
@@ -188,7 +188,6 @@ function evaluateInvariants(
   const zoneViolations = violations.filter(v =>
     v.violationType === 'GEOFENCE_BREACH' || v.violationType === 'UNPERMITTED_ZONE'
   )
-  const npntOk  = mission.npntClassification === 'GREEN'
   const zoneOk  = zoneViolations.length === 0
   const inv6: InvariantResult = {
     label:       'I-6 Zone Compliance',
