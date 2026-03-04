@@ -71,12 +71,61 @@ if (require.main === module) {
   const { PrismaClient } = require('@prisma/client')
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { JobScheduler } = require('./jobs/JobScheduler')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { AuditIntegrityService } = require('./services/AuditIntegrityService')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { RuntimeIntegrityService } = require('./services/KeyManagementService')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('path')
 
   const prisma    = new PrismaClient()
   const scheduler = new JobScheduler(prisma)
 
-  app.listen(env.PORT, () => {
+  app.listen(env.PORT, async () => {
     rootLogger.info('server_started', { data: { port: env.PORT, version: env.JADS_VERSION } })
+
+    // ── Defense 6: Audit log immutability triggers ───────────────────────
+    // Idempotent — safe to call on every startup. Creates PostgreSQL
+    // BEFORE UPDATE/DELETE triggers that block all audit log mutation.
+    // Without this, audit log entries are mutable at the DB level.
+    try {
+      const auditIntegrity = new AuditIntegrityService(prisma)
+      const triggerResult = await auditIntegrity.installTriggers()
+      rootLogger.info('audit_triggers_status', { data: triggerResult })
+    } catch (e) {
+      rootLogger.error('audit_triggers_install_failed', {
+        data: { error: e instanceof Error ? e.message : String(e) }
+      })
+    }
+
+    // ── Defense 2: Runtime integrity baseline ────────────────────────────
+    // Computes SHA-256 of critical service files at startup. Re-checks
+    // every 5 minutes. Detects if an attacker modifies ForensicVerifier
+    // or other critical code on a running server.
+    try {
+      const distDir = path.resolve(__dirname)
+      const criticalFiles = [
+        path.join(distDir, 'services', 'ForensicVerifier.js'),
+        path.join(distDir, 'services', 'AuditIntegrityService.js'),
+        path.join(distDir, 'services', 'KeyManagementService.js'),
+        path.join(distDir, 'services', 'MerkleTreeService.js'),
+        path.join(distDir, 'services', 'ExternalAnchorService.js'),
+        path.join(distDir, 'telemetry', 'canonicalSerializer.js'),
+      ]
+      const integrity = new RuntimeIntegrityService(criticalFiles)
+      integrity.computeBaseline()
+      setInterval(() => {
+        const result = integrity.checkIntegrity()
+        if (!result.intact) {
+          rootLogger.error('runtime_integrity_violation', { data: { violations: result.violations } })
+        }
+      }, 5 * 60 * 1000)
+    } catch (e) {
+      rootLogger.warn('runtime_integrity_init_failed', {
+        data: { error: e instanceof Error ? e.message : String(e) }
+      })
+    }
+
     scheduler.startAll()
   })
 

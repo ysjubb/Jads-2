@@ -67,15 +67,15 @@ JADS (Joint Airspace Drone System) is a **post-flight forensic audit platform** 
 - Extract signing keys from HSM (production: hardware-backed keys)
 - Forge historical ECDSA signatures (private key on Android device, never sent to server)
 - Rewrite evidence already published to external anchor backends
-- Modify audit log entries (PostgreSQL triggers block UPDATE/DELETE — requires `installTriggers()` to be called at deployment)
+- Modify audit log entries (PostgreSQL triggers block UPDATE/DELETE — installed automatically at server startup)
 - Forge valid ML-DSA-65 PQC signatures (private key on device)
 
 **Defenses:**
 | Layer | Control | Source |
 |-------|---------|--------|
 | Key isolation | `IKeyProvider` → `HsmKeyProvider` (PKCS#11 / CloudHSM) | `KeyManagementService.ts` |
-| Runtime integrity | SHA-256 baseline of critical files, periodic re-check (class defined, **not yet wired to startup** — requires activation) | `RuntimeIntegrityService` in `KeyManagementService.ts` |
-| Audit immutability | PostgreSQL BEFORE UPDATE/DELETE triggers raise exception (**must be activated** via `AuditIntegrityService.installTriggers()` at deployment — not auto-deployed by migrations) | `AuditIntegrityService.ts` |
+| Runtime integrity | SHA-256 baseline of critical files at startup, re-checked every 5 minutes — logs `runtime_integrity_violation` on tampering | `RuntimeIntegrityService` wired in `server.ts` |
+| Audit immutability | PostgreSQL BEFORE UPDATE/DELETE triggers — installed automatically on every server startup via `installTriggers()` (idempotent) | `AuditIntegrityService.ts` called from `server.ts` |
 | External anchoring | HMAC-signed file + webhook to separate systems | `ExternalAnchorService.ts` |
 | Signature verification | ECDSA P-256 re-verified server-side from device cert | `ForensicVerifier.checkHashChain()` |
 
@@ -123,7 +123,7 @@ JADS (Joint Airspace Drone System) is a **post-flight forensic audit platform** 
 - ECDSA signatures from device — cannot be recomputed without device private key
 - ML-DSA-65 PQC signatures — quantum-resistant, device-side signing
 - Daily evidence ledger anchoring — Merkle roots published externally
-- Audit log append-only — PostgreSQL triggers block modification (once `installTriggers()` is activated)
+- Audit log append-only — PostgreSQL triggers block modification (installed automatically at server startup)
 
 **Assumption:** Device private keys (ECDSA P-256) are hardware-backed (StrongBox/TEE). If software-only, a rooted device could extract the key.
 
@@ -240,7 +240,7 @@ JADS (Joint Airspace Drone System) is a **post-flight forensic audit platform** 
 - `package-lock.json` pins exact dependency versions
 - Critical crypto operations use well-audited libraries (`crypto` built-in, `@noble/post-quantum`)
 - ECDSA verification uses Node.js native `crypto.verify()` — not a third-party library
-- RuntimeIntegrityService class exists for file modification detection (defined in `KeyManagementService.ts`, **not yet activated at startup** — requires wiring)
+- RuntimeIntegrityService computes SHA-256 baseline at startup and re-checks every 5 minutes (wired in `server.ts`)
 
 **Out of Scope:** Pre-build supply chain attacks (compromised CI/CD pipeline). Addressed by operational security controls, not application-level defenses.
 

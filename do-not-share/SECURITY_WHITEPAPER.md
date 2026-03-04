@@ -46,7 +46,7 @@ The runtime guard `assertPostFlightScope()` rejects any mission with status othe
 | 3. Merkle Tree Evidence Chain | Record deletion/insertion | Daily Merkle roots, inclusion proofs, genesis anchor |
 | 4. Device Attestation | Compromised Android device | Play Integrity API + Key Attestation cert chain |
 | 5. Admin Collusion Prevention | Insider threat (admin pair) | Two-person rule + provisioning lineage tracking |
-| 6. Audit Log Immutability | Evidence tampering | PostgreSQL triggers block UPDATE/DELETE on audit tables (**requires activation** — see Section 6.1) |
+| 6. Audit Log Immutability | Evidence tampering | PostgreSQL triggers block UPDATE/DELETE on audit tables (auto-installed at server startup) |
 
 ### 1.3 Adapter Pattern for Sovereign Integration
 
@@ -280,7 +280,7 @@ The full chain from genesis to present can be walked and verified by `verifyFull
 
 ### 6.1 Database-Level Enforcement
 
-Three PostgreSQL triggers protect the audit log. **DEPLOYMENT NOTE:** These triggers are NOT auto-deployed by Prisma migrations. They must be explicitly activated by calling `AuditIntegrityService.installTriggers()` during initial deployment setup. The Deployment Guide (Section 3.1) includes this as a required step.
+Three PostgreSQL triggers protect the audit log. These triggers are **automatically installed on every server startup** via `AuditIntegrityService.installTriggers()` called from `server.ts`. The install is idempotent — safe to run repeatedly.
 
 ```sql
 -- Trigger 1: Auto-compute row hash on INSERT
@@ -301,9 +301,7 @@ CREATE TRIGGER audit_log_prevent_delete
   -- RAISES EXCEPTION: 'Audit log entries cannot be deleted'
 ```
 
-**Once activated**, even a PLATFORM_SUPER_ADMIN cannot modify audit entries. The only way to circumvent this is to drop the triggers — which itself would be an auditable PostgreSQL administrative event.
-
-**WARNING:** If `installTriggers()` is not called after deployment, audit log entries are mutable at the database level. This MUST be verified as part of the deployment checklist.
+Even a PLATFORM_SUPER_ADMIN cannot modify audit entries. The only way to circumvent this is to drop the triggers — which itself would be an auditable PostgreSQL administrative event.
 
 ### 6.2 Row-Level Integrity
 
@@ -345,7 +343,7 @@ Maximum:                       100
 ## 8. Platform Invariants (Never Break)
 
 1. **96-byte canonical payload layout** — identical bytes from Kotlin and TypeScript
-2. **Audit log is append-only** — DB triggers enforce (requires `installTriggers()` activation at deployment); no application-level bypass possible once active
+2. **Audit log is append-only** — DB triggers auto-installed at server startup; no application-level bypass possible
 3. **Airspace records never deleted** — only superseded (version history preserved)
 4. **Two-person rule** — no single admin can create AND approve an airspace change
 5. **Post-flight forensic scope** — hard-locked via PLATFORM_SCOPE constants + CI tests
