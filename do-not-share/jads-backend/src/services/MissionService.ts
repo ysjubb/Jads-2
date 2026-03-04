@@ -23,6 +23,7 @@ export interface TelemetryRecordInput {
   sequence:          number
   canonicalHex:      string   // 192-char hex (96 bytes)
   signatureHex:      string
+  pqcSignatureHex?:  string   // ML-DSA-65 (FIPS 204) signature — Phase 1 hybrid PQC
   chainHashHex:      string
   prevHashHex:       string
   timestampUtcMs:    number
@@ -78,6 +79,9 @@ export interface MissionSubmissionInput {
   droneSerialNumber?:    string         // manufacturer serial
   nanoAckNumber?:        string         // nano drone acknowledgement number (< 250g)
   uinNumber?:            string         // UIN for micro+ categories
+
+  // Phase 1 PQC: ML-DSA-65 (FIPS 204) public key for hybrid verification
+  pqcPublicKeyHex?:      string         // ~3,904 hex chars (1,952 bytes)
 }
 
 // Category-aware compliance check result
@@ -272,6 +276,8 @@ export class MissionService {
         nanoAckNumber:           input.nanoAckNumber        ?? null,
         uinNumber:               input.uinNumber            ?? null,
         npntExempt:              categoryResult.npntExempt,
+        // Phase 1 PQC: ML-DSA-65 public key for hybrid verification
+        pqcPublicKeyHex:         input.pqcPublicKeyHex    ?? null,
       }})
 
       await tx.droneTelemetryRecord.createMany({ data: input.records.map(r => {
@@ -290,6 +296,8 @@ export class MissionService {
           sensorHealthFlags:   r.sensorHealthFlags,
           decodedJson,
           recordedAtUtcMs:     String(r.timestampUtcMs),
+          // Phase 1 PQC: ML-DSA-65 signature per record
+          pqcSignatureHex:     r.pqcSignatureHex ?? null,
         }
       })})
 

@@ -124,7 +124,9 @@ dependencies {
     implementation("androidx.sqlite:sqlite-ktx:2.4.0")
 
     // ── Bouncy Castle ─────────────────────────────────────────────────────────
-    implementation("org.bouncycastle:bcprov-jdk18on:1.77")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+    // PQC provider — ML-DSA-65 (FIPS 204, formerly CRYSTALS-Dilithium Level 3)
+    implementation("org.bouncycastle:bcpqc-jdk18on:1.78.1")
 
     // ── Apache Commons Net (NTP) ──────────────────────────────────────────────
     implementation("commons-net:commons-net:3.10.0")

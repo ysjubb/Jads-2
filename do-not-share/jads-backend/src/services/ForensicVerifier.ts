@@ -14,6 +14,8 @@
 
 import { PrismaClient }       from '@prisma/client'
 import * as crypto             from 'crypto'
+// @ts-ignore — sub-path import for ML-DSA-65 (FIPS 204) PQC verification
+import { ml_dsa65 }            from '@noble/post-quantum/ml-dsa'
 import { createServiceLogger } from '../logger'
 import { verifyCrc32, reservedBytesZero } from '../telemetry/canonicalSerializer'
 
@@ -121,6 +123,17 @@ export class ForensicVerifier {
     const i9 = this.checkTimestampMonotonicity(records)
     invariants.push(i9)
     if (!i9.pass) failures.push(i9.detail)
+
+    // ── I-10: PQC hybrid signature (non-critical — Phase 1 advisory) ────────
+    // Verifies ML-DSA-65 (FIPS 204) signatures when pqcPublicKeyHex is present.
+    // Phase 1: advisory only (non-critical). Phase 2 will make this critical.
+    // Missions without PQC data skip this check gracefully.
+    const i10 = this.checkPqcSignatures(
+      (mission as any).pqcPublicKeyHex ?? null,
+      records as unknown as Array<{ canonicalPayloadHex: string; pqcSignatureHex?: string | null; sequence: number }>
+    )
+    invariants.push(i10)
+    if (!i10.pass) failures.push(i10.detail)
 
     const allInvariantsHold = invariants.every(i => i.pass)
 
@@ -479,6 +492,82 @@ export class ForensicVerifier {
         ? `All ${sorted.length} record timestamps are non-decreasing`
         : `CLOCK_ROLLBACK detected at ${violations.length} point(s): ${violations.slice(0, 3).join('; ')}`,
       critical: false,
+    }
+  }
+
+  // ── ML-DSA-65 (FIPS 204) PQC hybrid signature verification ──────────────────
+  // Phase 1: advisory (non-critical). Verifies ML-DSA-65 signatures when present.
+  // If pqcPublicKeyHex is null, returns PASS with "PQC not available" detail.
+  // If pqcPublicKeyHex is present but a record lacks pqcSignatureHex, that record
+  // is flagged as unsigned (advisory, not a failure — allows gradual rollout).
+  private checkPqcSignatures(
+    pqcPublicKeyHex: string | null,
+    records: Array<{ canonicalPayloadHex: string; pqcSignatureHex?: string | null; sequence: number }>
+  ): InvariantResult {
+    // No PQC data — skip gracefully (pre-PQC missions)
+    if (!pqcPublicKeyHex) {
+      return {
+        pass: true,
+        code:     'I10_PQC_HYBRID',
+        label:    'PQC Hybrid Signature (ML-DSA-65)',
+        detail:   'PQC public key not present — pre-PQC mission, ECDSA-only verification applies',
+        critical: false,
+      }
+    }
+
+    const errors: string[] = []
+    let verifiedCount = 0
+    let skippedCount  = 0
+
+    let publicKey: Uint8Array
+    try {
+      publicKey = Buffer.from(pqcPublicKeyHex, 'hex')
+    } catch (e) {
+      return {
+        pass: false,
+        code:     'I10_PQC_HYBRID',
+        label:    'PQC Hybrid Signature (ML-DSA-65)',
+        detail:   `PQC_PUBKEY_PARSE_FAILED: ${e instanceof Error ? e.message : String(e)}`,
+        critical: false,
+      }
+    }
+
+    for (const r of records) {
+      if (!r.pqcSignatureHex) {
+        skippedCount++
+        continue
+      }
+
+      try {
+        const payload   = Buffer.from(r.canonicalPayloadHex, 'hex')
+        const signature = Buffer.from(r.pqcSignatureHex, 'hex')
+
+        // ML-DSA-65 signs the raw message (no pre-hashing needed)
+        // API: verify(signature, message, publicKey)
+        const valid = ml_dsa65.verify(signature, payload, publicKey)
+
+        if (!valid) {
+          errors.push(`PQC_SIG_INVALID: seq=${r.sequence}`)
+        } else {
+          verifiedCount++
+        }
+      } catch (e) {
+        errors.push(`PQC_SIG_ERROR: seq=${r.sequence} error=${e instanceof Error ? e.message : String(e)}`)
+      }
+    }
+
+    const pass = errors.length === 0
+    const detail = pass
+      ? `${verifiedCount} ML-DSA-65 signatures verified` +
+        (skippedCount > 0 ? ` (${skippedCount} records without PQC signature — gradual rollout)` : '')
+      : errors.slice(0, 3).join('; ') + (errors.length > 3 ? ` (+${errors.length - 3} more)` : '')
+
+    return {
+      pass,
+      code:     'I10_PQC_HYBRID',
+      label:    'PQC Hybrid Signature (ML-DSA-65)',
+      detail,
+      critical: false,  // Phase 1: advisory only — will become critical in Phase 2
     }
   }
 

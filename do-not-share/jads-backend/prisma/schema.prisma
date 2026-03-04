@@ -459,6 +459,9 @@ model DroneMission {
   uinNumber               String?             // UIN for micro+ categories
   npntExempt              Boolean             @default(false) // true for nano drones
 
+  // ── Phase 1 PQC (ML-DSA-65, FIPS 204) ──
+  pqcPublicKeyHex         String?             // ML-DSA-65 public key for hybrid verification
+
   // ── Manufacturer push source (if data came via vendor API) ──
   manufacturerPushId      String?             // FK to ManufacturerPushBatch if vendor-pushed
   manufacturerSource      String?             // DJI | AUTEL | PARROT | etc.
@@ -480,6 +483,7 @@ model DroneTelemetryRecord {
   canonicalPayloadHex String
   chainHashHex        String
   signatureHex        String
+  pqcSignatureHex     String?             // ML-DSA-65 (FIPS 204) signature — Phase 1 hybrid PQC
   prevHashPrefixHex   String
   crc32Valid          Boolean
   gnssStatus          String

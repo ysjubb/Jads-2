@@ -223,8 +223,10 @@ class MissionUploadService(
             "droneSerialNumber"      to mission.droneSerialNumber,
             "nanoAckNumber"          to mission.nanoAckNumber,
             "uinNumber"             to mission.uinNumber,
+            // Phase 1 PQC: ML-DSA-65 public key for hybrid verification
+            "pqcPublicKeyHex"       to mission.pqcPublicKeyHex,
             "records"                to records.map { r ->
-                mapOf(
+                val rec = mutableMapOf<String, Any?>(
                     "sequence"          to r.sequence,
                     "timestampUtcMs"    to r.timestampUtcMs,
                     "canonicalHex"      to r.canonicalHex,
@@ -234,6 +236,11 @@ class MissionUploadService(
                     "gnssStatus"        to "GOOD",
                     "sensorHealthFlags" to 1  // FLAG_GPS_OK
                 )
+                // Phase 1 PQC: include ML-DSA-65 signature if present
+                if (r.pqcSignatureHex != null) {
+                    rec["pqcSignatureHex"] = r.pqcSignatureHex
+                }
+                rec
             },
             "violations" to violations.map { v ->
                 mapOf(

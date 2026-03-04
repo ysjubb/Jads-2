@@ -36,7 +36,9 @@ class SqlCipherMissionStore(private val db: JadsDatabase) {
         droneManufacturer:   String?   = null,
         droneSerialNumber:   String?   = null,
         nanoAckNumber:       String?   = null,
-        uinNumber:           String?   = null
+        uinNumber:           String?   = null,
+        // Phase 1 PQC
+        pqcPublicKeyHex:     String?   = null
     ): Long {
         val entity = MissionEntity(
             missionId           = missionId,
@@ -59,32 +61,35 @@ class SqlCipherMissionStore(private val db: JadsDatabase) {
             droneManufacturer   = droneManufacturer,
             droneSerialNumber   = droneSerialNumber,
             nanoAckNumber       = nanoAckNumber,
-            uinNumber           = uinNumber
+            uinNumber           = uinNumber,
+            pqcPublicKeyHex     = pqcPublicKeyHex
         )
         return db.missionDao().insert(entity)
     }
 
     // Save a single telemetry record
     fun saveRecord(
-        missionDbId:  Long,
-        missionId:    Long,
-        sequence:     Long,
-        canonicalHex: String,
-        signatureHex: String,
-        hashHex:      String,
-        prevHashHex:  String,
-        timestampMs:  Long
+        missionDbId:     Long,
+        missionId:       Long,
+        sequence:        Long,
+        canonicalHex:    String,
+        signatureHex:    String,
+        pqcSignatureHex: String? = null,
+        hashHex:         String,
+        prevHashHex:     String,
+        timestampMs:     Long
     ) {
         db.telemetryRecordDao().insert(
             TelemetryRecordEntity(
-                missionDbId    = missionDbId,
-                missionId      = missionId,
-                sequence       = sequence,
-                canonicalHex   = canonicalHex,
-                signatureHex   = signatureHex,
-                recordHashHex  = hashHex,
-                prevHashHex    = prevHashHex,
-                timestampUtcMs = timestampMs
+                missionDbId     = missionDbId,
+                missionId       = missionId,
+                sequence        = sequence,
+                canonicalHex    = canonicalHex,
+                signatureHex    = signatureHex,
+                pqcSignatureHex = pqcSignatureHex,
+                recordHashHex   = hashHex,
+                prevHashHex     = prevHashHex,
+                timestampUtcMs  = timestampMs
             )
         )
     }

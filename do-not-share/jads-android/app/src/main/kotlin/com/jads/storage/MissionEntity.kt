@@ -52,5 +52,8 @@ data class MissionEntity(
     val droneManufacturer:      String? = null,      // "DJI", "Autel", "ideaForge", etc.
     val droneSerialNumber:      String? = null,      // manufacturer serial / UIN
     val nanoAckNumber:          String? = null,      // nano drone acknowledgement number (< 250g)
-    val uinNumber:              String? = null       // UIN for micro+ categories
+    val uinNumber:              String? = null,      // UIN for micro+ categories
+
+    // ── Phase 1 PQC (ML-DSA-65, FIPS 204) ──
+    val pqcPublicKeyHex:        String? = null       // ML-DSA-65 public key for hybrid verification
 )

@@ -2,6 +2,7 @@ package com.jads.drone
 
 import com.jads.crypto.EcdsaSigner
 import com.jads.crypto.HashChainEngine
+import com.jads.crypto.MlDsaSigner
 import com.jads.storage.SqlCipherMissionStore
 import com.jads.telemetry.CanonicalSerializer
 import com.jads.telemetry.TelemetryFields
@@ -57,7 +58,11 @@ class MissionController(
     private val store:          SqlCipherMissionStore,
     private val clock:          MonotonicClock,
     private val privateKeyBytes: ByteArray,
-    private val onMissionFinalized: suspend (missionDbId: Long) -> Unit
+    private val onMissionFinalized: suspend (missionDbId: Long) -> Unit,
+    // Phase 1 PQC: ML-DSA-65 keys for hybrid dual-signing.
+    // Null = PQC signing disabled (backward compatible).
+    private val pqcPrivateKey:    ByteArray? = null,
+    private val pqcPublicKeyHex:  String?    = null
 ) {
     private var missionDbId:      Long      = -1L
     private var missionId:        Long      = -1L
@@ -152,7 +157,8 @@ class MissionController(
             droneManufacturer    = droneManufacturer,
             droneSerialNumber    = droneSerialNumber,
             nanoAckNumber        = nanoAckNumber,
-            uinNumber            = uinNumber
+            uinNumber            = uinNumber,
+            pqcPublicKeyHex      = pqcPublicKeyHex
         )
 
         missionDbId     = dbId
@@ -219,23 +225,28 @@ class MissionController(
         )
         val canonical96 = CanonicalSerializer.serialize(fields)
 
-        // Step 6: Sign
+        // Step 6: Sign (classical ECDSA P-256)
         val hash32       = EcdsaSigner.sha256(canonical96)
         val signatureDer = EcdsaSigner.sign(hash32, privateKeyBytes)
+
+        // Step 6b: PQC hybrid sign (ML-DSA-65, FIPS 204)
+        // ML-DSA signs the canonical payload directly — no pre-hashing needed.
+        val pqcSigBytes = pqcPrivateKey?.let { MlDsaSigner.sign(canonical96, it) }
 
         // Step 7: Advance hash chain
         val newHash = HashChainEngine.computeHashN(canonical96, currentHash)
 
         // Step 8: Persist
         store.saveRecord(
-            missionDbId  = missionDbId,
-            missionId    = missionId,
-            sequence     = currentSequence,
-            canonicalHex = HashChainEngine.toHex(canonical96),
-            signatureHex = HashChainEngine.toHex(signatureDer),
-            hashHex      = HashChainEngine.toHex(newHash),
-            prevHashHex  = HashChainEngine.toHex(currentHash),
-            timestampMs  = timestamp
+            missionDbId     = missionDbId,
+            missionId       = missionId,
+            sequence        = currentSequence,
+            canonicalHex    = HashChainEngine.toHex(canonical96),
+            signatureHex    = HashChainEngine.toHex(signatureDer),
+            pqcSignatureHex = pqcSigBytes?.let { HashChainEngine.toHex(it) },
+            hashHex         = HashChainEngine.toHex(newHash),
+            prevHashHex     = HashChainEngine.toHex(currentHash),
+            timestampMs     = timestamp
         )
 
         // Step 9: Detect violations
