@@ -465,6 +465,365 @@ Plus **Android Studio** open for building and deploying the app.
 
 ---
 
+## Sovereign Handover Architecture — Adapter Pattern
+
+The platform is designed for **government handover**: every external dependency (AFTN, Digital Sky, METAR, NOTAM, UIDAI, AFMLU, FIR) is abstracted behind a TypeScript interface with a development stub. Government integrators replace stubs with live implementations — zero application code changes required.
+
+### Backend Adapter Interfaces (`jads-backend/src/adapters/interfaces/`)
+
+| Interface | Stub | What It Abstracts |
+|-----------|------|-------------------|
+| `IAftnGateway.ts` | `AftnGatewayStub.ts` | AFTN flight plan filing with ATC (Doc 4444 FPL/DLA/CNL/CHG) |
+| `IAfmluAdapter.ts` | `AfmluAdapterStub.ts` | AFMLU airspace zone definitions (ADC records, GeoJSON polygons) |
+| `IFirAdapter.ts` | `FirAdapterStub.ts` | FIR circulars (FIC records, supersedes chain) |
+| `IMetarAdapter.ts` | `MetarAdapterStub.ts` | Weather observations for 12 major Indian aerodromes |
+| `INotamAdapter.ts` | `NotamAdapterStub.ts` | NOTAMs for all 4 Indian FIRs (VIDF, VABB, VECC, VOMF) |
+
+### Injection Pattern — Constructor Defaults
+
+Every consumer accepts an optional adapter, defaulting to the stub:
+
+```typescript
+// FlightPlanService.ts — swap AftnGatewayStub for live AFTN gateway
+constructor(prisma: PrismaClient, aftnGateway: IAftnGateway = new AftnGatewayStub())
+
+// MetarPollJob.ts — swap for live IMD/AAI METAR feed
+constructor(prisma: PrismaClient, adapter?: IMetarAdapter)
+
+// AirspaceDataPollJob.ts — swap all three simultaneously
+constructor(prisma, afmluAdapter = new AfmluAdapterStub(), firAdapter = new FirAdapterStub(), metarAdapter = new MetarAdapterStub())
+```
+
+### Inbound Webhooks — Government Systems Push to JADS
+
+| Endpoint | Method | Auth | Purpose |
+|----------|--------|------|---------|
+| `/api/adapter/adc/push` | POST | `X-JADS-Adapter-Key` | AFMLU pushes ADC clearance number |
+| `/api/adapter/fic/push` | POST | `X-JADS-Adapter-Key` | FIR pushes FIC number |
+| `/api/adapter/clearance/reject` | POST | `X-JADS-Adapter-Key` | Clearance rejection notification |
+
+Authentication: constant-time comparison (`crypto.timingSafeEqual`) via `adapterAuthMiddleware.ts`. Separate from JWT auth.
+
+### Polling Jobs — JADS Pulls from Government Systems
+
+| Job | Cron | Adapter | Idempotency |
+|-----|------|---------|-------------|
+| `NotamPollJob` | `*/5 * * * *` (5 min) | `INotamAdapter` | Upsert by `notamNumber` |
+| `MetarPollJob` | `*/30 * * * *` (30 min) | `IMetarAdapter` | Dedup by `(icaoCode, observationUtc)` |
+| `AdcFicPollJob` | `0 */6 * * *` (6 hr) | `IFirAdapter` | Upsert by `ficNumber` |
+| `AirspaceDataPollJob` | 60 min (ADC), 60 min +15s (FIC), 30 min (METAR) | All three | Combined upsert |
+
+### Android Adapter (`jads-android/`)
+
+| Interface | Stub | Location |
+|-----------|------|----------|
+| `IDigitalSkyAdapter` | `HardcodedZoneMapAdapter.kt` | `NpntComplianceGate.kt:111-114` |
+| `IAirportProximityChecker` | `AirportProximityChecker` (loads from `aerodrome_proximity.json`) | `NpntComplianceGate.kt:278-360` |
+
+Injected via `AppContainer.kt:62-67`. Replace inline stub with HTTP adapter pointing to `https://digitalsky.dgca.gov.in/api/gcs/flightlog/classify` when API becomes available.
+
+### Pre-Plumbed Environment Variables for Live Adapters
+
+All env vars are already defined in `env.ts` — set `USE_LIVE_ADAPTERS=true` and fill in:
+
+```env
+DIGITAL_SKY_BASE_URL=       # eGCA/Digital Sky API endpoint
+DIGITAL_SKY_API_KEY=        # Digital Sky credentials
+UIDAI_BASE_URL=             # Aadhaar verification endpoint
+UIDAI_API_KEY=              # UIDAI credentials
+AFMLU_BASE_URL=             # AFMLU data feed
+AFMLU_API_KEY=              # AFMLU credentials
+FIR_BASE_URL=               # FIR office data feed
+AFTN_GATEWAY_HOST=          # AFTN gateway server
+AFTN_GATEWAY_PORT=          # AFTN gateway port
+METAR_BASE_URL=             # IMD/AAI METAR feed
+NOTAM_BASE_URL=             # AAI NOTAM feed
+```
+
+---
+
+## Scope Invariants — Post-Flight Only (S2/S3 Enforcement)
+
+**The platform is NOT a real-time monitoring system. This is enforced in code and tested in CI.**
+
+### Architectural Boundary
+
+- **S2**: Platform must NOT be a real-time monitoring system
+- **S3**: Drone data flows ONE direction ONLY: device → backend AFTER landing
+- **S7**: No live telemetry streaming, no WebSocket, no SSE for drone data
+
+### Enforcement Tests (`e2e/security/scopeEnforcement.test.ts`)
+
+| Test ID | What It Verifies |
+|---------|-----------------|
+| SCOPE-01 | WebSocket upgrade to `/ws` returns 404/400 (not 101) |
+| SCOPE-02 | `/ws/live-track` returns 404 |
+| SCOPE-03 | `/ws/drone-position` returns 404 |
+| SCOPE-04 | `/api/drone/stream/position` (SSE) returns 404 |
+| SCOPE-05 | `/api/drone/missions/active/stream` (SSE) returns 404 |
+| SCOPE-11 | Express router stack inspected — no WebSocket/SSE handlers registered anywhere |
+
+If any of these fail, **the build must not ship**. These are architectural boundary tests, not functional tests.
+
+### Frozen Files — DO NOT MODIFY
+
+These files are frozen. Any change breaks cross-runtime hash compatibility:
+
+| File | Runtime | Why Frozen |
+|------|---------|-----------|
+| `HashChainEngine.kt` | Kotlin | HASH_0/HASH_n computation must match TypeScript byte-for-byte |
+| `CanonicalSerializer.kt` | Kotlin | 96-byte frozen layout is the forensic record format |
+| `EndianWriter.kt` | Kotlin | Explicit bit-shift big-endian encoding — no ByteBuffer, no library calls |
+| `canonicalSerializer.ts` | TypeScript | Must produce identical bytes to Kotlin serializer |
+
+**Runtime assertion** in `HashChainEngine.kt:29-33`: prefix length check runs at startup — crashes immediately if invariant violated.
+
+**Cross-runtime verification**: `canonical_test_vectors.json` contains frozen test vectors (TV-001 through TV-008) verified by both runtimes in CI Stage 2.
+
+---
+
+## Manned Aircraft Compliance — FIR, Semicircular Rule, RVSM, EET
+
+### FIR Geometry Engine (`services/FirGeometryEngine.ts`)
+
+- Determines which India FIRs a route crosses **in route order** (not alphabetical)
+- Four India FIRs: **VIDF** (Delhi), **VABB** (Mumbai), **VECC** (Kolkata), **VOMF** (Chennai)
+- FIR boundaries are **static constants** from `data/IndiaFirBoundaries.ts` — polygon ray-casting, no external geospatial library
+- Computes **EET per FIR segment** using groundspeed from `RouteSemanticEngine`
+- Output: `FirCrossing[]` with `firCode`, `entryPoint`, `exitPoint`, `distanceNm`, `eetMinutes`
+
+### Altitude Compliance Engine (`services/AltitudeComplianceEngine.ts`)
+
+**IFR Semicircular Rule** (ICAO Annex 2, Table 3-1 — India):
+
+| Magnetic Track | Direction | Valid FLs Below RVSM | Valid FLs in RVSM Band |
+|---------------|-----------|---------------------|----------------------|
+| 000-179 | Eastbound | FL070, 090, 110, 130, 150, 170, 190, 210, 230, 250, 270, 290 | FL290, 310, 330, 350, 370, 390, 410 |
+| 180-359 | Westbound | FL080, 100, 120, 140, 160, 180, 200, 220, 240, 260, 280 | FL300, 320, 340, 360, 380, 400 |
+
+**RVSM Equipment Check**: Equipment code 'W' required for FL290+. Error: `RVSM_EQUIPMENT_MISSING`.
+
+**Transition Altitude**: Aerodrome-specific first, then national default (9,000 ft).
+
+**Safety**: If `magneticTrackDeg` is null, emits `SEMICIRCULAR_UNABLE_NO_TRACK` warning — **never silently passes**.
+
+### OFPL Validation (`services/OfplValidationService.ts`)
+
+Full ICAO field validation (Item 7 through Item 19). AFTN message generation per ICAO Doc 4444 Section 4 via `AftnMessageBuilder.ts`.
+
+### Two-Person Rule (`services/AirspaceVersioningService.ts`)
+
+Airspace zone changes require approval from a **different admin**:
+- Draft created by Admin A → status `DRAFT`
+- Admin A tries to approve own draft → **REJECTED** (`CANNOT_APPROVE_OWN_CHANGES`)
+- Lineage check prevents one person using two accounts
+- Only Admin B approval transitions to `ACTIVE`
+- Tested in `HW-ADMIN-02` and `HW-ADMIN-03` (human workflow tests)
+
+---
+
+## NPNT Compliance Gate — Category-Aware Enforcement
+
+**File:** `jads-android/.../drone/NpntComplianceGate.kt`
+
+Three independent checks run in sequence (MUST run FIRST — before NTP sync, before cert check):
+
+1. **Drone weight category** (DGCA UAS Rules 2021): NANO (<250g), MICRO (250g-2kg), SMALL (2-25kg), MEDIUM (25-150kg), LARGE (>150kg)
+2. **Zone classification** (RED/YELLOW/GREEN from Digital Sky adapter)
+3. **Airport proximity** (exclusion zones per UAS Rules 2021, haversine distance)
+
+### Category-Aware NPNT Exemptions
+
+| Category | NPNT Required? | UIN Required? | Permission Artefact? | Pilot License? |
+|----------|---------------|--------------|---------------------|---------------|
+| NANO (<250g) | No (GREEN only) | No | No | No |
+| MICRO (250g-2kg) | YELLOW zones only | Simplified | YELLOW zones only | No |
+| SMALL+ (>2kg) | Yes | Full UIN | Yes | Yes |
+
+### Zone Decision Logic
+
+- **RED zone**: Hard stop, no override, blocks all categories
+- **YELLOW zone**: Requires valid permission token (except NANO)
+- **GREEN zone**: Proceed if AGL ≤ 400ft; token required above 400ft
+
+Both zone AND proximity checks can independently block a mission. Airport proximity: inner radius = PROHIBITED, outer radius = COORDINATION_REQUIRED.
+
+---
+
+## Testing & CI Pipeline
+
+### CI Pipeline (`ci/jads-platform-pipeline.yml`) — 18 Jobs, 7 Stages
+
+| Stage | Jobs | What It Does |
+|-------|------|-------------|
+| **0 — Environment Gate** | 1 | Verify Node 20+, Java 17+, Docker, Gradle wrapper |
+| **1 — Security Scanning** | 3 | gitleaks (secret scan), npm audit (dependency vulns), CodeQL (SAST) |
+| **2 — Determinism Gates** | 3 | **Canonical TS↔Kotlin byte match**, ECDSA cross-runtime, hash chain properties (1K + 10K iterations) |
+| **3 — Android Unit Tests** | 2 | NPNT gate + airport proximity, forensic suite (49 + 65 tests) |
+| **3b — Backend Unit Tests** | 5 | Adapters, airspace CMS, auth, OFPL validation, telemetry decoder |
+| **4 — Schema & Migration** | 2 | Prisma validate, migration integrity |
+| **5 — E2E Integration** | 6 | manned, airspace, drone, audit, security (scope), performance |
+| **6 — Frontend Builds** | 2 | Admin Portal, Audit Portal |
+| **Final — Build Gate** | 1 | All 18 jobs must pass — single gate for merge |
+
+**Key design**: Determinism gates (Stage 2) run BEFORE functional tests. If Kotlin and TypeScript serializers don't produce identical bytes, nothing else matters.
+
+### Test Suites
+
+**Backend (`jads-backend/src/__tests__/`):**
+
+| Suite | Focus |
+|-------|-------|
+| `stage7-logic.test.ts` | Core business logic (forensics, AFTN, geofence) |
+| `mega-stress-chaos.test.ts` | High-volume stress testing |
+| `concurrent-stress.test.ts` | Parallel upload races |
+| `stress-chaos.test.ts` | Error injection and recovery |
+| `collapse-chaos.test.ts` | Bit-flip attacks, key rotation, Attack B demonstration |
+| `chaos-integration.test.ts` | Multi-component chaos scenarios |
+| `clearance-logic.test.ts` | ADC/FIC clearance workflows |
+| `human-workflow.test.ts` | Two-person rule, admin self-grant blocking |
+| `jobs/job-logic.test.ts` | Polling job idempotency and scheduling |
+| `vectors/vectorVerifier.test.ts` | Frozen test vectors (VEC-01 through VEC-08) |
+
+**Android (`jads-android/app/src/test/`):**
+
+| Suite | Tests | Focus |
+|-------|-------|-------|
+| `stage8-logic-tests.kt` | 49 | Hash chain, NTP quorum, geofence logic |
+| `stage9-stress-chaos.kt` | 65 | GPS loss, process kill, zone map edge cases |
+| `GeofenceCheckerTest.kt` | — | Geofence boundary conditions |
+
+**E2E (`e2e/`):**
+
+| Suite | Test IDs | Focus |
+|-------|----------|-------|
+| `manned/mannedAircraftFlow.test.ts` | E2E-01 to E2E-05 | Flight plan → AFTN → clearance flow |
+| `airspace/airspaceCmsFlow.test.ts` | E2E-10 to E2E-14 | Airspace versioning + two-person rule |
+| `drone/droneMissionFlow.test.ts` | E2E-15 to E2E-20 | Mission upload → forensic verification |
+| `audit/auditFlow.test.ts` | E2E-21 to E2E-27 | Audit trail integrity |
+| `security/scopeEnforcement.test.ts` | SCOPE-01 to SCOPE-11 | Post-flight-only enforcement |
+| `perf/performanceTests.test.ts` | PERF-01 to PERF-05 | Latency, concurrency, replay detection |
+
+---
+
+## Performance Benchmarks
+
+### Scale Targets (Platform Spec)
+
+- 100 concurrent drone missions
+- 1Hz telemetry (1 record/second per drone)
+- Upload burst: entire mission (up to 3,600 records for 1-hour flight) in one POST
+
+### Measured Thresholds (`e2e/perf/performanceTests.test.ts`)
+
+| Metric | CI Threshold | Production Target |
+|--------|-------------|-------------------|
+| Single upload (100 records) | < 2,000 ms | < 500 ms |
+| 10 concurrent uploads | < 5,000 ms (all complete, 0 failures) | < 2,000 ms |
+| Audit query (50 missions) | < 3,000 ms | < 1,000 ms |
+| Idempotent re-upload | Detected (no duplicates) | Same |
+| Replay attack | 409 `REPLAY_ATTEMPT_DETECTED` | Same |
+
+### Chaos & Stress Suites
+
+- `mega-stress-chaos.test.ts` — high-volume stress testing
+- `concurrent-stress.test.ts` — parallel upload race conditions
+- `collapse-chaos.test.ts` — bit-flip attacks, key rotation mid-mission, Attack B (hash chain + payload modification)
+- `stage9-stress-chaos.kt` — Android: GPS loss, process kill, zone map edge cases (65 tests)
+
+---
+
+## Cryptography — Current State & PQC Migration Roadmap
+
+### Current Cryptographic Primitives
+
+| Component | Algorithm | Library | Location |
+|-----------|-----------|---------|----------|
+| Android telemetry signing | ECDSA P-256 (RFC 6979 deterministic nonces) | BouncyCastle 1.77 | `crypto/EcdsaSigner.kt` |
+| Backend signature verification | ECDSA P-256 | Node.js `crypto` | `services/ForensicVerifier.ts` |
+| Hash chain | SHA-256 | Both runtimes | `crypto/HashChainEngine.kt`, `services/ForensicVerifier.ts` |
+| Backend key management | HMAC-SHA256 | Node.js `crypto` | `services/KeyManagementService.ts` |
+| Database encryption | SQLCipher (AES-256) | Android SQLCipher | `storage/JadsDatabase.kt` |
+| Device attestation | X.509 + EC P-256 | Node.js `crypto` | `services/DeviceAttestationService.ts` |
+
+**Quantum-safe today**: SHA-256 (hash chain), HMAC-SHA256, AES-256 (SQLCipher). Grover's algorithm only halves symmetric security — 256-bit remains 128-bit post-quantum, which is sufficient.
+
+**Quantum-vulnerable**: ECDSA P-256 (Shor's algorithm breaks elliptic curve discrete log in polynomial time).
+
+### PQC Migration Roadmap
+
+**Target algorithm**: **ML-DSA-65** (FIPS 204, formerly CRYSTALS-Dilithium Level 3) — direct replacement for ECDSA in digital signatures.
+
+#### Size Impact
+
+| Property | ECDSA P-256 (current) | ML-DSA-65 (target) |
+|----------|----------------------|---------------------|
+| Public key | 65 bytes | 1,952 bytes |
+| Signature | ~72 bytes (DER) | 3,293 bytes |
+| Security | 128-bit classical | 128-bit quantum (NIST Level 3) |
+
+For a 1-hour mission (3,600 records): signatures grow from ~253 KB to ~11.6 MB. Acceptable for post-flight upload.
+
+#### Phase 1 — Hybrid Signatures (NIST SP 800-227 recommended)
+
+Sign every telemetry record with BOTH ECDSA P-256 AND ML-DSA-65. Store both signatures. Verify either. If ML-DSA has a flaw, ECDSA is still there. If quantum breaks ECDSA, ML-DSA is there.
+
+**Schema change**: Add `pqcSignatureHex` column alongside existing `signatureHex`.
+
+**Swap points**:
+- Android: `EcdsaSigner.kt` — add parallel `MlDsaSigner.kt` using BouncyCastle PQC provider
+- Backend: `ForensicVerifier.ts:518-526` — add ML-DSA verification path
+
+#### Phase 2 — ML-DSA Primary, ECDSA Fallback
+
+Once ML-DSA libraries are stable in Android Keystore (hardware-backed PQC keys), make ML-DSA the primary signer. ECDSA retained for verifying old missions.
+
+#### Phase 3 — ML-DSA Only
+
+Drop ECDSA for new missions. All legacy missions remain verifiable via stored ECDSA signatures.
+
+#### Current Blockers
+
+1. **Android Keystore**: No hardware-backed ML-DSA support yet. BouncyCastle 1.78+ has software ML-DSA, but no StrongBox/TEE protection.
+2. **Node.js `crypto`**: No native ML-DSA. Requires `liboqs` bindings or BouncyCastle Java bridge.
+3. **Schema**: `signatureHex` column needs companion `pqcSignatureHex` column.
+
+#### Abstraction Layers Already in Place
+
+| Interface | Purpose | Swap Capability |
+|-----------|---------|----------------|
+| `IKeyProvider` | Backend key management (sign/verify/getSecret) | HSM-ready — swap `EnvKeyProvider` for `HsmKeyProvider` |
+| `IAttestationVerifier` | Device attestation (Play Integrity, key attestation) | Provider-swappable |
+
+**Not yet abstracted**: Core ECDSA signing in `EcdsaSigner.kt` (hardcoded `P-256`) and verification in `ForensicVerifier.ts` (hardcoded `namedCurve`). Phase 1 adds a parallel signer rather than abstracting the existing one.
+
+#### What to Say at iDEX
+
+> "Our hash chain (SHA-256) and database encryption (AES-256) are already quantum-resistant. For digital signatures, we use ECDSA P-256 today — the current industry standard with RFC 6979 deterministic nonces. Our PQC migration plan follows NIST SP 800-227: Phase 1 adds hybrid dual-signatures (ECDSA + ML-DSA-65) for cryptographic agility, Phase 2 transitions to PQC-primary once Android Keystore supports hardware-backed FIPS 204 keys. The swap points are identified: `EcdsaSigner.kt` on Android and `ForensicVerifier.ts` on the backend. Estimated effort: 2-4 weeks post-library availability."
+
+---
+
+## Compliance Mapping — Show Me the Code
+
+| Regulation / Requirement | Implementation | File |
+|--------------------------|---------------|------|
+| **DGCA UAS Rules 2021 — Weight Categories** | NANO/MICRO/SMALL/MEDIUM/LARGE enum with category-specific NPNT exemptions | `NpntComplianceGate.kt:26-53` |
+| **NPNT Gate Order (F2)** | Weight category → zone classification → airport proximity (sequential, all must pass) | `NpntComplianceGate.kt:138-276` |
+| **Digital Sky Zone Classification** | `IDigitalSkyAdapter.classifyLocation()` → RED/YELLOW/GREEN | `NpntComplianceGate.kt:111-114` |
+| **Airport Proximity Exclusion** | Haversine distance, inner radius (PROHIBITED) + outer radius (COORDINATION) | `NpntComplianceGate.kt:278-360` |
+| **ICAO Doc 4444 — Flight Plan Filing** | Full Item 7-19 validation, AFTN FPL/DLA/CNL/CHG message generation | `OfplValidationService.ts`, `AftnMessageBuilder.ts` |
+| **ICAO Annex 2 — Semicircular Rule** | Eastbound odd FLs, westbound even FLs, RVSM band enforcement | `AltitudeComplianceEngine.ts:25-98` |
+| **RVSM Equipment Check** | Equipment code 'W' required above FL290 | `AltitudeComplianceEngine.ts:93-98` |
+| **FIR Boundary / EET Computation** | Ray-casting across VIDF/VABB/VECC/VOMF with per-FIR EET | `FirGeometryEngine.ts:33-80` |
+| **Two-Person Rule (C3)** | Self-approval blocked, lineage check prevents account farming | `AirspaceVersioningService.ts:166-196` |
+| **Forensic Hash Chain** | SHA-256 chained: HASH_0 = SHA256("MISSION_INIT" ∥ missionId_BE), HASH_n = SHA256(canonical ∥ HASH_(n-1)) | `HashChainEngine.kt:7-55` |
+| **96-Byte Canonical Payload** | Deterministic big-endian serialization, CRC32 self-check, cross-runtime verified | `CanonicalSerializer.kt:5-116` |
+| **ECDSA P-256 Tamper Detection** | RFC 6979 deterministic nonces, DER signatures, defends against Attack B | `EcdsaSigner.kt`, `ForensicVerifier.ts:218-237` |
+| **NTP Quorum Time Authority** | 3 NTP servers, 2-of-3 quorum required, mission blocked if sync fails | `NtpQuorumAuthority.kt` |
+| **Post-Flight Only (S2/S3)** | No WebSocket, no SSE, no live streaming — tested in SCOPE-01 through SCOPE-11 | `e2e/security/scopeEnforcement.test.ts` |
+
+---
+
 ## Project Directory Structure
 
 ```
