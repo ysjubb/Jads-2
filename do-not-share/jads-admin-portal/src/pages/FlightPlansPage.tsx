@@ -81,15 +81,130 @@ const FTYPE_LABELS: Record<string, string> = {
   M: 'Military',  X: 'Other',
 }
 
-// ── AFTN Preview Panel ────────────────────────────────────────────────────────
+// ── OFPL Parser — breaks an ICAO FPL message into numbered items ────────────
+// ICAO Doc 4444 FPL format:
+//   (FPL-Item7-Item8-Item9-Item10-Item13-Item15-Item16-Item18[-Item19])
+//
+// Each dash-separated section maps to an ICAO item number.
+// This parser handles newlines within the message (JADS format) and single-line
+// format (copied from AFTN terminal).
+
+interface ParsedOfplItems {
+  raw:    string
+  item7:  string    // Aircraft ID + SSR
+  item8:  string    // Flight rules + type
+  item9:  string    // Aircraft type / wake
+  item10: string    // Equipment / surveillance
+  item13: string    // Departure + EOBT
+  item15: string    // Speed / level / route
+  item16: string    // Destination / EET / alternates
+  item18: string    // Other information
+  item19: string    // Supplementary (endurance, POB, SAR)
+}
+
+function parseOfplMessage(raw: string): ParsedOfplItems | null {
+  // Strip surrounding whitespace, normalise line breaks
+  const cleaned = raw.trim().replace(/\r\n/g, '\n')
+
+  // Must start with (FPL- and end with )
+  if (!cleaned.startsWith('(FPL-') || !cleaned.endsWith(')')) return null
+
+  // Remove the outer (FPL- and )
+  const inner = cleaned.slice(5, -1)
+
+  // Split on \n- (JADS multi-line) or just - at field boundaries.
+  // ICAO FPL fields are separated by \n- (multi-line) or - (single-line).
+  // The tricky part: route field (Item 15) can contain spaces but not leading dashes.
+  // Strategy: join all lines, then split on the dash-field pattern.
+  const singleLine = inner.replace(/\n-/g, '-')
+
+  // Split into dash-separated fields. Each dash starts a new ICAO item.
+  // We need to split carefully because the route in Item 15 can contain spaces.
+  const fields: string[] = []
+  let current = ''
+  let depth   = 0
+
+  for (let i = 0; i < singleLine.length; i++) {
+    const ch = singleLine[i]
+    if (ch === '-' && depth === 0 && i > 0) {
+      fields.push(current)
+      current = ''
+    } else {
+      current += ch
+    }
+    // Track parentheses depth (shouldn't appear in standard FPL, but safety)
+    if (ch === '(') depth++
+    if (ch === ')') depth--
+  }
+  if (current) fields.push(current)
+
+  // Map to items — minimum 7 fields for a valid FPL
+  if (fields.length < 7) return null
+
+  return {
+    raw:    cleaned,
+    item7:  fields[0] ?? '',   // Callsign
+    item8:  fields[1] ?? '',   // Rules + type
+    item9:  fields[2] ?? '',   // Acft type / wake
+    item10: fields[3] ?? '',   // Equipment
+    item13: fields[4] ?? '',   // Departure + EOBT
+    item15: fields[5] ?? '',   // Speed / level / route
+    item16: fields[6] ?? '',   // Destination / EET / altn
+    item18: fields[7] ?? '',   // Other info
+    item19: fields[8] ?? '',   // Supplementary
+  }
+}
+
+// ICAO item labels for display
+const ITEM_LABELS: Record<string, string> = {
+  item7:  'Item 7 — Aircraft ID',
+  item8:  'Item 8 — Flight Rules / Type',
+  item9:  'Item 9 — Aircraft Type / Wake',
+  item10: 'Item 10 — Equipment / Surveillance',
+  item13: 'Item 13 — Departure / EOBT',
+  item15: 'Item 15 — Route',
+  item16: 'Item 16 — Destination / EET / Alternates',
+  item18: 'Item 18 — Other Information',
+  item19: 'Item 19 — Supplementary',
+}
+
+// ── AFTN Preview + OFPL Comparison Panel ─────────────────────────────────────
 
 function AftnPanel({ plan, onClose }: { plan: FlightPlan; onClose: () => void }) {
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied]       = useState(false)
+  const [showCompare, setShowCompare] = useState(false)
+  const [externalOfpl, setExternalOfpl] = useState('')
+  const [compareResult, setCompareResult] = useState<{
+    jads: ParsedOfplItems; external: ParsedOfplItems; diffs: string[]
+  } | null>(null)
+  const [compareError, setCompareError] = useState<string | null>(null)
 
   const copy = () => {
     navigator.clipboard.writeText(plan.aftnMessage ?? '')
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+  }
+
+  const runComparison = () => {
+    setCompareError(null); setCompareResult(null)
+    if (!plan.aftnMessage) { setCompareError('No JADS AFTN message to compare.'); return }
+    if (!externalOfpl.trim()) { setCompareError('Paste the external OFPL message first.'); return }
+
+    const jads     = parseOfplMessage(plan.aftnMessage)
+    const external = parseOfplMessage(externalOfpl)
+
+    if (!jads)     { setCompareError('Could not parse JADS AFTN message. Unexpected format.'); return }
+    if (!external) { setCompareError('Could not parse external OFPL. Must start with (FPL- and end with ).'); return }
+
+    const diffs: string[] = []
+    const keys: (keyof ParsedOfplItems)[] = ['item7','item8','item9','item10','item13','item15','item16','item18','item19']
+    for (const key of keys) {
+      const jVal = (jads[key] ?? '').trim()
+      const eVal = (external[key] ?? '').trim()
+      if (jVal !== eVal) diffs.push(key)
+    }
+
+    setCompareResult({ jads, external, diffs })
   }
 
   return (
@@ -98,10 +213,11 @@ function AftnPanel({ plan, onClose }: { plan: FlightPlan; onClose: () => void })
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
     }}>
       <div style={{
-        background: T.surface, borderRadius: '8px', width: '680px', maxWidth: '95vw',
+        background: T.surface, borderRadius: '8px',
+        width: showCompare ? '960px' : '680px', maxWidth: '95vw',
         maxHeight: '90vh', display: 'flex', flexDirection: 'column',
         boxShadow: `0 8px 32px rgba(0,255,136,0.1)`,
-        border: `1px solid ${T.border}`,
+        border: `1px solid ${T.border}`, transition: 'width 0.2s ease',
       }}>
         {/* Header */}
         <div style={{
@@ -109,7 +225,9 @@ function AftnPanel({ plan, onClose }: { plan: FlightPlan; onClose: () => void })
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <div>
-            <span style={{ fontWeight: 700, fontSize: '1rem', color: T.textBright }}>AFTN Message</span>
+            <span style={{ fontWeight: 700, fontSize: '1rem', color: T.textBright }}>
+              {showCompare ? 'OFPL Comparison' : 'AFTN Message'}
+            </span>
             <span style={{ marginLeft: '0.75rem', fontFamily: 'monospace',
               fontSize: '0.85rem', color: T.muted }}>
               {plan.aircraftId} · {plan.adep} → {plan.ades}
@@ -123,7 +241,7 @@ function AftnPanel({ plan, onClose }: { plan: FlightPlan; onClose: () => void })
         </div>
 
         {/* Addressees */}
-        {plan.aftnAddressees && (
+        {!showCompare && plan.aftnAddressees && (
           <div style={{ padding: '0.75rem 1.25rem', background: T.bg,
             borderBottom: `1px solid ${T.border}`, fontSize: '0.8rem' }}>
             <span style={{ color: T.muted, marginRight: '0.5rem' }}>Addressees:</span>
@@ -140,26 +258,127 @@ function AftnPanel({ plan, onClose }: { plan: FlightPlan; onClose: () => void })
           </div>
         )}
 
-        {/* AFTN message body */}
+        {/* Main content */}
         <div style={{ flex: 1, overflow: 'auto', padding: '1rem 1.25rem' }}>
-          {plan.aftnMessage ? (
-            <pre style={{
-              fontFamily: "'Courier New', monospace", fontSize: '0.85rem',
-              background: '#1a1a2e', color: '#00ff88', padding: '1rem',
-              borderRadius: '6px', lineHeight: 1.6, margin: 0,
-              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-            }}>
-              {plan.aftnMessage}
-            </pre>
+          {!showCompare ? (
+            /* ── Normal AFTN view ──────────────────────────────────── */
+            plan.aftnMessage ? (
+              <pre style={{
+                fontFamily: "'Courier New', monospace", fontSize: '0.85rem',
+                background: '#1a1a2e', color: '#00ff88', padding: '1rem',
+                borderRadius: '6px', lineHeight: 1.6, margin: 0,
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              }}>
+                {plan.aftnMessage}
+              </pre>
+            ) : (
+              <div style={{ color: T.muted, padding: '2rem', textAlign: 'center' }}>
+                No AFTN message generated yet. File the flight plan to generate.
+              </div>
+            )
           ) : (
-            <div style={{ color: T.muted, padding: '2rem', textAlign: 'center' }}>
-              No AFTN message generated yet. File the flight plan to generate.
+            /* ── Comparison view ───────────────────────────────────── */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Paste area */}
+              <div>
+                <label style={{ fontSize: '0.8rem', color: T.muted, display: 'block', marginBottom: '0.3rem' }}>
+                  Paste the OFPL from the external system (AAI AFTN terminal, Jeppesen, etc.):
+                </label>
+                <textarea
+                  value={externalOfpl}
+                  onChange={e => { setExternalOfpl(e.target.value); setCompareResult(null); setCompareError(null) }}
+                  placeholder={'(FPL-VT-ABC-IG\n-B738/M\n-SDFG/LB1\n-VIDP041200\n-N0450F350 DCT\n-VABB/0200 VAAH\n-DOF/260304 REG/VTABC)'}
+                  style={{
+                    width: '100%', minHeight: '100px', padding: '0.75rem',
+                    fontFamily: "'Courier New', monospace", fontSize: '0.8rem',
+                    background: T.bg, color: T.text, border: `1px solid ${T.border}`,
+                    borderRadius: '6px', resize: 'vertical',
+                  }}
+                />
+                <button onClick={runComparison}
+                  style={{
+                    marginTop: '0.5rem', padding: '0.4rem 1rem', borderRadius: '4px',
+                    cursor: 'pointer', border: `1px solid ${T.amber}60`,
+                    background: T.amber + '20', color: T.amber,
+                    fontWeight: 600, fontSize: '0.85rem',
+                  }}>
+                  Compare Field-by-Field
+                </button>
+              </div>
+
+              {compareError && (
+                <div style={{ color: T.red, padding: '0.5rem 0.75rem', background: T.red + '15',
+                  border: `1px solid ${T.red}40`, borderRadius: '4px', fontSize: '0.85rem' }}>
+                  {compareError}
+                </div>
+              )}
+
+              {/* Comparison results */}
+              {compareResult && (
+                <div>
+                  {/* Summary */}
+                  <div style={{
+                    padding: '0.6rem 0.8rem', borderRadius: '4px', marginBottom: '0.75rem',
+                    background: compareResult.diffs.length === 0 ? T.primary + '15' : T.amber + '15',
+                    border: `1px solid ${compareResult.diffs.length === 0 ? T.primary : T.amber}40`,
+                    color: compareResult.diffs.length === 0 ? T.primary : T.amber,
+                    fontWeight: 600, fontSize: '0.9rem',
+                  }}>
+                    {compareResult.diffs.length === 0
+                      ? 'MATCH — All ICAO items are identical.'
+                      : `${compareResult.diffs.length} field${compareResult.diffs.length > 1 ? 's' : ''} differ`}
+                  </div>
+
+                  {/* Field-by-field table */}
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: `2px solid ${T.border}` }}>
+                        <th style={{ padding: '0.4rem', textAlign: 'left', color: T.muted, width: '28%' }}>ICAO Item</th>
+                        <th style={{ padding: '0.4rem', textAlign: 'left', color: T.primary, width: '36%' }}>JADS</th>
+                        <th style={{ padding: '0.4rem', textAlign: 'left', color: T.amber, width: '36%' }}>External OFPL</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(['item7','item8','item9','item10','item13','item15','item16','item18','item19'] as const).map(key => {
+                        const jVal     = (compareResult.jads[key] ?? '').trim()
+                        const eVal     = (compareResult.external[key] ?? '').trim()
+                        const isDiff   = compareResult.diffs.includes(key)
+                        const isEmpty  = !jVal && !eVal
+
+                        if (isEmpty) return null
+
+                        return (
+                          <tr key={key} style={{
+                            borderBottom: `1px solid ${T.border}`,
+                            background: isDiff ? T.red + '08' : 'transparent',
+                          }}>
+                            <td style={{ padding: '0.4rem', color: isDiff ? T.red : T.muted,
+                              fontWeight: isDiff ? 600 : 400, fontSize: '0.75rem', verticalAlign: 'top' }}>
+                              {ITEM_LABELS[key]}
+                              {isDiff && <span style={{ display: 'block', fontSize: '0.65rem',
+                                color: T.red, marginTop: '0.15rem' }}>DIFFERS</span>}
+                            </td>
+                            <td style={{ padding: '0.4rem', fontFamily: 'monospace', fontSize: '0.78rem',
+                              color: isDiff ? T.primary : T.text, wordBreak: 'break-all', verticalAlign: 'top' }}>
+                              {jVal || <span style={{ color: T.muted }}>—</span>}
+                            </td>
+                            <td style={{ padding: '0.4rem', fontFamily: 'monospace', fontSize: '0.78rem',
+                              color: isDiff ? T.amber : T.text, wordBreak: 'break-all', verticalAlign: 'top' }}>
+                              {eVal || <span style={{ color: T.muted }}>—</span>}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
 
         {/* Clearance details */}
-        {(plan.ficNumber || plan.adcNumber) && (
+        {!showCompare && (plan.ficNumber || plan.adcNumber) && (
           <div style={{
             padding: '0.75rem 1.25rem', borderTop: `1px solid ${T.border}`,
             background: T.primary + '15', display: 'flex', gap: '2rem', fontSize: '0.85rem',
@@ -194,25 +413,40 @@ function AftnPanel({ plan, onClose }: { plan: FlightPlan; onClose: () => void })
         {/* Footer */}
         <div style={{
           padding: '0.75rem 1.25rem', borderTop: `1px solid ${T.border}`,
-          display: 'flex', justifyContent: 'flex-end', gap: '0.5rem',
+          display: 'flex', justifyContent: 'space-between',
         }}>
-          {plan.aftnMessage && (
-            <button onClick={copy}
-              style={{
-                padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer',
-                border: `1px solid ${T.primary}40`,
-                background: copied ? T.primary + '15' : T.primary + '15',
-                color: copied ? T.primary : T.primary, fontSize: '0.875rem',
-              }}>
-              {copied ? '✓ Copied' : 'Copy Message'}
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {plan.aftnMessage && (
+              <button onClick={() => { setShowCompare(!showCompare); setCompareResult(null); setCompareError(null) }}
+                style={{
+                  padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer',
+                  border: `1px solid ${T.amber}40`,
+                  background: showCompare ? T.amber + '25' : 'transparent',
+                  color: T.amber, fontSize: '0.875rem', fontWeight: showCompare ? 600 : 400,
+                }}>
+                {showCompare ? 'Back to Message' : 'Compare with OFPL'}
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {!showCompare && plan.aftnMessage && (
+              <button onClick={copy}
+                style={{
+                  padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer',
+                  border: `1px solid ${T.primary}40`,
+                  background: T.primary + '15',
+                  color: T.primary, fontSize: '0.875rem',
+                }}>
+                {copied ? 'Copied' : 'Copy Message'}
+              </button>
+            )}
+            <button onClick={onClose}
+              style={{ padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer',
+                border: `1px solid ${T.border}`, background: 'transparent',
+                color: T.text, fontSize: '0.875rem' }}>
+              Close
             </button>
-          )}
-          <button onClick={onClose}
-            style={{ padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer',
-              border: `1px solid ${T.border}`, background: 'transparent',
-              color: T.text, fontSize: '0.875rem' }}>
-            Close
-          </button>
+          </div>
         </div>
       </div>
     </div>
