@@ -70,6 +70,7 @@ enum NpntClass {
   GREEN
   YELLOW
   RED
+  DJI_IMPORT
 }
 
 enum NtpSyncStatus {

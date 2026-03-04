@@ -1,6 +1,8 @@
 package com.jads
 
 import android.content.Context
+import com.jads.dji.DjiFlightLogWatcher
+import com.jads.dji.DjiLogIngestionService
 import com.jads.drone.*
 import com.jads.network.JadsApiClient
 import com.jads.network.UploadService
@@ -9,6 +11,10 @@ import com.jads.storage.JadsDatabase
 import com.jads.storage.SqlCipherMissionStore
 import com.jads.time.NtpQuorumAuthority
 import com.jads.time.MonotonicClock
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 // AppContainer — manual dependency injection container.
 //
@@ -79,6 +85,33 @@ class AppContainer(context: Context) {
                 com.jads.upload.MissionUploadWorker.enqueue(context, missionDbId)
             }
         )
+    }
+
+    // ── DJI flight log auto-ingestion ───────────────────────────────────────
+    // Watches known DJI directories for new flight logs.
+    // When detected: parse → serialize → sign → chain → store → upload.
+    // No user interaction required after MANAGE_EXTERNAL_STORAGE is granted.
+
+    private val ingestionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    val djiIngestionService by lazy {
+        DjiLogIngestionService(
+            store            = store,
+            clock            = clock,
+            privateKeyBytes  = stubPrivateKeyBytes,
+            context          = context,
+            onMissionIngested = { missionDbId ->
+                com.jads.upload.MissionUploadWorker.enqueue(context, missionDbId)
+            }
+        )
+    }
+
+    val djiLogWatcher by lazy {
+        DjiFlightLogWatcher { file ->
+            ingestionScope.launch {
+                djiIngestionService.ingest(file)
+            }
+        }
     }
 
     // ── Update auth after login ────────────────────────────────────────────

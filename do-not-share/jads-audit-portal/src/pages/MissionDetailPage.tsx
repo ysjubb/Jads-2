@@ -101,9 +101,10 @@ const SEVERITY_COLOURS: Record<string, string> = {
 }
 
 const NPNT_STYLE: Record<string, { bg: string; color: string; border: string }> = {
-  GREEN:  { bg: '#00FF88' + '15', color: '#00FF88', border: '#00FF88' + '40' },
-  YELLOW: { bg: '#FFB800' + '15', color: '#FFB800', border: '#FFB800' + '40' },
-  RED:    { bg: '#FF3B3B' + '15', color: '#FF3B3B', border: '#FF3B3B' + '40' },
+  GREEN:      { bg: '#00FF88' + '15', color: '#00FF88', border: '#00FF88' + '40' },
+  YELLOW:     { bg: '#FFB800' + '15', color: '#FFB800', border: '#FFB800' + '40' },
+  RED:        { bg: '#FF3B3B' + '15', color: '#FF3B3B', border: '#FF3B3B' + '40' },
+  DJI_IMPORT: { bg: '#4A9EFF' + '15', color: '#4A9EFF', border: '#4A9EFF' + '40' },
 }
 
 // ── 8-Invariant Evaluator ─────────────────────────────────────────────────────
@@ -193,7 +194,7 @@ function evaluateInvariants(
     label:       'I-6 Zone Compliance',
     description: 'Flight remained within the declared NPNT zone classification; no zone breaches.',
     passed:      zoneOk,
-    critical:    mission.npntClassification === 'RED',
+    critical:    mission.npntClassification === 'RED' || mission.npntClassification === 'DJI_IMPORT',
     detail:      zoneOk
       ? `Zone: ${mission.npntClassification}. No zone breach violations recorded.`
       : `${zoneViolations.length} zone breach violation(s) recorded in a ${mission.npntClassification} zone.`,

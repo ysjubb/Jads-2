@@ -19,6 +19,18 @@
     <!-- ── Notifications (API 33+) ─────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- ── Storage — DJI flight log auto-ingestion ─────────────────────────── -->
+    <!-- Android 10 (API 29): READ_EXTERNAL_STORAGE reads DJI Fly's flight logs
+         from shared storage (/sdcard/DJI/...).
+         Android 11+ (API 30+): MANAGE_EXTERNAL_STORAGE is required for cross-app
+         file access. Requested at runtime via Settings.ACTION_MANAGE_ALL_FILES_ACCESS.
+         Google Play review: declare "All files access" usage in Play Console under
+         Permissions Declaration Form. Justification: "Read DJI drone flight logs
+         for regulatory compliance (DGCA NPNT) and forensic audit trail." -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
     <!-- ── Security ─────────────────────────────────────────────────────────── -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
@@ -35,7 +47,8 @@
         android:supportsRtl="false"
         android:theme="@style/Theme.JADS"
         android:usesCleartextTraffic="false"
-        android:networkSecurityConfig="@xml/network_security_config">
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:requestLegacyExternalStorage="true">
 
         <activity
             android:name=".ui.MainActivity"
@@ -44,6 +57,44 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- DJI flight log share receiver — accepts files shared from DJI Fly.
+             User flow: DJI Fly → Flight Records → Share → picks JADS.
+             Supports: .txt (binary flight log), .csv (exported), .json (FlightRecord).
+             No UI — copies file, ingests, shows toast, finishes. -->
+        <activity
+            android:name=".dji.DjiShareReceiverActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:excludeFromRecents="true">
+            <!-- Accept single file shares -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/csv" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/json" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <!-- Accept multiple file shares -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
 

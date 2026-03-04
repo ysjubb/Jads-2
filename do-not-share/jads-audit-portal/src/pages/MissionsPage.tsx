@@ -32,7 +32,7 @@ function fmtMs(ms: string) {
 }
 
 const NPNT_COLOUR: Record<string, string> = {
-  GREEN: '#00FF88', YELLOW: '#FFB800', RED: '#FF3B3B'
+  GREEN: '#00FF88', YELLOW: '#FFB800', RED: '#FF3B3B', DJI_IMPORT: '#4A9EFF'
 }
 const NTP_COLOUR = (s: string) => s === 'SYNCED' ? '#00FF88' : '#FFB800'
 
