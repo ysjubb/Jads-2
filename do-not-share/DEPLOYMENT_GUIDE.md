@@ -1,42 +1,49 @@
 # JADS Platform v4.0 — Deployment Guide with Risk Analysis
 
 **Classification:** RESTRICTED — For authorised deployment engineers and operations teams.
-**Version:** 1.0
+**Version:** 1.1
 **Date:** 2026-03-04
+**Scope:** Covers backend API, admin portal, audit portal, Android app, and 4 agent microservices for both manned aircraft flight plan filing and drone forensic audit.
 
 ---
 
 ## 1. Deployment Architecture Overview
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                         PRODUCTION DEPLOYMENT                          │
-│                                                                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌──────────────┐  ┌────────────┐  │
-│  │ JADS Backend │  │ Admin Portal│  │ Audit Portal │  │ PostgreSQL │  │
-│  │ (Express)    │  │ (React)     │  │ (React)      │  │ 16+        │  │
-│  │ Port 8080    │  │ Port 5173   │  │ Port 5174    │  │ Port 5432  │  │
-│  └──────┬───────┘  └──────┬──────┘  └──────┬───────┘  └──────┬─────┘  │
-│         │                 │                │                  │        │
-│         └─────────────────┴────────────────┴──────────────────┘        │
-│                           │                                            │
-│  ┌────────────────────────┴────────────────────────────────────┐      │
-│  │                    Reverse Proxy (nginx)                      │      │
-│  │                    TLS 1.3 termination                        │      │
-│  │                    Rate limiting layer                        │      │
-│  └──────────────────────────┬──────────────────────────────────┘      │
-│                              │                                         │
-│  ┌──────────────────────────┴──────────────────────────────────┐      │
-│  │                 External Anchor Backends                      │      │
-│  │  1. HMAC-signed append-only file (local/NFS)                  │      │
-│  │  2. DGCA Webhook (HTTPS POST to timestamp authority)          │      │
-│  └──────────────────────────────────────────────────────────────┘      │
-│                                                                        │
-│  ┌────────────────────┐  ┌────────────────────────────────────┐       │
-│  │ HSM (Production)    │  │ NTP Sources (chrony/systemd-timesyncd) │   │
-│  │ CloudHSM / PKCS#11 │  │ ≥2 independent NTP servers             │   │
-│  └────────────────────┘  └────────────────────────────────────┘       │
-└────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         PRODUCTION DEPLOYMENT                            │
+│                                                                          │
+│  ┌─────────────┐  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │ JADS Backend │  │ Admin Portal│  │ Audit Portal │  │  PostgreSQL  │  │
+│  │ (Express)    │  │ (React)     │  │ (React)      │  │  16+         │  │
+│  │ Port 8080    │  │ Port 5173   │  │ Port 5174    │  │  Port 5432   │  │
+│  └──────┬───────┘  └──────┬──────┘  └──────┬───────┘  └──────┬───────┘  │
+│         │                 │                │                  │          │
+│         └─────────────────┴────────────────┴──────────────────┘          │
+│                           │                                              │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │              Agent Microservices (deterministic, no LLM)         │    │
+│  │  NOTAM Interpreter :3101  │  Forensic Narrator :3102             │    │
+│  │  AFTN Draft :3103         │  Anomaly Advisor :3104               │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+│                           │                                              │
+│  ┌────────────────────────┴──────────────────────────────────────┐      │
+│  │                    Reverse Proxy (nginx)                        │      │
+│  │                    TLS 1.3 termination                          │      │
+│  │                    Rate limiting layer                          │      │
+│  └──────────────────────────┬────────────────────────────────────┘      │
+│                              │                                           │
+│  ┌──────────────────────────┴──────────────────────────────────┐        │
+│  │                 External Anchor Backends                      │        │
+│  │  1. HMAC-signed append-only file (local/NFS)                  │        │
+│  │  2. DGCA Webhook (HTTPS POST to timestamp authority)          │        │
+│  └──────────────────────────────────────────────────────────────┘        │
+│                                                                          │
+│  ┌────────────────────┐  ┌────────────────────────────────────┐         │
+│  │ HSM (Production)    │  │ NTP Sources (chrony/systemd-timesyncd) │     │
+│  │ CloudHSM / PKCS#11 │  │ ≥2 independent NTP servers             │     │
+│  └────────────────────┘  └────────────────────────────────────┘         │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -179,6 +186,48 @@ cd do-not-share/jads-android
 ./gradlew assembleRelease
 # APK: app/build/outputs/apk/release/app-release.apk
 # Distribute via government-controlled APK channel (not public Play Store)
+```
+
+### 3.6 Agent Microservices
+
+Four deterministic, rule-based microservices. **No LLM, no Ollama, no external AI dependency.** Each is an Express server with pattern-matching logic.
+
+```bash
+# Deploy all 4 agents (each in its own process / container)
+cd do-not-share/agents/notam-interpreter && npm ci && npm run build && node dist/index.js   # :3101
+cd do-not-share/agents/forensic-narrator && npm ci && npm run build && node dist/index.js   # :3102
+cd do-not-share/agents/aftn-draft        && npm ci && npm run build && node dist/index.js   # :3103
+cd do-not-share/agents/anomaly-advisor   && npm ci && npm run build && node dist/index.js   # :3104
+```
+
+| Agent | Port | Health Check | Purpose |
+|-------|------|-------------|---------|
+| NOTAM Interpreter | 3101 | `GET /health` | Parses raw NOTAM text → structured advisory (severity, area, time, impact) |
+| Forensic Narrator | 3102 | `GET /health` | Mission forensic data → human-readable narrative + risk score (0–100) |
+| AFTN Draft | 3103 | `GET /health` | Structured input → ICAO AFTN message draft (FPL, CNL, DLA, CHG) |
+| Anomaly Advisor | 3104 | `GET /health` | Telemetry sequence → anomaly report (altitude spikes, time reversals, GPS spoofing) |
+
+**Failure mode:** If an agent is down, the backend cannot call that service — requests return HTTP connection errors. **Agents are not required for core operations** (flight plan filing, mission upload, forensic verification all work without agents). Agents enhance the user experience with human-readable outputs.
+
+**Docker deployment (optional):**
+```yaml
+# Add to docker-compose.yml
+  notam-interpreter:
+    build: ./do-not-share/agents/notam-interpreter
+    ports: ["3101:3101"]
+    restart: unless-stopped
+  forensic-narrator:
+    build: ./do-not-share/agents/forensic-narrator
+    ports: ["3102:3102"]
+    restart: unless-stopped
+  aftn-draft:
+    build: ./do-not-share/agents/aftn-draft
+    ports: ["3103:3103"]
+    restart: unless-stopped
+  anomaly-advisor:
+    build: ./do-not-share/agents/anomaly-advisor
+    ports: ["3104:3104"]
+    restart: unless-stopped
 ```
 
 ---
@@ -385,6 +434,7 @@ volumes:
 - [ ] Log aggregation configured for critical events (see Section 5.2)
 - [ ] Database backup automated (daily pg_dump)
 - [ ] Anchor log file backed up to separate system
-- [ ] Test suite passes (500+ tests, 0 failures)
+- [ ] Test suite passes (517 tests across 18 suites, 0 failures)
+- [ ] Agent microservices health checks responding (ports 3101–3104) — optional but recommended
 - [ ] First admin account provisioned via direct DB seed (not API)
 - [ ] Genesis anchor created and published to external backends
