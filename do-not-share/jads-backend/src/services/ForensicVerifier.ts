@@ -543,8 +543,8 @@ export class ForensicVerifier {
         const signature = Buffer.from(r.pqcSignatureHex, 'hex')
 
         // ML-DSA-65 signs the raw message (no pre-hashing needed)
-        // API: verify(signature, message, publicKey)
-        const valid = ml_dsa65.verify(signature, payload, publicKey)
+        // API: verify(publicKey, message, signature)
+        const valid = ml_dsa65.verify(publicKey, payload, signature)
 
         if (!valid) {
           errors.push(`PQC_SIG_INVALID: seq=${r.sequence}`)
