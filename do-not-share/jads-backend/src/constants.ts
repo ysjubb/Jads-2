@@ -33,6 +33,102 @@ export type FirCode = typeof FIR_CODES[number]
 export const NPNT_CLASSIFICATIONS = ['GREEN', 'YELLOW', 'RED'] as const
 export type NpntClassification = typeof NPNT_CLASSIFICATIONS[number]
 
+// ── DGCA UAS Rules 2021 — Drone Weight Categories ──────────────────────────
+// Determines regulatory requirements: NPNT gate, UIN, permission artefact
+export const DRONE_WEIGHT_CATEGORIES = ['NANO', 'MICRO', 'SMALL', 'MEDIUM', 'LARGE', 'UNKNOWN'] as const
+export type DroneWeightCategory = typeof DRONE_WEIGHT_CATEGORIES[number]
+
+// Weight thresholds in grams
+export const CATEGORY_WEIGHT_LIMITS = {
+  NANO:   { maxGrams: 250,    label: '< 250g' },
+  MICRO:  { maxGrams: 2000,   label: '250g – 2kg' },
+  SMALL:  { maxGrams: 25000,  label: '2kg – 25kg' },
+  MEDIUM: { maxGrams: 150000, label: '25kg – 150kg' },
+  LARGE:  { maxGrams: Infinity, label: '> 150kg' },
+} as const
+
+// Category-specific regulatory requirements per DGCA UAS Rules 2021
+export const CATEGORY_COMPLIANCE_RULES = {
+  NANO: {
+    npntRequired:         false,   // exempt from NPNT
+    uinRequired:          false,   // no UIN needed
+    nanoAckRequired:      true,    // nano drone acknowledgement number only
+    permissionArtefact:   false,   // no PA needed in GREEN zone
+    maxAglFt:             400,     // still limited to 400ft AGL
+    pilotLicenseRequired: false,
+    remoteIdRequired:     false,
+    insuranceRequired:    false,
+  },
+  MICRO: {
+    npntRequired:         true,    // NPNT in YELLOW zones only
+    uinRequired:          true,    // simplified UIN registration
+    nanoAckRequired:      false,
+    permissionArtefact:   false,   // not needed in GREEN zones
+    maxAglFt:             400,
+    pilotLicenseRequired: false,   // no pilot license for micro
+    remoteIdRequired:     true,
+    insuranceRequired:    true,    // third-party insurance required
+  },
+  SMALL: {
+    npntRequired:         true,    // full NPNT compliance
+    uinRequired:          true,    // full UIN registration
+    nanoAckRequired:      false,
+    permissionArtefact:   true,    // PA required in YELLOW zones
+    maxAglFt:             400,
+    pilotLicenseRequired: true,    // remote pilot license required
+    remoteIdRequired:     true,
+    insuranceRequired:    true,
+  },
+  MEDIUM: {
+    npntRequired:         true,
+    uinRequired:          true,    // UIN + type certificate
+    nanoAckRequired:      false,
+    permissionArtefact:   true,
+    maxAglFt:             400,
+    pilotLicenseRequired: true,
+    remoteIdRequired:     true,
+    insuranceRequired:    true,
+  },
+  LARGE: {
+    npntRequired:         true,
+    uinRequired:          true,    // treated like manned aircraft
+    nanoAckRequired:      false,
+    permissionArtefact:   true,
+    maxAglFt:             400,
+    pilotLicenseRequired: true,
+    remoteIdRequired:     true,
+    insuranceRequired:    true,
+  },
+  UNKNOWN: {
+    npntRequired:         true,    // default to strictest
+    uinRequired:          true,
+    nanoAckRequired:      false,
+    permissionArtefact:   true,
+    maxAglFt:             400,
+    pilotLicenseRequired: true,
+    remoteIdRequired:     true,
+    insuranceRequired:    true,
+  },
+} as const
+
+// Derive category from weight in grams
+export function categorizeByWeight(grams: number): DroneWeightCategory {
+  if (grams < 250)    return 'NANO'
+  if (grams < 2000)   return 'MICRO'
+  if (grams < 25000)  return 'SMALL'
+  if (grams < 150000) return 'MEDIUM'
+  return 'LARGE'
+}
+
+// ── Manufacturer Push Sources ──────────────────────────────────────────────
+export const MANUFACTURER_PUSH_SOURCES = [
+  'DJI', 'AUTEL', 'PARROT', 'SKYDIO', 'IZI', 'ASTERIA', 'THROTTLE', 'GENERIC'
+] as const
+export type ManufacturerPushSource = typeof MANUFACTURER_PUSH_SOURCES[number]
+
+export const PUSH_TYPES = ['REAL_TIME', 'DEFERRED'] as const
+export type PushType = typeof PUSH_TYPES[number]
+
 // OTP config
 export const OTP_EXPIRY_MINUTES = 10
 export const OTP_MAX_ATTEMPTS   = 3

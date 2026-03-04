@@ -39,6 +39,12 @@ router.post('/missions', requireAuth, missionUploadRateLimit, async (req, res) =
       res.status(400).json({ error: 'INVALID_PAYLOAD', required: ['missionId', 'deviceId', 'records'] })
       return
     }
+    // Validate droneWeightCategory if provided
+    const VALID_CATEGORIES = ['NANO', 'MICRO', 'SMALL', 'MEDIUM', 'LARGE', 'UNKNOWN']
+    if (input.droneWeightCategory && !VALID_CATEGORIES.includes(input.droneWeightCategory)) {
+      res.status(400).json({ error: 'INVALID_WEIGHT_CATEGORY', valid: VALID_CATEGORIES })
+      return
+    }
     // deviceNonce validation: if present, must be a valid UUID v4
     if (input.deviceNonce !== undefined && input.deviceNonce !== null) {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.deviceNonce)) {
@@ -134,6 +140,8 @@ router.get('/missions', requireAuth, async (req, res) => {
           missionStartUtcMs: true, missionEndUtcMs: true,
           ntpSyncStatus: true, certValidAtStart: true,
           chainVerifiedByServer: true, uploadStatus: true, uploadedAt: true,
+          droneWeightCategory: true, droneManufacturer: true, npntExempt: true,
+          droneWeightGrams: true, droneSerialNumber: true,
           _count: { select: { telemetryRecords: true, violations: true } }
         }
       }),

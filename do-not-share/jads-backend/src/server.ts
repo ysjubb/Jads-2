@@ -15,6 +15,7 @@ import adcFicRoutes      from './routes/adcFicRoutes'
 import adapterWebhookRoutes from './routes/adapterWebhookRoutes'
 import systemRoutes      from './routes/systemRoutes'
 import agentRoutes       from './routes/agentRoutes'
+import manufacturerRoutes from './routes/manufacturerRoutes'
 
 const app = express()
 
@@ -53,6 +54,7 @@ api.use('/audit',        auditRoutes)
 api.use('/admin',        adminRoutes)
 api.use('/system',       systemRoutes)
 api.use('/agents',       agentRoutes)
+api.use('/manufacturer', manufacturerRoutes)
 app.use('/api', api)
 
 app.use((_req, res) => {

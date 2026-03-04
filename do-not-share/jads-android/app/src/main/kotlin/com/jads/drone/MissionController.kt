@@ -30,7 +30,12 @@ import kotlinx.coroutines.withContext
 //   7. LandingDetector.processSample()        — trigger finalize on landing
 
 sealed class MissionStartResult {
-    data class Started(val missionDbId: Long, val missionId: Long) : MissionStartResult()
+    data class Started(
+        val missionDbId: Long,
+        val missionId: Long,
+        val droneCategory: DroneWeightCategory = DroneWeightCategory.UNKNOWN,
+        val npntExempt: Boolean = false
+    ) : MissionStartResult()
     data class Blocked(val reason: String, val details: List<String>) : MissionStartResult()
 }
 
@@ -82,11 +87,21 @@ class MissionController(
         // Device attestation — provided by Android KeyStore attestation flow
         strongboxBacked:  Boolean = false,
         secureBootVerified: Boolean = false,
-        androidVersion:   Int = 0
+        androidVersion:   Int = 0,
+        // ── Drone category fields (DGCA UAS Rules 2021) ──
+        droneCategory:    DroneWeightCategory = DroneWeightCategory.UNKNOWN,
+        droneWeightGrams: Int? = null,
+        droneManufacturer: String? = null,
+        droneSerialNumber: String? = null,
+        nanoAckNumber:    String? = null,
+        uinNumber:        String? = null
     ): MissionStartResult = withContext(Dispatchers.IO) {
 
-        // Step 1: NPNT gate — MUST be first
-        val npnt = npntGate.evaluate(latDeg, lonDeg, plannedAglFt, permissionToken)
+        // Step 1: NPNT gate — MUST be first (now category-aware)
+        val npnt = npntGate.evaluate(
+            latDeg, lonDeg, plannedAglFt, permissionToken,
+            droneCategory, droneWeightGrams
+        )
         if (npnt.blocked) {
             return@withContext MissionStartResult.Blocked(
                 "NPNT_BLOCKED", npnt.blockingReasons
@@ -118,7 +133,7 @@ class MissionController(
         val hash0   = HashChainEngine.computeHash0(id)
         val rootHex = HashChainEngine.toHex(hash0)
 
-        // Step 5: Persist mission record (includes attestation metadata)
+        // Step 5: Persist mission record (includes attestation + category metadata)
         val ntpJson = buildNtpJson(ntpEvidence)
         val dbId = store.createMission(
             missionId            = id,
@@ -131,7 +146,13 @@ class MissionController(
             startUtcMs           = clock.nextTimestamp(),
             strongboxBacked      = strongboxBacked,
             secureBootVerified   = secureBootVerified,
-            androidVersion       = androidVersion
+            androidVersion       = androidVersion,
+            droneWeightCategory  = npnt.droneCategory.name,
+            droneWeightGrams     = droneWeightGrams,
+            droneManufacturer    = droneManufacturer,
+            droneSerialNumber    = droneSerialNumber,
+            nanoAckNumber        = nanoAckNumber,
+            uinNumber            = uinNumber
         )
 
         missionDbId     = dbId
@@ -143,7 +164,11 @@ class MissionController(
         landingDetector.reset()
         active          = true
 
-        MissionStartResult.Started(dbId, id)
+        MissionStartResult.Started(
+            dbId, id,
+            droneCategory = npnt.droneCategory,
+            npntExempt    = npnt.npntExempt
+        )
     }
 
     // ── RECORD ───────────────────────────────────────────────────────────────
@@ -372,4 +397,15 @@ class MissionController(
 
     private fun buildNtpJson(ev: com.jads.time.TimeAuthorityEvidence): String =
         """{"syncStatus":"${ev.syncStatus}","correctionMs":${ev.correctionMs},"spreadMs":${ev.spreadMs},"servers":${ev.servers},"evidenceTimeMs":${ev.evidenceTimeMs}}"""
+
+    private fun buildCategoryJson(
+        category: DroneWeightCategory,
+        npntExempt: Boolean,
+        manufacturer: String?,
+        serialNumber: String?,
+        weightGrams: Int?,
+        nanoAck: String?,
+        uin: String?
+    ): String =
+        """{"category":"${category.name}","npntExempt":$npntExempt,"manufacturer":${manufacturer?.let { "\"$it\"" } ?: "null"},"serialNumber":${serialNumber?.let { "\"$it\"" } ?: "null"},"weightGrams":${weightGrams ?: "null"},"nanoAckNumber":${nanoAck?.let { "\"$it\"" } ?: "null"},"uinNumber":${uin?.let { "\"$it\"" } ?: "null"}}"""
 }

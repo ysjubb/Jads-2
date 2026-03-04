@@ -14,6 +14,8 @@ import * as crypto             from 'crypto'
 import { createServiceLogger } from '../logger'
 import { verifyCrc32, reservedBytesZero } from '../telemetry/canonicalSerializer'
 import { decodeCanonical }     from '../telemetry/telemetryDecoder'
+import { CATEGORY_COMPLIANCE_RULES, categorizeByWeight } from '../constants'
+import type { DroneWeightCategory } from '../constants'
 
 const log = createServiceLogger('MissionService')
 
@@ -68,6 +70,71 @@ export interface MissionSubmissionInput {
   // (two different flights that happened to produce the same timestamp-based missionId).
   // Nullable: older Android builds pre-Step6 do not send it; system falls back gracefully.
   deviceNonce?:         string
+
+  // ── Drone category fields (DGCA UAS Rules 2021) ──
+  droneWeightCategory?:  string         // NANO | MICRO | SMALL | MEDIUM | LARGE
+  droneWeightGrams?:     number         // actual weight in grams
+  droneManufacturer?:    string         // "DJI", "Autel", "ideaForge", etc.
+  droneSerialNumber?:    string         // manufacturer serial
+  nanoAckNumber?:        string         // nano drone acknowledgement number (< 250g)
+  uinNumber?:            string         // UIN for micro+ categories
+}
+
+// Category-aware compliance check result
+export interface CategoryComplianceResult {
+  allowed:              boolean
+  category:             DroneWeightCategory
+  npntExempt:           boolean
+  warnings:             string[]
+  requiredButMissing:   string[]    // e.g. ["uinNumber", "permissionArtefactId"]
+}
+
+// Validate category-specific compliance requirements
+export function checkCategoryCompliance(input: MissionSubmissionInput): CategoryComplianceResult {
+  const category: DroneWeightCategory = (input.droneWeightCategory as DroneWeightCategory) || 'UNKNOWN'
+  const rules = CATEGORY_COMPLIANCE_RULES[category]
+  const warnings: string[] = []
+  const missing: string[] = []
+
+  // Auto-derive category from weight if category not specified but weight is
+  let effectiveCategory = category
+  if (category === 'UNKNOWN' && input.droneWeightGrams) {
+    effectiveCategory = categorizeByWeight(input.droneWeightGrams)
+    warnings.push(`Category auto-derived from weight: ${effectiveCategory}`)
+  }
+  const effectiveRules = CATEGORY_COMPLIANCE_RULES[effectiveCategory]
+
+  // Check UIN requirement
+  if (effectiveRules.uinRequired && !input.uinNumber) {
+    missing.push('uinNumber')
+    warnings.push(`${effectiveCategory} drones require a UIN number`)
+  }
+
+  // Check nano acknowledgement
+  if (effectiveRules.nanoAckRequired && !input.nanoAckNumber) {
+    missing.push('nanoAckNumber')
+    warnings.push('Nano drones require an acknowledgement number')
+  }
+
+  // Check NPNT / permission artefact
+  const isControlledAirspace = input.npntClassification === 'YELLOW' || input.npntClassification === 'RED'
+  if (effectiveRules.npntRequired && isControlledAirspace && !input.permissionArtefactId) {
+    if (input.npntClassification !== 'RED') { // RED is always blocked regardless
+      missing.push('permissionArtefactId')
+      warnings.push(`${effectiveCategory} drones require permission artefact in YELLOW zones`)
+    }
+  }
+
+  // Nano drones are NPNT-exempt in GREEN zones
+  const npntExempt = !effectiveRules.npntRequired
+
+  return {
+    allowed: true, // category compliance is advisory, not blocking (NPNT gate handles blocking)
+    category: effectiveCategory,
+    npntExempt,
+    warnings,
+    requiredButMissing: missing,
+  }
 }
 
 export type SubmitStatus =
@@ -148,14 +215,28 @@ export class MissionService {
       return { status: 'REPLAY_REJECTED' }
     }
 
-    // 2. Server-side chain verification
+    // 2. Category compliance check (advisory — logged, not blocking)
+    const categoryResult = checkCategoryCompliance(input)
+    if (categoryResult.warnings.length > 0) {
+      log.info('category_compliance_advisory', {
+        data: {
+          missionId: input.missionId,
+          category: categoryResult.category,
+          npntExempt: categoryResult.npntExempt,
+          warnings: categoryResult.warnings,
+          missing: categoryResult.requiredButMissing,
+        }
+      })
+    }
+
+    // 3. Server-side chain verification
     const chainErrors = this.verifyChain(input.missionId, input.records)
     if (chainErrors.length > 0) {
       log.warn('chain_verification_failed', { data: { missionId: input.missionId, chainErrors } })
       return { status: 'VERIFICATION_FAILED', verificationErrors: chainErrors }
     }
 
-    // 3. Persist in transaction
+    // 4. Persist in transaction
     const mission = await this.prisma.$transaction(async tx => {
       const m = await tx.droneMission.create({ data: {
         missionId:              input.missionId,
@@ -183,6 +264,14 @@ export class MissionService {
         strongboxBacked:         input.deviceAttestation?.strongboxBacked    ?? null,
         secureBootVerified:      input.deviceAttestation?.secureBootVerified  ?? null,
         androidVersionAtUpload:  input.deviceAttestation?.androidVersion      ?? null,
+        // Category fields
+        droneWeightCategory:     categoryResult.category as any,
+        droneWeightGrams:        input.droneWeightGrams     ?? null,
+        droneManufacturer:       input.droneManufacturer    ?? null,
+        droneSerialNumber:       input.droneSerialNumber    ?? null,
+        nanoAckNumber:           input.nanoAckNumber        ?? null,
+        uinNumber:               input.uinNumber            ?? null,
+        npntExempt:              categoryResult.npntExempt,
       }})
 
       await tx.droneTelemetryRecord.createMany({ data: input.records.map(r => {
@@ -230,6 +319,9 @@ export class MissionService {
         recordCount:    input.records.length,
         violationCount: input.violations.length,
         chainVerified:  true,
+        droneCategory:  categoryResult.category,
+        npntExempt:     categoryResult.npntExempt,
+        categoryWarnings: categoryResult.warnings,
       })
     }})
 

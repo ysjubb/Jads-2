@@ -73,6 +73,37 @@ enum NpntClass {
   DJI_IMPORT
 }
 
+// DGCA UAS Rules 2021 weight categories
+enum DroneWeightCategory {
+  NANO        // < 250g — exempt from NPNT, no UIN required
+  MICRO       // 250g – 2kg — simplified registration, NPNT in controlled airspace only
+  SMALL       // 2kg – 25kg — full NPNT, UIN required
+  MEDIUM      // 25kg – 150kg — full NPNT, UIN + type certificate required
+  LARGE       // > 150kg — treated as manned aircraft category
+  UNKNOWN     // category not specified (legacy submissions)
+}
+
+// Source of manufacturer-pushed telemetry
+enum ManufacturerPushSource {
+  DJI
+  AUTEL
+  PARROT
+  SKYDIO
+  IZI         // Indian manufacturer ideaForge
+  ASTERIA     // Asteria Aerospace
+  THROTTLE    // Throttle Aerospace
+  GENERIC     // Unknown or unlisted OEM
+}
+
+// Status of a deferred sync batch
+enum DeferredSyncStatus {
+  QUEUED      // received, pending processing
+  PROCESSING  // being validated and ingested
+  COMPLETE    // all records ingested successfully
+  PARTIAL     // some records failed validation
+  REJECTED    // authentication or format failure
+}
+
 enum NtpSyncStatus {
   SYNCED
   DEGRADED
@@ -419,12 +450,27 @@ model DroneMission {
   archivedCrlBase64       String?
   serverReceivedAtUtcMs   String?
 
+  // ── Drone category fields (DGCA UAS Rules 2021) ──
+  droneWeightCategory     DroneWeightCategory @default(UNKNOWN)
+  droneWeightGrams        Int?                // actual weight in grams if known
+  droneManufacturer       String?             // "DJI", "Autel", "ideaForge", etc.
+  droneSerialNumber       String?             // manufacturer serial / UIN
+  nanoAckNumber           String?             // nano drone acknowledgement number (< 250g)
+  uinNumber               String?             // UIN for micro+ categories
+  npntExempt              Boolean             @default(false) // true for nano drones
+
+  // ── Manufacturer push source (if data came via vendor API) ──
+  manufacturerPushId      String?             // FK to ManufacturerPushBatch if vendor-pushed
+  manufacturerSource      String?             // DJI | AUTEL | PARROT | etc.
+
   telemetryRecords        DroneTelemetryRecord[]
   violations              DroneViolation[]
   overrides               DroneMissionOverride[]
 
   @@index([operatorId])
   @@index([uploadedAt])
+  @@index([droneWeightCategory])
+  @@index([droneManufacturer])
 }
 
 model DroneTelemetryRecord {
@@ -612,4 +658,102 @@ model EvidenceLedger {
 
   @@unique([anchorDate])
   @@index([anchorDate])
+}
+
+// ═══════════════════════════════════════════════
+// MANUFACTURER AUTO-SHARE — vendor push + deferred sync
+// ═══════════════════════════════════════════════
+
+// Registered manufacturer API credentials.
+// Each drone OEM (DJI, Autel, etc.) gets a unique vendorKey.
+// When Indian govt mandates auto-share, this is the registry.
+model ManufacturerVendor {
+  id              String                @id @default(cuid())
+  vendorCode      ManufacturerPushSource
+  vendorName      String                // "DJI Technology Co., Ltd."
+  vendorKeyHash   String                // bcrypt hash of the API key
+  webhookUrl      String?               // optional: JADS pushes acknowledgements here
+  isActive        Boolean               @default(true)
+  registeredAt    DateTime              @default(now())
+  registeredBy    String                // admin who onboarded this vendor
+  lastPushAt      DateTime?             // last successful push from this vendor
+  totalBatches    Int                   @default(0)
+  totalFlights    Int                   @default(0)
+
+  batches         ManufacturerPushBatch[]
+
+  @@unique([vendorCode])
+}
+
+// A batch of flight data pushed by a manufacturer.
+// Supports both real-time (after landing) and deferred (post-connectivity).
+model ManufacturerPushBatch {
+  id                  String              @id @default(cuid())
+  vendorId            String
+  batchReference      String              @unique  // vendor's unique batch ID (idempotency key)
+  pushType            String              // REAL_TIME | DEFERRED
+  // DEFERRED = data collected offline, pushed when connectivity available
+  // REAL_TIME = pushed immediately after drone landing
+  deferredReason      String?             // "NO_CONNECTIVITY" | "REMOTE_AREA" | "OPERATOR_DELAYED"
+  deferredSinceUtcMs  String?             // when the data was originally captured
+  receivedAtUtcMs     String              // when JADS server received it
+  status              DeferredSyncStatus  @default(QUEUED)
+  flightCount         Int                 @default(0)
+  processedCount      Int                 @default(0)
+  failedCount         Int                 @default(0)
+  errorDetails        String?             // JSON array of per-flight errors
+  processedAt         DateTime?
+
+  vendor              ManufacturerVendor  @relation(fields: [vendorId], references: [id])
+  flights             ManufacturerPushFlight[]
+
+  @@index([vendorId])
+  @@index([status])
+  @@index([receivedAtUtcMs])
+}
+
+// Individual flight record within a manufacturer push batch.
+// This is the raw data from the drone itself — higher fidelity than phone GPS.
+model ManufacturerPushFlight {
+  id                    String              @id @default(cuid())
+  batchId               String
+  vendorFlightId        String              // manufacturer's internal flight ID
+  droneSerialNumber     String              // drone hardware serial
+  droneModel            String              // "Mavic 3 Enterprise", "EVO II Pro", etc.
+  droneWeightCategory   DroneWeightCategory @default(UNKNOWN)
+  operatorId            String?             // DGCA-registered operator ID if known
+  pilotId               String?             // DGCA-registered pilot ID if known
+
+  // Flight metadata
+  flightStartUtcMs      String
+  flightEndUtcMs        String
+  takeoffLatDeg         Float
+  takeoffLonDeg         Float
+  landingLatDeg         Float?
+  landingLonDeg         Float?
+  maxAltitudeMeters     Float?
+  maxSpeedMs            Float?
+  totalDistanceMeters   Float?
+
+  // Raw telemetry — stored as JSON array of {lat, lon, alt, timestamp, speed, heading}
+  telemetryJson         String              // full GPS track from drone's own sensors
+  telemetryPointCount   Int                 @default(0)
+  telemetryHz           Float?              // sampling rate (DJI = 10Hz typically)
+
+  // Linkage — after processing, linked to a DroneMission if one exists
+  linkedMissionId       String?             // FK to DroneMission.id if matched
+  matchConfidence       Float?              // 0.0–1.0, how confident the time/location match is
+
+  // Validation
+  ingestionStatus       String              @default("PENDING") // PENDING | INGESTED | FAILED | SKIPPED
+  ingestionError        String?
+  processedAt           DateTime?
+
+  batch                 ManufacturerPushBatch @relation(fields: [batchId], references: [id])
+
+  @@index([batchId])
+  @@index([droneSerialNumber])
+  @@index([operatorId])
+  @@index([flightStartUtcMs])
+  @@unique([batchId, vendorFlightId])
 }
