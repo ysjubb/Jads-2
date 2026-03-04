@@ -8,11 +8,13 @@ import { serializeForJson } from '../utils/bigintSerializer'
 import { createServiceLogger } from '../logger'
 import { BCRYPT_ROUNDS, ADMIN_SESSION_HOURS } from '../constants'
 import { SpecialUserAuthService } from '../services/SpecialUserAuthService'
+import { ClearanceService } from '../services/ClearanceService'
 
 const router                = express.Router()
 const prisma                = new PrismaClient()
 const log                   = createServiceLogger('AdminRoutes')
 const specialUserAuthService = new SpecialUserAuthService(prisma)
+const clearanceService       = new ClearanceService(prisma)
 
 // ── ADMIN LOGIN (no auth required) ────────────────────────────────────────
 
@@ -751,6 +753,79 @@ router.get('/flight-plans', async (req, res) => {
     }))
   } catch {
     res.status(500).json({ error: 'FLIGHT_PLANS_FETCH_FAILED' })
+  }
+})
+
+// ── FLIGHT PLAN CLEARANCE (admin simulates AFMLU / FIR issuance) ─────────
+// These let an admin issue ADC and FIC numbers on a filed flight plan.
+// The pilot's app receives the numbers via SSE in real time.
+
+// POST /api/admin/flight-plans/:id/issue-adc
+router.post('/flight-plans/:id/issue-adc', async (req, res) => {
+  try {
+    const { adcNumber, adcType = 'RESTRICTED', afmluId = 1 } = req.body
+    if (!adcNumber || typeof adcNumber !== 'string' || adcNumber.trim().length === 0) {
+      res.status(400).json({ error: 'ADC_NUMBER_REQUIRED' }); return
+    }
+
+    const result = await clearanceService.issueAdc({
+      flightPlanId:    req.params.id,
+      afmluId:         typeof afmluId === 'number' ? afmluId : 1,
+      adcNumber:       adcNumber.trim(),
+      adcType,
+      issuedAt:        new Date().toISOString(),
+      afmluOfficerName: `Admin ${req.adminAuth!.adminUserId}`,
+    })
+
+    await prisma.auditLog.create({ data: {
+      actorType: 'ADMIN_USER', actorId: req.adminAuth!.adminUserId,
+      action: 'admin_issued_adc', resourceType: 'manned_flight_plan',
+      resourceId: req.params.id,
+      detailJson: JSON.stringify({ adcNumber, adcType, afmluId })
+    }})
+
+    log.info('admin_issued_adc', { data: { flightPlanId: req.params.id, adcNumber } })
+    res.json({ success: true, clearanceStatus: result.status, adcNumber })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    res.status(msg.includes('not found') ? 404 : 500).json({ error: 'ADC_ISSUE_FAILED', detail: msg })
+  }
+})
+
+// POST /api/admin/flight-plans/:id/issue-fic
+router.post('/flight-plans/:id/issue-fic', async (req, res) => {
+  try {
+    const { ficNumber, firCode = 'VIDF', subject = 'Clearance issued' } = req.body
+    if (!ficNumber || typeof ficNumber !== 'string' || ficNumber.trim().length === 0) {
+      res.status(400).json({ error: 'FIC_NUMBER_REQUIRED' }); return
+    }
+
+    const VALID_FIRS = ['VIDF', 'VABB', 'VECC', 'VOMF']
+    if (!VALID_FIRS.includes(firCode)) {
+      res.status(400).json({ error: 'INVALID_FIR_CODE', valid: VALID_FIRS }); return
+    }
+
+    const result = await clearanceService.issueFic({
+      flightPlanId:   req.params.id,
+      firCode,
+      ficNumber:      ficNumber.trim(),
+      subject,
+      issuedAt:       new Date().toISOString(),
+      firOfficerName: `Admin ${req.adminAuth!.adminUserId}`,
+    })
+
+    await prisma.auditLog.create({ data: {
+      actorType: 'ADMIN_USER', actorId: req.adminAuth!.adminUserId,
+      action: 'admin_issued_fic', resourceType: 'manned_flight_plan',
+      resourceId: req.params.id,
+      detailJson: JSON.stringify({ ficNumber, firCode, subject })
+    }})
+
+    log.info('admin_issued_fic', { data: { flightPlanId: req.params.id, ficNumber, firCode } })
+    res.json({ success: true, clearanceStatus: result.status, ficNumber })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    res.status(msg.includes('not found') ? 404 : 500).json({ error: 'FIC_ISSUE_FAILED', detail: msg })
   }
 })
 

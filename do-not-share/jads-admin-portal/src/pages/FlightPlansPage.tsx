@@ -43,27 +43,37 @@ interface FlightPlan {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_COLOUR: Record<string, string> = {
-  DRAFT:           T.muted,
-  VALIDATED:       T.primary,
-  FILED:           T.amber,
-  ACKNOWLEDGED:    '#B060FF',
-  ACTIVATED:       T.primary,
-  COMPLETED:       T.primary,
-  CANCELLED:       T.red,
-  OVERDUE:         T.red,
-  REJECTED_BY_ATC: T.red,
+  DRAFT:              T.muted,
+  VALIDATED:          T.primary,
+  FILED:              T.amber,
+  ACKNOWLEDGED:       '#B060FF',
+  ADC_ISSUED:         T.amber,
+  FIC_ISSUED:         T.amber,
+  FULLY_CLEARED:      T.primary,
+  ACTIVATED:          T.primary,
+  COMPLETED:          T.primary,
+  CANCELLED:          T.red,
+  DELAYED:            T.amber,
+  OVERDUE:            T.red,
+  REJECTED_BY_ATC:    T.red,
+  CLEARANCE_REJECTED: T.red,
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT:           'Draft',
-  VALIDATED:       'Validated',
-  FILED:           'Filed',
-  ACKNOWLEDGED:    'Acknowledged',
-  ACTIVATED:       'Activated',
-  COMPLETED:       'Completed',
-  CANCELLED:       'Cancelled',
-  OVERDUE:         'Overdue',
-  REJECTED_BY_ATC: 'Rejected by ATC',
+  DRAFT:              'Draft',
+  VALIDATED:          'Validated',
+  FILED:              'Filed',
+  ACKNOWLEDGED:       'Acknowledged',
+  ADC_ISSUED:         'ADC Issued',
+  FIC_ISSUED:         'FIC Issued',
+  FULLY_CLEARED:      'Fully Cleared',
+  ACTIVATED:          'Activated',
+  COMPLETED:          'Completed',
+  CANCELLED:          'Cancelled',
+  DELAYED:            'Delayed',
+  OVERDUE:            'Overdue',
+  REJECTED_BY_ATC:    'Rejected by ATC',
+  CLEARANCE_REJECTED: 'Clearance Rejected',
 }
 
 const FTYPE_LABELS: Record<string, string> = {
@@ -209,6 +219,202 @@ function AftnPanel({ plan, onClose }: { plan: FlightPlan; onClose: () => void })
   )
 }
 
+// ── Clearance Issuance Panel ────────────────────────────────────────────────
+// Admin simulates AFMLU (ADC) and FIR (FIC) clearance issuance.
+// Pilot's app receives the numbers via SSE in real time.
+
+function ClearancePanel({ plan, token, onDone }: {
+  plan: FlightPlan; token: string; onDone: () => void
+}) {
+  const [adcNumber, setAdcNumber] = useState(
+    `ADC-${String(Math.floor(Math.random() * 900) + 100)}-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 90000) + 10000)}`
+  )
+  const [adcType, setAdcType]     = useState('RESTRICTED')
+  const [afmluId, setAfmluId]     = useState(1)
+  const [ficNumber, setFicNumber] = useState(
+    `FIC/VIDF/${String(Math.floor(Math.random() * 900) + 100)}/${new Date().getFullYear()}`
+  )
+  const [firCode, setFirCode]     = useState('VIDF')
+  const [ficSubject, setFicSubject] = useState('Corridor clearance approved')
+  const [busy, setBusy]           = useState(false)
+  const [result, setResult]       = useState<string | null>(null)
+  const [err, setErr]             = useState<string | null>(null)
+
+  const issueAdc = async () => {
+    setBusy(true); setErr(null); setResult(null)
+    try {
+      const { data } = await adminAxios(token).post(`/flight-plans/${plan.id}/issue-adc`, {
+        adcNumber, adcType, afmluId
+      })
+      setResult(`ADC issued: ${adcNumber} — Status: ${data.clearanceStatus}`)
+    } catch (e: any) {
+      setErr(e.response?.data?.detail ?? e.response?.data?.error ?? 'ADC_ISSUE_FAILED')
+    } finally { setBusy(false) }
+  }
+
+  const issueFic = async () => {
+    setBusy(true); setErr(null); setResult(null)
+    try {
+      const { data } = await adminAxios(token).post(`/flight-plans/${plan.id}/issue-fic`, {
+        ficNumber, firCode, subject: ficSubject
+      })
+      setResult(`FIC issued: ${ficNumber} — Status: ${data.clearanceStatus}`)
+    } catch (e: any) {
+      setErr(e.response?.data?.detail ?? e.response?.data?.error ?? 'FIC_ISSUE_FAILED')
+    } finally { setBusy(false) }
+  }
+
+  const inputStyle = {
+    padding: '0.4rem 0.6rem', border: `1px solid ${T.border}`, borderRadius: '4px',
+    background: T.bg, color: T.text, fontSize: '0.85rem', width: '100%',
+    fontFamily: 'monospace',
+  }
+
+  const btnStyle = (color: string) => ({
+    padding: '0.5rem 1.25rem', borderRadius: '4px', cursor: busy ? 'not-allowed' : 'pointer',
+    border: `1px solid ${color}60`, background: color + '20', color,
+    fontWeight: 600 as const, fontSize: '0.85rem', opacity: busy ? 0.6 : 1,
+  })
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: T.surface, borderRadius: '8px', width: '600px', maxWidth: '95vw',
+        boxShadow: `0 8px 32px rgba(0,255,136,0.1)`, border: `1px solid ${T.border}`,
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '1rem 1.25rem', borderBottom: `1px solid ${T.border}`,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div>
+            <span style={{ fontWeight: 700, color: T.textBright }}>Issue Clearance</span>
+            <span style={{ marginLeft: '0.75rem', fontFamily: 'monospace',
+              fontSize: '0.85rem', color: T.muted }}>
+              {plan.aircraftId} {plan.adep} → {plan.ades}
+            </span>
+          </div>
+          <button onClick={onDone}
+            style={{ border: 'none', background: 'none', fontSize: '1.25rem',
+              cursor: 'pointer', color: T.muted, lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* ADC Section */}
+          <div style={{ background: T.bg, borderRadius: '6px', padding: '1rem',
+            border: `1px solid ${T.border}` }}>
+            <div style={{ fontWeight: 600, color: T.amber, marginBottom: '0.75rem', fontSize: '0.9rem' }}>
+              AFMLU — Issue ADC Number
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <div>
+                <label style={{ fontSize: '0.7rem', color: T.muted, display: 'block', marginBottom: '0.2rem' }}>
+                  ADC Number
+                </label>
+                <input value={adcNumber} onChange={e => setAdcNumber(e.target.value)} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.7rem', color: T.muted, display: 'block', marginBottom: '0.2rem' }}>
+                  ADC Type
+                </label>
+                <select value={adcType} onChange={e => setAdcType(e.target.value)}
+                  style={{ ...inputStyle, fontFamily: 'inherit' }}>
+                  <option value="RESTRICTED">Restricted</option>
+                  <option value="PROHIBITED">Prohibited</option>
+                  <option value="DANGER">Danger</option>
+                  <option value="CONTROLLED">Controlled</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '0.7rem', color: T.muted, display: 'block', marginBottom: '0.2rem' }}>
+                  AFMLU ID (1-10)
+                </label>
+                <input type="number" min={1} max={10} value={afmluId}
+                  onChange={e => setAfmluId(parseInt(e.target.value) || 1)} style={inputStyle} />
+              </div>
+            </div>
+            <button onClick={issueAdc} disabled={busy} style={btnStyle(T.amber)}>
+              {busy ? 'Issuing…' : 'Issue ADC'}
+            </button>
+          </div>
+
+          {/* FIC Section */}
+          <div style={{ background: T.bg, borderRadius: '6px', padding: '1rem',
+            border: `1px solid ${T.border}` }}>
+            <div style={{ fontWeight: 600, color: '#B060FF', marginBottom: '0.75rem', fontSize: '0.9rem' }}>
+              FIR — Issue FIC Number
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <div>
+                <label style={{ fontSize: '0.7rem', color: T.muted, display: 'block', marginBottom: '0.2rem' }}>
+                  FIC Number
+                </label>
+                <input value={ficNumber} onChange={e => setFicNumber(e.target.value)} style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.7rem', color: T.muted, display: 'block', marginBottom: '0.2rem' }}>
+                  FIR Code
+                </label>
+                <select value={firCode} onChange={e => setFirCode(e.target.value)}
+                  style={{ ...inputStyle, fontFamily: 'inherit' }}>
+                  <option value="VIDF">VIDF — Delhi</option>
+                  <option value="VABB">VABB — Mumbai</option>
+                  <option value="VECC">VECC — Kolkata</option>
+                  <option value="VOMF">VOMF — Chennai</option>
+                </select>
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ fontSize: '0.7rem', color: T.muted, display: 'block', marginBottom: '0.2rem' }}>
+                  Subject
+                </label>
+                <input value={ficSubject} onChange={e => setFicSubject(e.target.value)} style={inputStyle} />
+              </div>
+            </div>
+            <button onClick={issueFic} disabled={busy} style={btnStyle('#B060FF')}>
+              {busy ? 'Issuing…' : 'Issue FIC'}
+            </button>
+          </div>
+
+          {/* Result / Error */}
+          {result && (
+            <div style={{ color: T.primary, padding: '0.6rem 0.8rem', background: T.primary + '15',
+              border: `1px solid ${T.primary}40`, borderRadius: '4px', fontSize: '0.85rem',
+              fontFamily: 'monospace' }}>
+              {result}
+            </div>
+          )}
+          {err && (
+            <div style={{ color: T.red, padding: '0.6rem 0.8rem', background: T.red + '15',
+              border: `1px solid ${T.red}40`, borderRadius: '4px', fontSize: '0.85rem' }}>
+              {err}
+            </div>
+          )}
+
+          <div style={{ fontSize: '0.75rem', color: T.muted, lineHeight: 1.5 }}>
+            Issuing ADC or FIC pushes the number to the pilot's app in real time via SSE.
+            Both can be issued independently. Once both ADC and FIC are issued, the plan
+            becomes FULLY_CLEARED.
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '0.75rem 1.25rem', borderTop: `1px solid ${T.border}`,
+          display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={onDone}
+            style={{ padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer',
+              border: `1px solid ${T.border}`, background: 'transparent',
+              color: T.text, fontSize: '0.875rem' }}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export function FlightPlansPage() {
@@ -222,6 +428,7 @@ export function FlightPlansPage() {
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState<string | null>(null)
   const [selectedPlan, setSelected] = useState<FlightPlan | null>(null)
+  const [clearancePlan, setClearancePlan] = useState<FlightPlan | null>(null)
 
   const fetchPlans = useCallback(async () => {
     if (!token) return
@@ -250,6 +457,9 @@ export function FlightPlansPage() {
     const t = setTimeout(() => { setPage(1); fetchPlans() }, 400)
     return () => clearTimeout(t)
   }, [search]) // eslint-disable-line
+
+  const canIssueClearance = (status: string) =>
+    ['FILED', 'ACKNOWLEDGED', 'ADC_ISSUED', 'FIC_ISSUED'].includes(status)
 
   return (
     <div style={{ padding: '1.5rem' }}>
@@ -317,7 +527,7 @@ export function FlightPlansPage() {
             <thead>
               <tr style={{ background: T.surface, borderBottom: `2px solid ${T.border}` }}>
                 {['Aircraft', 'Type', 'Rules', 'ADEP', 'ADES', 'EOBT', 'Status',
-                  'Filed By', 'FIC', 'ADC', 'AFTN', 'Filed At'].map(h => (
+                  'Filed By', 'FIC', 'ADC', 'AFTN', 'Clearance', 'Filed At'].map(h => (
                   <th key={h} style={{ padding:'0.5rem 0.75rem',
                     textAlign:'left', fontWeight:600, whiteSpace:'nowrap', color: T.textBright }}>{h}</th>
                 ))}
@@ -381,6 +591,27 @@ export function FlightPlansPage() {
                       {p.aftnMessage ? 'View' : 'None'}
                     </button>
                   </td>
+                  <td style={{ padding:'0.5rem 0.75rem' }}>
+                    {canIssueClearance(p.status) ? (
+                      <button
+                        onClick={() => setClearancePlan(p)}
+                        style={{
+                          padding: '0.2rem 0.5rem',
+                          background: T.amber + '20',
+                          border: `1px solid ${T.amber}60`,
+                          color: T.amber,
+                          borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        Issue ADC/FIC
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: '0.72rem', color: T.muted }}>
+                        {p.status === 'FULLY_CLEARED' ? 'Cleared' : '—'}
+                      </span>
+                    )}
+                  </td>
                   <td style={{ padding:'0.5rem 0.75rem', fontSize:'0.75rem',
                     color: T.muted, whiteSpace:'nowrap' }}>
                     {p.filedAt
@@ -417,6 +648,15 @@ export function FlightPlansPage() {
       {/* AFTN Preview Modal */}
       {selectedPlan && (
         <AftnPanel plan={selectedPlan} onClose={() => setSelected(null)} />
+      )}
+
+      {/* Clearance Issuance Modal */}
+      {clearancePlan && token && (
+        <ClearancePanel
+          plan={clearancePlan}
+          token={token}
+          onDone={() => { setClearancePlan(null); fetchPlans() }}
+        />
       )}
     </div>
   )
