@@ -90,6 +90,30 @@ Each mission undergoes 10 independent integrity checks:
 - Geofence compliance (Did the drone stay in permitted zones?)
 - And 5 additional hardware, GNSS, timestamp, and quantum-safety checks
 
+### 6-Layer Defence-in-Depth Security
+
+JADS implements six independent security layers. Compromising one does not defeat the others:
+
+| Layer | What It Does |
+|-------|-------------|
+| **L1 — Device-Level Signing** | Every telemetry record is signed on the physical drone using ECDSA P-256 + ML-DSA-65 post-quantum. Forging evidence requires compromising the hardware. |
+| **L2 — Hash Chain Integrity** | Each 96-byte record includes SHA-256 hash of the previous record. Any insertion, deletion, or modification breaks the chain — detected instantly on upload. |
+| **L3 — Merkle Tree Anchoring** | Daily Merkle root published to external systems (DGCA timestamp authority, HMAC-signed logs). Even if the JADS server is fully compromised, published anchors cannot be altered. Third-party auditors can verify inclusion proofs independently. |
+| **L4 — Device Attestation** | Server verifies Play Integrity tokens and key attestation certificates. Assigns trust scores (0–100). Rooted or tampered devices are flagged automatically. |
+| **L5 — Database Immutability** | PostgreSQL triggers block UPDATE/DELETE on the audit log — auto-installed at server startup. Even a DBA with direct SQL access is blocked. Row-level SHA-256 hashes detect bypass attempts. |
+| **L6 — Evidence Ledger Chain** | Append-only daily chain-of-custody: `anchorHash = SHA-256(date + missions + prevHash)`. Genesis anchor establishes root of trust. Any gap or hash mismatch = tampered ledger. |
+
+### 4 Deterministic Agent Microservices
+
+| Agent | What It Does |
+|-------|-------------|
+| **NOTAM Interpreter** | Parses raw NOTAM text into structured advisories (severity, affected area, time window, operational impact) |
+| **Forensic Narrator** | Converts 10-point forensic verification data into human-readable narrative + risk score for courtroom presentation |
+| **AFTN Draft** | Assists with drafting ICAO-compliant AFTN messages (FPL, CNL, DLA, CHG) with contextual suggestions |
+| **Anomaly Advisor** | Detects telemetry anomalies: altitude spikes, velocity spikes, time reversals, position teleports, GPS spoofing indicators |
+
+All agents are deterministic and rule-based — no LLM dependency, no external AI calls. Each runs as an independent microservice.
+
 ### Sovereign Design
 
 All 7 government system integrations (Digital Sky, UIDAI, AFMLU, FIR, AFTN, METAR, NOTAM) use a **plug-and-play adapter pattern**. The government provides their live API credentials; JADS connects without any code changes. Zero vendor lock-in.
@@ -98,22 +122,25 @@ All 7 government system integrations (Digital Sky, UIDAI, AFMLU, FIR, AFTN, META
 
 - **DGCA auditors** see all missions across India
 - **IAF/Army/Navy auditors** see missions within their scope
-- **AAI auditors** see only manned aircraft data (correctly denied drone access)
+- **AAI auditors** see only manned aircraft data (correctly denied drone access — returns 403, never an empty list)
 - **Investigation officers** get time-limited, mission-specific access with two-person approval
 - **No single person** can access, approve, or modify anything alone
+- **Collusion detection** — if admin A provisioned admin B, B cannot approve A's airspace changes (lineage tracking)
 
 ### Quantum-Ready
 
-JADS is the first Indian UTM platform to implement **post-quantum cryptographic signatures** (ML-DSA-65, NIST FIPS 204). When quantum computers eventually threaten current cryptography, JADS evidence will already be protected.
+JADS is the first Indian airspace platform to implement **post-quantum cryptographic signatures** (ML-DSA-65, NIST FIPS 204). Every drone mission can carry dual signatures: ECDSA P-256 (current standard) + ML-DSA-65 (quantum-resistant). When quantum computers threaten current cryptography, JADS evidence is already protected. 12 dedicated tests enforce that PQC degradation is never silent.
 
 ---
 
 ## Scale
 
 - **100-drone swarm support** — verified via simulation (100 drones × 1,000 records each = 100,000 records processed within 15 seconds)
-- **500+ automated tests** across 18 test suites, all passing
+- **517 automated tests** across 18 suites, all passing — including 108-test mega stress/chaos suite (500K+ operations), PQC verification tests, and swarm scale benchmarks
 - **Handles military and civilian** operations — both manned aircraft and drones — under a single platform
 - **27 government entities** supported (DGCA, IAF, Army, Navy, DRDO, HAL, BSF, CRPF, and more)
+- **26 Indian airports** in aerodrome database with haversine proximity gate enforcement
+- **7 CI pipeline stages, 18 jobs** — determinism gates run before functional tests (if Kotlin and TypeScript don't produce identical bytes, nothing else matters)
 
 ---
 
@@ -150,26 +177,32 @@ JADS is the first Indian UTM platform to implement **post-quantum cryptographic 
 
 ## Compliance
 
-| Standard | Status |
-|----------|--------|
-| DGCA UAS Rules 2021 | Fully implemented (NPNT, zones, weight categories) |
-| ICAO Doc 4444 / 8585 | Fully implemented (flight plans, AFTN messaging) |
-| NIST FIPS 204 | Implemented (ML-DSA-65 post-quantum signatures) |
-| Indian Evidence Act | Designed for Section 65B electronic evidence admissibility |
+| Standard | Status | Depth |
+|----------|--------|-------|
+| DGCA UAS Rules 2021 | Fully implemented | NPNT compliance gate, 5 weight categories (Nano–Large) with category-specific exemptions, GREEN/YELLOW/RED zone classification, 5km/8km airport proximity gates (haversine distance against 26 airports), manufacturer registration + auto-share API |
+| ICAO Doc 4444 (PANS-ATM) | Fully implemented | Full OFPL validation (Items 7–19), Item 18 semantic parsing (DOF, REG, PBN, OPR, STS, DEP, DEST), AFTN FPL/CNL/DLA message construction, semicircular rule enforcement (magnetic track → odd/even FL), RVSM compliance (FL290–FL410 + equipment 'W'), transition altitude/level per aerodrome, altitude compliance up to FL450 |
+| ICAO Doc 8585 | Fully implemented | AFTN addressee routing sequences for all 4 Indian FIRs, auto-generated addressees for 24+ Indian aerodromes |
+| ICAO Annex 2 Table 3-1 | Fully implemented | IFR semicircular rule: eastbound (000–179°) odd FLs, westbound (180–359°) even FLs, with RVSM band exceptions |
+| NIST FIPS 204 | Implemented | ML-DSA-65 hybrid dual-signatures (ECDSA P-256 + ML-DSA-65), graceful degradation with explicit logging, 12 dedicated PQC tests |
+| NIST SP 800-57 | Implemented | Key management lifecycle via IKeyProvider abstraction, HSM-ready (PKCS#11 / CloudHSM interface) |
+| Indian Evidence Act | Designed for Section 65B | Cryptographic chain-of-custody, 10-point forensic verification, daily Merkle root anchoring to external systems, evidence admissible as electronic document |
+| IT Act 2000 (India) | Implemented | Audit trail immutability (PostgreSQL triggers), electronic evidence preservation, append-only design |
 
 ---
 
 ## Deployment Readiness
 
-| Component | Status |
-|-----------|--------|
-| Backend API | Production-ready |
-| Android app (Kotlin) | Production-ready |
-| Admin portal (React) | Production-ready |
-| Audit portal (React) | Production-ready |
-| Government adapter stubs (all 7) | Ready for live swap |
-| Test suite (500+ tests) | All passing |
-| Security documentation | Threat model, whitepaper, deployment guide complete |
+| Component | Status | Detail |
+|-----------|--------|--------|
+| Backend API (Express + Prisma) | Production-ready | 5-stage OFPL pipeline, 10-point forensic engine, 7 background jobs, 6 security layers auto-installed |
+| Android app (Kotlin) | Production-ready | ECDSA + ML-DSA-65 signing, SQLCipher encryption, NTP quorum, NPNT compliance, DJI log ingestion |
+| Admin portal (React) | Production-ready | Airspace CMS, flight plan management, ADC/FIC clearance issuance, OFPL comparison tool |
+| Audit portal (React) | Production-ready | Forensic mission viewer, 10-point report display, DJI import visibility, role-scoped access |
+| Agent microservices (4) | Production-ready | NOTAM Interpreter, Forensic Narrator, AFTN Draft, Anomaly Advisor — all deterministic |
+| Government adapter stubs (all 7) | Ready for live swap | Interface contracts frozen — zero code changes needed when government provides live endpoints |
+| Test suite (517 tests, 18 suites) | All passing | Includes 108-test chaos suite, PQC verification, swarm scale, scope enforcement |
+| Security documentation | Complete | Threat model (10 threats), security whitepaper (6 layers), deployment guide, operational risk register |
+| CI/CD pipeline | Complete | 7 stages, 18 jobs — determinism gates, security scanning, cross-runtime byte verification |
 
 ---
 

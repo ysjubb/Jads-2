@@ -3,19 +3,24 @@
 ## JADS Platform — Laptop Setup & Android Deployment Guide
 
 **Date:** 4 March 2026
-**Goal:** Run all portals on the laptop, develop the Android app, and deploy it today.
+**Platform version:** 4.0.0
+**Goal:** Run the complete JADS platform on the laptop — backend API (with 6-layer security architecture auto-configured), admin portal, audit portal, 4 agent microservices, and Android app — for both manned aircraft flight plan filing and drone forensic audit.
 
 ---
 
 ## Architecture Overview
 
-| Component | Port | Technology |
-|-----------|------|-----------|
-| **PostgreSQL Database** | `localhost:5432` | Docker (postgres:16-alpine) |
-| **Backend API** | `localhost:8080` | Node.js + Express + Prisma |
-| **Admin Portal** | `localhost:5173` | React + Vite |
-| **Audit Portal** | `localhost:5174` | React + Vite |
-| **Android App** | Physical device / emulator | Kotlin + Jetpack Compose |
+| Component | Port | Technology | Purpose |
+|-----------|------|-----------|---------|
+| **PostgreSQL Database** | `localhost:5432` | Docker (postgres:16-alpine) | Primary data store + audit log with immutability triggers |
+| **Backend API** | `localhost:8080` | Node.js + Express + Prisma | 5-stage OFPL pipeline, 10-point forensic engine, 7 background jobs |
+| **Admin Portal** | `localhost:5173` | React + Vite | Airspace CMS, flight plans, ADC/FIC clearance, OFPL comparison |
+| **Audit Portal** | `localhost:5174` | React + Vite | Forensic mission viewer, DJI import, role-scoped access |
+| **NOTAM Interpreter** | `localhost:3101` | Express microservice | Parses raw NOTAMs → structured advisories |
+| **Forensic Narrator** | `localhost:3102` | Express microservice | Mission data → human-readable forensic narrative |
+| **AFTN Draft** | `localhost:3103` | Express microservice | Structured input → ICAO AFTN message draft |
+| **Anomaly Advisor** | `localhost:3104` | Express microservice | Telemetry → anomaly detection report |
+| **Android App** | Physical device / emulator | Kotlin + Jetpack Compose | ECDSA + ML-DSA-65 signing, hash chains, NTP quorum |
 
 ---
 
@@ -183,12 +188,14 @@ VITE v5.x.x  ready in xxx ms
 - Password: `Admin@JADS2024`
 
 ### What you can do in Admin Portal:
-- **Dashboard** — system overview, stats
-- **Flight Plans** — view filed plans, issue ADC/FIC clearance numbers, compare with OFPL
-- **Users** — manage civilian operators
-- **Special Users** — manage IAF/DGCA accounts
-- **Drone Zones** — manage RED/YELLOW/GREEN airspace zones
-- **Airspace** — version control with two-person approval workflow
+- **Dashboard** — system overview, active stats, entity counts
+- **Flight Plans** — view filed manned aircraft plans, issue ADC/FIC clearance numbers, compare with OFPL, view generated AFTN messages (FPL, CNL, DLA)
+- **OFPL Comparison Tool** — paste an external OFPL, JADS highlights differences and validates against its own 5-stage pipeline
+- **ADC/FIC Clearance Issuance** — simulate AFMLU/FIR issuing clearance numbers (pilot app gets real-time SSE notification)
+- **Users** — manage civilian operators (Aadhaar-verified)
+- **Special Users** — manage IAF/DGCA/Army/Navy/DRDO/HAL/BSF/CRPF accounts (27 entities)
+- **Drone Zones** — manage RED/YELLOW/GREEN airspace zones with 5km/8km airport proximity gates
+- **Airspace** — version control with two-person approval workflow (lineage collusion detection)
 
 **KEEP THIS TERMINAL RUNNING.**
 
@@ -213,12 +220,62 @@ VITE v5.x.x  ready in xxx ms
 ### Open in browser: http://localhost:5174
 
 ### What you can do in Audit Portal:
-- **Missions** — browse all drone missions with forensic verification status
-- **Mission Detail** — view telemetry records, hash chain integrity, ECDSA signatures
-- **Flight Plans** — view filed manned aircraft flight plans
-- **Violations** — browse geofence, altitude, and proximity violations
+- **Missions** — browse all drone missions with 10-point forensic verification status (hash chain, NTP, cert, zone, GNSS, PQC...)
+- **Mission Detail** — full forensic breakdown: telemetry records, hash chain integrity, ECDSA P-256 signatures, ML-DSA-65 PQC status, device attestation trust score, GNSS integrity
+- **DJI Import** — imported DJI flight logs appear alongside native missions
+- **Flight Plans** — view filed manned aircraft flight plans with AFTN message history and clearance status
+- **Violations** — browse geofence, altitude, and airport proximity violations with severity classification
+- **Role-Scoped Access** — DGCA sees everything, AAI sees only manned aircraft (drone access returns 403), Investigation Officers see only granted missions
 
 **KEEP THIS TERMINAL RUNNING.**
+
+---
+
+## PHASE 6B: Start the Agent Microservices (Optional but Recommended)
+
+These are 4 deterministic, rule-based services. **No LLM, no Ollama, no external AI.** Each is ~200 lines of Express + pattern matching.
+
+Open **4 new terminal tabs** (or use a single tab with background processes):
+
+```bash
+# Terminal 5 — NOTAM Interpreter
+cd ~/Jads-2/do-not-share/agents/notam-interpreter
+npm install && npx ts-node index.ts
+# → NOTAM Interpreter running on port 3101
+
+# Terminal 6 — Forensic Narrator
+cd ~/Jads-2/do-not-share/agents/forensic-narrator
+npm install && npx ts-node index.ts
+# → Forensic Narrator running on port 3102
+
+# Terminal 7 — AFTN Draft
+cd ~/Jads-2/do-not-share/agents/aftn-draft
+npm install && npx ts-node index.ts
+# → AFTN Draft running on port 3103
+
+# Terminal 8 — Anomaly Advisor
+cd ~/Jads-2/do-not-share/agents/anomaly-advisor
+npm install && npx ts-node index.ts
+# → Anomaly Advisor running on port 3104
+```
+
+**Or start all 4 in one command (background):**
+```bash
+cd ~/Jads-2/do-not-share/agents
+for agent in notam-interpreter forensic-narrator aftn-draft anomaly-advisor; do
+  (cd $agent && npm install && npx ts-node index.ts &)
+done
+```
+
+Verify all agents:
+```bash
+curl http://localhost:3101/health   # NOTAM Interpreter
+curl http://localhost:3102/health   # Forensic Narrator
+curl http://localhost:3103/health   # AFTN Draft
+curl http://localhost:3104/health   # Anomaly Advisor
+```
+
+**These agents are optional.** The backend, portals, and Android app work without them. Agents enhance the experience with human-readable NOTAM interpretation, forensic narratives, AFTN message drafting, and anomaly reports.
 
 ---
 
@@ -402,7 +459,7 @@ The phone and laptop **MUST be on the same network**.
 
 ## Terminal Windows Summary
 
-You need **4 terminals running simultaneously**:
+You need **4–8 terminals running simultaneously**:
 
 | Terminal | Directory | Command | Port |
 |----------|-----------|---------|------|
@@ -410,8 +467,18 @@ You need **4 terminals running simultaneously**:
 | 2 | `jads-backend/` | `npm run dev` | 8080 |
 | 3 | `jads-admin-portal/` | `npm run dev` | 5173 |
 | 4 | `jads-audit-portal/` | `npm run dev` | 5174 |
+| 5 | `agents/notam-interpreter/` | `npx ts-node index.ts` | 3101 (optional) |
+| 6 | `agents/forensic-narrator/` | `npx ts-node index.ts` | 3102 (optional) |
+| 7 | `agents/aftn-draft/` | `npx ts-node index.ts` | 3103 (optional) |
+| 8 | `agents/anomaly-advisor/` | `npx ts-node index.ts` | 3104 (optional) |
 
 Plus **Android Studio** open for building and deploying the app.
+
+**What starts automatically when the backend starts:**
+- PostgreSQL audit triggers (L5 — database immutability) — auto-installed, idempotent
+- RuntimeIntegrityService (SHA-256 baseline of critical files, re-checked every 5 min)
+- All 7 background jobs (METAR poll, NOTAM poll, ADC/FIC poll, evidence ledger, reverification, annual reconfirm, airspace data)
+- Evidence ledger chain (L6 — daily anchoring at 00:05 UTC)
 
 ---
 

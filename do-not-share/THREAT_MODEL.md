@@ -10,16 +10,23 @@
 
 ## 1. System Description
 
-JADS (Joint Airspace Drone System) is a **post-flight forensic audit platform** for Indian airspace. It ingests completed drone missions, verifies cryptographic integrity chains, and produces legally admissible forensic reports.
+JADS (Joint Airspace Drone System) is India's **sovereign airspace management and forensic audit platform** serving two domains:
 
-**Hard Scope Boundary:** JADS is NOT a live monitoring system, NOT a real-time command-and-control system, and NOT an in-flight decision-making system. It processes only completed missions (status = COMPLETED or COMPLETED_WITH_VIOLATIONS). This scope is enforced at code level via `assertPostFlightScope()` with CI-enforced tests.
+1. **Manned aircraft** — ICAO-compliant flight plan filing with live ADC, FIC, NOTAM, and METAR integration. 5-stage validation pipeline (OFPL syntax → route semantics → altitude compliance → FIR sequencing → AFTN filing). Real-time clearance notifications via SSE. AFTN message automation (FPL, CNL, DLA) with auto-generated addressees for all 4 Indian FIRs and 24+ aerodromes.
+
+2. **Drones** — Post-flight forensic audit. Ingests completed drone missions, verifies cryptographic integrity chains (6-layer defence-in-depth), and produces legally admissible forensic reports. 10-point forensic verification with ECDSA P-256 + ML-DSA-65 hybrid signatures.
+
+**Hard Scope Boundary (Drones Only):** For drone operations, JADS is NOT a live monitoring system, NOT a real-time command-and-control system, and NOT an in-flight decision-making system. It processes only completed missions (status = COMPLETED or COMPLETED_WITH_VIOLATIONS). This scope is enforced at code level via `assertPostFlightScope()` with CI-enforced tests (SE-01 through SE-10).
+
+**For manned aircraft**, the platform provides pre-flight validation and filing — a fundamentally different security posture. SSE streams for clearance notifications are authorized for flight plans (not drones).
 
 **System Components:**
-- Backend API server (Node.js/TypeScript, Express, Prisma, PostgreSQL)
-- Android app (Kotlin, Jetpack Compose) — on-drone telemetry capture
-- Admin Portal (React) — airspace management, user provisioning
-- Audit Portal (React) — forensic report viewing, investigation access
-- 7 external adapter interfaces (Digital Sky, UIDAI, AFMLU, FIR, AFTN, METAR, NOTAM)
+- Backend API server (Node.js/TypeScript, Express, Prisma, PostgreSQL) — 517 tests, 18 suites
+- Android app (Kotlin, Jetpack Compose) — on-drone telemetry capture with ECDSA + ML-DSA-65 signing
+- Admin Portal (React) — airspace management, user provisioning, ADC/FIC clearance issuance, OFPL comparison
+- Audit Portal (React) — forensic report viewing, investigation access, DJI import visibility
+- 4 deterministic agent microservices — NOTAM Interpreter, Forensic Narrator, AFTN Draft, Anomaly Advisor
+- 7 external adapter interfaces (Digital Sky, UIDAI, AFMLU, FIR, AFTN, METAR, NOTAM) — all stubbed, interface-frozen
 
 ---
 
@@ -246,6 +253,39 @@ JADS (Joint Airspace Drone System) is a **post-flight forensic audit platform** 
 
 ---
 
+### T-11: Fraudulent Flight Plan Filing (Manned Aircraft)
+
+**Description:** An unauthorized user files a flight plan using a stolen or fabricated callsign, or a civilian files for a military aerodrome without authorization.
+
+**Defenses:**
+| Layer | Control | Source |
+|-------|---------|--------|
+| Callsign authorization | Civilian users can only file for callsigns in their authorized list | `OfplValidationService.ts` — `CALLSIGN_NOT_AUTHORISED` error |
+| Military aerodrome warning | Civilian user filing from/to a military aerodrome triggers explicit warning | `OfplValidationService.ts` — `MILITARY_AERODROME_CIVILIAN_USER` |
+| RVSM equipment enforcement | FL290–FL410 requires equipment 'W' — prevents filing without proper avionics | `AltitudeComplianceEngine.ts` |
+| Audit trail | All filing attempts (success and failure) are logged with userId, userType, callsign | `FlightPlanService.writeAuditLog()` |
+| Role-based filing | CIVILIAN vs SPECIAL user type determines validation strictness and available callsigns | `requireAuth` middleware |
+
+**Assumption:** Callsign lists are provisioned by entity admins and kept current.
+
+---
+
+### T-12: AFTN Message Injection / Tampering
+
+**Description:** Attacker injects or modifies AFTN messages to file, cancel, or delay flight plans on behalf of another user.
+
+**Defenses:**
+| Layer | Control | Source |
+|-------|---------|--------|
+| Ownership enforcement | Cancel/delay only allowed by the original filing user (`plan.filedBy !== userId`) | `FlightPlanService.cancelPlan()`, `delayPlan()` |
+| Status validation | Only certain statuses allow cancel/delay — prevents double-cancel or cancel-after-activation | `cancellableStatuses`, `delayableStatuses` arrays |
+| AFTN gateway authentication | All AFTN transmissions go through authenticated gateway stub (live: government-controlled endpoint) | `IAftnGateway.fileFpl()` |
+| Inbound webhook authentication | ADC/FIC push webhooks require `X-JADS-Adapter-Key` with constant-time comparison | `adapterAuthMiddleware.ts` — `crypto.timingSafeEqual` |
+
+**Assumption:** AFTN gateway and webhook keys are securely managed and rotated on personnel changes.
+
+---
+
 ## 4. Assumptions Summary
 
 | ID | Assumption | Impact if Violated |
@@ -294,6 +334,8 @@ JADS (Joint Airspace Drone System) is a **post-flight forensic audit platform** 
 | T-8 Clock Manipulation | | X | | | | | | | X | | | | | | |
 | T-9 Insider Threat | | | | | | | | | | | X | | X | | |
 | T-10 Supply Chain | | | | | | | | | | | | | | | |
+| T-11 Fraudulent Filing | | | | | | | | | | | X | | | | |
+| T-12 AFTN Injection | | | | | | | | | | | X | | | | |
 
 ---
 
