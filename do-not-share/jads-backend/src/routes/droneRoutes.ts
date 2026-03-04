@@ -66,6 +66,26 @@ router.post('/missions', requireAuth, missionUploadRateLimit, async (req, res) =
 
     const result = await service.submitMission(input, userId, userType as 'CIVILIAN' | 'SPECIAL')
 
+    // Auto-run forensic verification after successful creation.
+    // Ensures every uploaded mission (including DJI imports) has a
+    // forensic report available immediately — no manual trigger needed.
+    let forensicResult: any = null
+    if (result.status === 'CREATED' && result.missionDbId) {
+      try {
+        forensicResult = await verifier.verify(result.missionDbId)
+        log.info('auto_forensic_verification', {
+          data: {
+            missionDbId: result.missionDbId,
+            allInvariantsHold: forensicResult.allInvariantsHold,
+          }
+        })
+      } catch (e) {
+        log.warn('auto_forensic_verification_failed', {
+          data: { missionDbId: result.missionDbId, error: e instanceof Error ? e.message : String(e) }
+        })
+      }
+    }
+
     const httpStatus =
       result.status === 'CREATED'             ? 201 :
       result.status === 'DUPLICATE'           ? 202 :
@@ -76,6 +96,7 @@ router.post('/missions', requireAuth, missionUploadRateLimit, async (req, res) =
       status:              result.status,
       missionDbId:         result.missionDbId,
       verificationErrors:  result.verificationErrors,
+      forensicVerification: forensicResult ?? undefined,
     }))
   } catch (e: unknown) {
     // VULN-02 FIX: P2002 = unique constraint violation from concurrent upload race.

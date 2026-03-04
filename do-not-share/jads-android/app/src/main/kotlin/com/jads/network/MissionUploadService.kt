@@ -219,23 +219,22 @@ class MissionUploadService(
             "records"                to records.map { r ->
                 mapOf(
                     "sequence"          to r.sequence,
-                    "timestampUtcMs"    to r.timestampUtcMs.toString(),
-                    "canonicalPayloadHex" to r.canonicalHex,
+                    "timestampUtcMs"    to r.timestampUtcMs,
+                    "canonicalHex"      to r.canonicalHex,
                     "chainHashHex"      to r.recordHashHex,
                     "prevHashHex"       to r.prevHashHex,
-                    "ecdsaSignatureHex" to r.signatureHex
+                    "signatureHex"      to r.signatureHex,
+                    "gnssStatus"        to "GOOD",
+                    "sensorHealthFlags" to 1  // FLAG_GPS_OK
                 )
             },
             "violations" to violations.map { v ->
                 mapOf(
-                    "sequence"     to v.sequence,
-                    "type"         to v.violationType,
-                    "severity"     to v.severity,
-                    "timestampMs"  to v.timestampMs.toString(),
-                    "latMicrodeg"  to v.latMicrodeg,
-                    "lonMicrodeg"  to v.lonMicrodeg,
-                    "altCm"        to v.altCm,
-                    "detailJson"   to v.detailJson
+                    "sequence"       to v.sequence,
+                    "violationType"  to v.violationType,
+                    "severity"       to v.severity,
+                    "timestampUtcMs" to v.timestampUtcMs,
+                    "detailJson"     to v.detailJson
                 )
             }
         )

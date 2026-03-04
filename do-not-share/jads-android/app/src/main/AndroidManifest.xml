@@ -60,6 +60,44 @@
             </intent-filter>
         </activity>
 
+        <!-- DJI flight log share receiver — accepts files shared from DJI Fly.
+             User flow: DJI Fly → Flight Records → Share → picks JADS.
+             Supports: .txt (binary flight log), .csv (exported), .json (FlightRecord).
+             No UI — copies file, ingests, shows toast, finishes. -->
+        <activity
+            android:name=".dji.DjiShareReceiverActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:excludeFromRecents="true">
+            <!-- Accept single file shares -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/csv" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/json" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <!-- Accept multiple file shares -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
         <!-- MissionForegroundService: foregroundServiceType=location required on API 29+
              for GPS access while service is backgrounded. -->
         <service
