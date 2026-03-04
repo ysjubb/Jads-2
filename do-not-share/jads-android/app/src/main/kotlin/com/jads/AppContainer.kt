@@ -3,6 +3,7 @@ package com.jads
 import android.content.Context
 import com.jads.dji.DjiFlightLogWatcher
 import com.jads.dji.DjiLogIngestionService
+import com.jads.crypto.MlDsaSigner
 import com.jads.drone.*
 import com.jads.network.JadsApiClient
 import com.jads.network.UploadService
@@ -57,6 +58,13 @@ class AppContainer(context: Context) {
     // KeyStore.PrivateKey reference, not raw bytes.
     private val stubPrivateKeyBytes = ByteArray(32) { it.toByte() }
 
+    // ── PQC key pair (ML-DSA-65, FIPS 204) — Phase 1 hybrid signing ─────
+    // Generated once at app startup. Software-only (not hardware-backed yet).
+    // The public key is sent to the backend at upload time for verification.
+    private val pqcKeyPair: Pair<ByteArray, ByteArray> by lazy { MlDsaSigner.generateKeyPair() }
+    val pqcPrivateKey: ByteArray get() = pqcKeyPair.first
+    val pqcPublicKey:  ByteArray get() = pqcKeyPair.second
+
     // Digital Sky adapter — STUB for demo (returns GREEN for all locations).
     // Production: replace with HTTP call to Digital Sky India API.
     private val digitalSkyAdapter = object : IDigitalSkyAdapter {
@@ -83,7 +91,9 @@ class AppContainer(context: Context) {
             onMissionFinalized = { missionDbId ->
                 // Upload triggered by WorkManager after finalization
                 com.jads.upload.MissionUploadWorker.enqueue(context, missionDbId)
-            }
+            },
+            pqcPrivateKey    = pqcPrivateKey,   // Phase 1 hybrid PQC signing
+            pqcPublicKeyHex  = pqcPublicKey.let { com.jads.crypto.HashChainEngine.toHex(it) }
         )
     }
 

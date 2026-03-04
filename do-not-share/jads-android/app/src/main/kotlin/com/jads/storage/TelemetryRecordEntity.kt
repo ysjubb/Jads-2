@@ -30,10 +30,11 @@ data class TelemetryRecordEntity(
     val missionId:      Long,
     val sequence:       Long,
 
-    val canonicalHex:   String,   // 96-byte payload as hex (192 chars)
-    val signatureHex:   String,   // DER-encoded ECDSA signature as hex
-    val recordHashHex:  String,   // HASH_n = SHA256(canonical || HASH_(n-1))
-    val prevHashHex:    String,   // HASH_(n-1) for chain link verification
+    val canonicalHex:      String,   // 96-byte payload as hex (192 chars)
+    val signatureHex:      String,   // DER-encoded ECDSA P-256 signature as hex
+    val pqcSignatureHex:   String? = null,  // ML-DSA-65 (FIPS 204) signature as hex — Phase 1 hybrid PQC
+    val recordHashHex:     String,   // HASH_n = SHA256(canonical || HASH_(n-1))
+    val prevHashHex:       String,   // HASH_(n-1) for chain link verification
 
     val timestampUtcMs: Long      // NTP-corrected, monotonic
 )
