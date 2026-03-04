@@ -86,7 +86,7 @@ JADS is the first Indian UTM platform to implement **post-quantum cryptographic 
 | Evidence integrity | Trust the server | Cryptographic proof (device-signed) |
 | Quantum resistance | None | ML-DSA-65 hybrid signatures |
 | Admin oversight | Single admin | Two-person rule + collusion detection |
-| Audit trail | Application logs | Database-enforced immutable audit log |
+| Audit trail | Application logs | Database-enforced immutable audit log (trigger-protected) |
 | External verification | Not available | Merkle proofs + external anchor publishing |
 | Government integration | Vendor-specific | 7 adapter interfaces (zero-change swap) |
 

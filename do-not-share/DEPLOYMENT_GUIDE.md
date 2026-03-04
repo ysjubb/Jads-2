@@ -102,21 +102,36 @@
 # 1. Create PostgreSQL 16+ database
 createdb -U postgres jads_production
 
-# 2. Apply Prisma migrations (creates all tables, triggers, stored procedures)
+# 2. Apply Prisma migrations (creates all tables — NOTE: does NOT install audit triggers)
 cd do-not-share/jads-backend
 DATABASE_URL="postgresql://jads:password@host:5432/jads_production" \
   npx prisma migrate deploy
 
-# 3. Verify audit log triggers are active
+# 3. CRITICAL: Install audit log immutability triggers
+#    Prisma migrations do NOT include these triggers.
+#    They MUST be installed explicitly via AuditIntegrityService.installTriggers().
+#    Run this one-time setup script:
+node -e "
+  const { PrismaClient } = require('@prisma/client');
+  const { AuditIntegrityService } = require('./dist/services/AuditIntegrityService');
+  const prisma = new PrismaClient();
+  const svc = new AuditIntegrityService(prisma);
+  svc.installTriggers().then(r => {
+    console.log('Trigger install result:', r);
+    prisma.\$disconnect();
+  });
+"
+
+# 4. Verify audit log triggers are active
 psql -U jads -d jads_production -c "
   SELECT trigger_name, event_manipulation, action_statement
   FROM information_schema.triggers
   WHERE event_object_table = 'AuditLog';
 "
-# Expected: 3 triggers (compute_row_hash, prevent_update, prevent_delete)
+# Expected: 3 triggers (trg_audit_log_row_hash, trg_audit_log_no_update, trg_audit_log_no_delete)
 ```
 
-**Risk:** If migrations are applied out of order, audit log triggers may be missing. Always verify trigger presence after migration.
+**CRITICAL RISK:** If step 3 is skipped, audit log entries are **mutable at the database level**. The application code never calls UPDATE/DELETE on audit logs, but a direct DB attacker could. Always verify trigger presence after deployment.
 
 ### 3.2 Backend Server
 
@@ -194,7 +209,7 @@ cd do-not-share/jads-android
 | Container killed during EvidenceLedgerJob | Partial anchor (DB written, external not published) | Missing external receipts | **MEDIUM** | Set terminationGracePeriodSeconds ≥30 |
 | Clock skew between nodes | Wrong day's missions anchored | NTP drift monitoring | **MEDIUM** | Use chrony; pin ledger job to single node |
 | PostgreSQL without TLS | Credentials/data exposed in transit | Network audit | **HIGH** | Enforce `sslmode=require` in DATABASE_URL |
-| Audit triggers dropped | Audit log mutable | Trigger presence check | **CRITICAL** | Automated trigger verification at startup |
+| Audit triggers not installed | Audit log mutable from day one | Trigger presence check | **CRITICAL** | Run `installTriggers()` at deployment (step 3.1); verify presence |
 
 ### 4.2 Multi-Node Deployment Risks
 
@@ -366,7 +381,7 @@ volumes:
 ## 9. Pre-Flight Deployment Checklist
 
 - [ ] PostgreSQL 16+ with TLS enabled (`sslmode=require`)
-- [ ] All 3 audit log triggers verified active
+- [ ] `installTriggers()` called and all 3 audit log triggers verified active
 - [ ] JWT_SECRET ≠ ADMIN_JWT_SECRET ≠ ANCHOR_HMAC_KEY (all different)
 - [ ] All secrets ≥64 characters, cryptographically random
 - [ ] ANCHOR_HMAC_KEY from separate secrets store (not same vault as JWT_SECRET)
