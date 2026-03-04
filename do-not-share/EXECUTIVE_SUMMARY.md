@@ -7,13 +7,28 @@
 
 ## What is JADS?
 
-JADS (Joint Airspace Drone System) is India's **sovereign forensic audit platform** for drone operations in Indian airspace. It answers one question with mathematical certainty: **"Did this drone fly where and when it claims?"**
+JADS (Joint Airspace Drone System) is India's **sovereign airspace management and forensic audit platform** for both **manned aircraft** and **drone operations** in Indian airspace.
 
-Unlike conventional UTM systems that monitor live flights, JADS is purpose-built for **post-flight forensic analysis** — producing evidence that is legally admissible under the Indian Evidence Act and compliant with DGCA UAS Rules 2021.
+For drones, JADS answers one question with mathematical certainty: **"Did this drone fly where and when it claims?"** — producing post-flight forensic evidence that is legally admissible under the Indian Evidence Act and compliant with DGCA UAS Rules 2021.
+
+For manned aircraft, JADS provides a **complete ICAO-compliant flight plan filing system** that replaces conventional OFPL workflows — with live ADC, FIC, NOTAM, and METAR data integrated directly into the validation and filing pipeline.
 
 ---
 
 ## The Problem JADS Solves
+
+### Manned Aircraft: Flight Plan Filing is Broken
+
+Today, pilots and dispatchers file flight plans through fragmented, manual workflows. Conventional OFPL systems:
+- Do not cross-check live **ADC (Aerodrome Control)** zone restrictions before filing
+- Do not validate against current **FIC (Flight Information Centre)** advisories
+- Do not integrate live **METAR** weather observations into pre-flight validation
+- Do not pull active **NOTAMs** to warn pilots of airspace hazards before filing
+- Require manual AFTN message construction — error-prone and slow
+
+JADS replaces this with a **5-stage automated validation pipeline** (OFPL syntax → route semantics → altitude compliance → FIR sequencing → AFTN filing) that pulls live data from all 10 AFMLUs, all 4 Indian FIRs, and 12 major aerodromes — so a pilot's flight plan is validated against the actual state of Indian airspace, not stale data.
+
+### Drones: No Forensic Audit Capability Exists
 
 India's drone ecosystem is growing rapidly — military, paramilitary, commercial, and civilian operators. Today, there is no unified system to:
 
@@ -28,7 +43,31 @@ JADS solves all four problems with cryptographic guarantees, not just process co
 
 ## Key Capabilities
 
-### Tamper-Proof Evidence
+### Manned Aircraft Flight Plan Filing (Better Than OFPL)
+
+JADS replaces conventional OFPL flight plan filing with a **5-stage automated pipeline**:
+
+| Stage | What It Does |
+|-------|-------------|
+| **P4A — OFPL Validation** | Full ICAO Doc 4444 field syntax, Item 18 parsing (DOF, REG, PBN, OPR, STS, SAR equipment), aerodrome existence check, RVSM equipment check, callsign authorisation |
+| **P4B — Route Semantics** | Leg-by-leg route parsing, magnetic track computation, TAS calculation, EET per leg |
+| **P4C — Altitude Compliance** | Semicircular rule (odd/even FL), RVSM FL290–FL410 validation, transition altitude enforcement |
+| **P4D — FIR Sequencing** | Auto-computes FIR crossings through all 4 Indian FIRs (VIDF, VABB, VECC, VOMF), EET per FIR |
+| **P4E — AFTN Filing** | Builds ICAO-compliant FPL message, auto-generates AFTN addressees (departure ATC → enroute ACCs → destination ATC), transmits via AFTN gateway |
+
+**What JADS does that conventional OFPL does not:**
+
+- **Live ADC (Aerodrome Control) data** — Pulls active ADC zone records from all 10 AFMLUs every 60 minutes. Military exercise areas are automatically hidden from civilian users (P6A frozen rule). Pilots see restricted/prohibited/danger zones before they file.
+- **Live FIC (Flight Information Centre) advisories** — Polls all 4 Indian FIR offices every 60 minutes. FIC advisories are factored into pre-flight validation.
+- **Live METAR observations** — Polls 12 major Indian aerodromes (VIDP, VABB, VOMM, VECC, VOBL, VOHB, VAAH, VOGO, VOCL, VIBN, VORY, VIPT) every 30 minutes. Current weather is available at filing time.
+- **Live NOTAM integration** — Active NOTAMs per FIR are pulled and displayed. Pilots are warned of airspace hazards before filing.
+- **AFTN CNL and DLA** — Cancel or delay a filed plan with a single API call. JADS builds the correct AFTN CNL/DLA message per ICAO Doc 4444 §11.4.2 and transmits it.
+- **Real-time clearance stream (SSE)** — After filing, the pilot's app opens an SSE connection. As AFMLUs issue ADC numbers and FIRs issue FIC numbers, the pilot is notified instantly. No phone calls. No polling.
+- **Auto-generated AFTN addressees** — JADS maintains a real Indian ATC address book (Delhi FIR: VIDP, VILK, VIAR, VIDD, VIBK, VIBN, VIJR, VIGG; Mumbai FIR: VABB, VAAH, VAPB, VAGN, VOCL, VOGP; Kolkata FIR: VECC, VEPB, VEJH, VOPB; Chennai FIR: VOMM, VOHS, VOBL, VOYR) and auto-routes the FPL to the correct departure ATC, enroute ACCs, and destination ATC.
+
+**Flight plan status tracking**: DRAFT → VALIDATED → FILED → ACKNOWLEDGED → ADC_ISSUED / FIC_ISSUED → FULLY_CLEARED → ACTIVATED → COMPLETED (plus CANCELLED, DELAYED, REJECTED_BY_ATC, OVERDUE)
+
+### Tamper-Proof Evidence (Drones)
 
 Every drone flight produces a **cryptographic chain** of 96-byte telemetry records. Each record is:
 - Signed by the device (ECDSA P-256 — the same cryptography that secures banking)
@@ -73,12 +112,29 @@ JADS is the first Indian UTM platform to implement **post-quantum cryptographic 
 
 - **100-drone swarm support** — verified via simulation (100 drones × 1,000 records each = 100,000 records processed within 15 seconds)
 - **500+ automated tests** across 18 test suites, all passing
-- **Handles military and civilian** drone operations under a single platform
+- **Handles military and civilian** operations — both manned aircraft and drones — under a single platform
 - **27 government entities** supported (DGCA, IAF, Army, Navy, DRDO, HAL, BSF, CRPF, and more)
 
 ---
 
 ## What Makes JADS Different
+
+### Manned Aircraft: JADS vs Conventional OFPL
+
+| Feature | Conventional OFPL | JADS |
+|---------|------------------|------|
+| ADC zone check before filing | Manual lookup / none | Live data from all 10 AFMLUs, auto-filtered by role |
+| FIC advisory check | Manual lookup / none | Live polling from all 4 FIR offices |
+| METAR at filing time | Separate system | Integrated — 12 aerodromes polled every 30 min |
+| NOTAM awareness | Separate lookup | Integrated — active NOTAMs per FIR shown pre-flight |
+| AFTN message construction | Manual / semi-manual | Auto-built per ICAO Doc 4444, including Item 18/19 |
+| AFTN addressee routing | Manual | Auto-generated from departure, enroute FIRs, destination |
+| Cancel / Delay | Manual CNL/DLA message | One-click — JADS builds and transmits AFTN CNL/DLA |
+| Clearance notification | Phone calls / counter visits | Real-time SSE stream to pilot's app |
+| Semicircular rule check | Pilot responsibility | Automatic — odd/even FL validated against magnetic track |
+| RVSM equipment check | Pilot responsibility | Automatic — FL290–FL410 requires 'W' in Item 10 |
+
+### Drones: JADS vs Conventional UTM
 
 | Feature | Conventional UTM | JADS |
 |---------|-----------------|------|
@@ -138,4 +194,4 @@ JADS is designed so the government retains full control:
 
 ---
 
-*JADS delivers what no other Indian UTM platform offers: **mathematical proof** that drone evidence is authentic, unmodified, and legally admissible — today and in the quantum computing era.*
+*JADS delivers what no other Indian platform offers: **ICAO-compliant manned aircraft flight plan filing with live ADC, FIC, METAR, and NOTAM integration** — replacing manual OFPL workflows — alongside **mathematical proof** that drone evidence is authentic, unmodified, and legally admissible. One platform for all Indian airspace operations, today and in the quantum computing era.*
