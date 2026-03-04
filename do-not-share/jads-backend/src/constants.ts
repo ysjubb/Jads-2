@@ -178,6 +178,52 @@ export const RVSM_LOWER_FL                 = 290
 export const RVSM_UPPER_FL                 = 410
 export const TRANSITION_ALTITUDE_DEFAULT_FT = 9000
 
+// ── Platform Scope Enforcement ──────────────────────────────────────────────
+// JADS is a POST-FLIGHT FORENSIC system. It must NEVER be used for live
+// monitoring, real-time command & control, or in-flight decision-making.
+//
+// Stages S1–S7 represent the post-flight forensic pipeline:
+//   S1: Mission upload & ingestion (after drone has landed)
+//   S2: Canonical serialization & CRC32 verification
+//   S3: Hash chain integrity verification (I-1)
+//   S4: ECDSA / PQC signature verification (device cert + ML-DSA-65)
+//   S5: NTP & timestamp validation (I-2, I-9)
+//   S6: Geofence & NPNT zone compliance check (I-6)
+//   S7: Final forensic report generation & evidence ledger entry
+//
+// Hard scope boundary: the platform processes COMPLETED missions only.
+// Any attempt to process live/in-progress telemetry is rejected at ingestion.
+export const PLATFORM_SCOPE = {
+  mode:        'POST_FLIGHT_FORENSIC' as const,
+  description: 'Post-flight forensic audit only — no live monitoring, no real-time C2',
+  stages:      ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7'] as const,
+  hardLocks: {
+    REJECT_LIVE_TELEMETRY:    true,  // Ingestion rejects if mission.status !== COMPLETED
+    REJECT_STREAMING_API:     true,  // No WebSocket / SSE telemetry streaming endpoints
+    REJECT_REALTIME_COMMANDS: true,  // No command-to-drone relay capability
+    REQUIRE_MISSION_END:      true,  // missionEndUtcMs must be set before forensic runs
+  },
+} as const
+
+export type PlatformStage = typeof PLATFORM_SCOPE.stages[number]
+
+/** Runtime guard — throws if any code attempts to bypass post-flight-only scope. */
+export function assertPostFlightScope(missionStatus: string, missionEndUtcMs: string | null): void {
+  if (missionStatus !== 'COMPLETED' && missionStatus !== 'COMPLETED_WITH_VIOLATIONS') {
+    throw new Error(
+      `SCOPE_VIOLATION: Platform is post-flight forensic only. ` +
+      `Cannot process mission with status="${missionStatus}". ` +
+      `Only COMPLETED or COMPLETED_WITH_VIOLATIONS missions are accepted.`
+    )
+  }
+  if (!missionEndUtcMs) {
+    throw new Error(
+      'SCOPE_VIOLATION: missionEndUtcMs is required. ' +
+      'Forensic verification uses missionEndUtcMs as the frozen compliance time anchor.'
+    )
+  }
+}
+
 // Geodesic
 export const EARTH_RADIUS_NM         = 3440.065   // Must not be changed
 export const MACH_TO_KTAS_AT_FL350   = 666.739    // Standard ISA FL350 approximation

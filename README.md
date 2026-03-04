@@ -194,6 +194,51 @@ Required header: `X-JADS-Version: 4.0`
 
 ---
 
+## Platform Scope — Post-Flight Forensic Only
+
+> **JADS is a POST-FLIGHT FORENSIC system. It must NEVER be used for live monitoring, real-time C2, or in-flight decision-making.**
+
+The 7-stage forensic pipeline (S1-S7) operates exclusively on **completed missions**:
+
+| Stage | Name | Function |
+|-------|------|----------|
+| S1 | Ingestion | Mission upload after drone has landed |
+| S2 | Serialization | Canonical 96-byte payload + CRC32 verification |
+| S3 | Hash Chain | I-1 integrity check (HASH_0 derivation + chain walk) |
+| S4 | Signature | ECDSA P-256 + ML-DSA-65 (PQC hybrid) verification |
+| S5 | Time Validation | NTP sync (I-2) + timestamp monotonicity (I-9) |
+| S6 | Geofence | NPNT zone compliance (I-6) + airport proximity |
+| S7 | Report | Forensic verdict + evidence ledger + external anchor |
+
+**Hard locks** (enforced in code via `assertPostFlightScope()`):
+- `REJECT_LIVE_TELEMETRY` — Ingestion rejects missions where `status !== COMPLETED`
+- `REJECT_STREAMING_API` — No WebSocket/SSE streaming endpoints exist
+- `REJECT_REALTIME_COMMANDS` — No command-to-drone relay capability
+- `REQUIRE_MISSION_END` — `missionEndUtcMs` required before forensic runs
+
+---
+
+## Sovereign Integration — Digital Sky Adapter
+
+For iDEX/MoD sovereign deployment, JADS includes an adapter interface for DGCA's **Digital Sky** platform:
+
+```
+src/adapters/interfaces/IDigitalSkyAdapter.ts   — Contract (5 methods)
+src/adapters/stubs/DigitalSkyAdapterStub.ts     — Demo stub (no network calls)
+```
+
+| Method | Purpose |
+|--------|---------|
+| `validatePermissionArtefact()` | Verify drone's flight permission (PA) |
+| `getDroneRegistration()` | Confirm UIN registration status |
+| `verifyPilotLicense()` | Validate Remote Pilot License (RPL) |
+| `submitFlightLog()` | Post forensic data to Digital Sky after verification |
+| `validateNpntToken()` | Verify NPNT compliance token |
+
+Government replaces the stub with their live Digital Sky integration — **zero changes to core forensic logic**.
+
+---
+
 ## Regulatory Compliance
 
 - **DGCA UAS Rules 2021** — Drone zone classifications (GREEN/YELLOW/RED)
@@ -202,3 +247,44 @@ Required header: `X-JADS-Version: 4.0`
 - **UAS Rules 2021 Rule 36(1)** — 5km/8km airport proximity gates
 - **Semicircular rule** — Odd hundreds (001-179) odd FL; even hundreds (180-360) even FL
 - **NPNT** (No Permission No Takeoff) compliance
+
+---
+
+## iDEX Deadline Tracker — 31 March 2026
+
+### Completed
+
+- [x] Core forensic pipeline (S1-S7) with 10 invariant checks (I-1 through I-10)
+- [x] ECDSA P-256 signature verification (Android Keystore → server re-verify)
+- [x] PQC hybrid signatures — ML-DSA-65 (FIPS 204) Phase 1 advisory
+- [x] 96-byte canonical serializer with CRC32 (Kotlin + TypeScript, cross-verified)
+- [x] Hash chain integrity (HASH_0 derivation, chain walk, Attack B defense)
+- [x] Two-person rule + admin lineage collusion prevention
+- [x] Evidence ledger with external anchor publishing
+- [x] Merkle tree service with genesis anchor + inclusion proofs
+- [x] Device attestation (Play Integrity + hardware key + trust score)
+- [x] NTP quorum authority (Android) + server-side drift detection
+- [x] AFTN message builder (ICAO 4444) + Item18 parser + PBN auto-injection
+- [x] Geofence engine (point-in-polygon + airport proximity gates)
+- [x] Drone weight categorization (NANO-LARGE) per DGCA UAS Rules 2021
+- [x] Audit log immutability (PostgreSQL triggers block UPDATE/DELETE)
+- [x] Investigation access grants (scoped, time-limited, two-person)
+- [x] Digital Sky adapter interface (IDigitalSkyAdapter + stub)
+- [x] Post-flight-only scope enforcement (assertPostFlightScope hard locks)
+- [x] Shared test helpers (chainBuilders.ts — no builder drift risk)
+- [x] Swarm scale test (100 drones x 1000 records = 100k records)
+- [x] PQC hybrid fallback tests (12 degradation detection scenarios)
+- [x] 480+ backend tests passing (14 suites, 0 failures)
+
+### Remaining
+
+- [ ] Digital Sky live adapter implementation (government provides API credentials)
+- [ ] PQC Phase 2: promote I-10 from advisory to critical
+- [ ] HSM key provider (PKCS#11) — production key management
+- [ ] Retro-revocation background job (CRL re-check after mission end)
+- [ ] Runtime integrity service activation (file hash baseline)
+- [ ] E2E integration tests (backend + Android + admin portal)
+- [ ] Production PostgreSQL hardening (TLS, connection pooling, backup)
+- [ ] Load testing with real Android devices (lab environment)
+- [ ] Security audit / penetration test (external)
+- [ ] DGCA certification submission documentation
