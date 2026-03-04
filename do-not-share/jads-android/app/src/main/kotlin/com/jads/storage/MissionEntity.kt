@@ -44,5 +44,13 @@ data class MissionEntity(
     val androidVersion:         Int?    = null,      // android.os.Build.VERSION.SDK_INT at upload
 
     val uploadedAt:             Long?   = null,      // null until successfully uploaded to backend
-    val localIntegrityCheckOk:  Boolean = false      // set true before upload attempt
+    val localIntegrityCheckOk:  Boolean = false,     // set true before upload attempt
+
+    // ── Drone category fields (DGCA UAS Rules 2021) ──
+    val droneWeightCategory:    String? = null,      // NANO | MICRO | SMALL | MEDIUM | LARGE | UNKNOWN
+    val droneWeightGrams:       Int?    = null,      // actual weight in grams
+    val droneManufacturer:      String? = null,      // "DJI", "Autel", "ideaForge", etc.
+    val droneSerialNumber:      String? = null,      // manufacturer serial / UIN
+    val nanoAckNumber:          String? = null,      // nano drone acknowledgement number (< 250g)
+    val uinNumber:              String? = null       // UIN for micro+ categories
 )

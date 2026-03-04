@@ -29,7 +29,14 @@ class SqlCipherMissionStore(private val db: JadsDatabase) {
         // Hardware attestation — nullable; older devices may not report these
         strongboxBacked:     Boolean?  = null,
         secureBootVerified:  Boolean?  = null,
-        androidVersion:      Int?      = null
+        androidVersion:      Int?      = null,
+        // Drone category fields (DGCA UAS Rules 2021)
+        droneWeightCategory: String?   = null,
+        droneWeightGrams:    Int?      = null,
+        droneManufacturer:   String?   = null,
+        droneSerialNumber:   String?   = null,
+        nanoAckNumber:       String?   = null,
+        uinNumber:           String?   = null
     ): Long {
         val entity = MissionEntity(
             missionId           = missionId,
@@ -46,7 +53,13 @@ class SqlCipherMissionStore(private val db: JadsDatabase) {
             idempotencyKey      = idempotencyKey,
             strongboxBacked     = strongboxBacked,
             secureBootVerified  = secureBootVerified,
-            androidVersion      = androidVersion
+            androidVersion      = androidVersion,
+            droneWeightCategory = droneWeightCategory,
+            droneWeightGrams    = droneWeightGrams,
+            droneManufacturer   = droneManufacturer,
+            droneSerialNumber   = droneSerialNumber,
+            nanoAckNumber       = nanoAckNumber,
+            uinNumber           = uinNumber
         )
         return db.missionDao().insert(entity)
     }

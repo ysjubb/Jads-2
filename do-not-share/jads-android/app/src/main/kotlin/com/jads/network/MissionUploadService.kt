@@ -216,6 +216,13 @@ class MissionUploadService(
             "androidVersionAtUpload" to mission.androidVersion?.toString(),
             "rootHashHex"            to mission.rootHashHex,
             "archivedCrlBase64"      to mission.archivedCrlBase64,
+            // ── Drone category fields (DGCA UAS Rules 2021) ──
+            "droneWeightCategory"    to (mission.droneWeightCategory ?: "UNKNOWN"),
+            "droneWeightGrams"       to mission.droneWeightGrams,
+            "droneManufacturer"      to mission.droneManufacturer,
+            "droneSerialNumber"      to mission.droneSerialNumber,
+            "nanoAckNumber"          to mission.nanoAckNumber,
+            "uinNumber"             to mission.uinNumber,
             "records"                to records.map { r ->
                 mapOf(
                     "sequence"          to r.sequence,
