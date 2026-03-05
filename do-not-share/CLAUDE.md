@@ -292,3 +292,12 @@ Key endpoints:
 - Never force-push or perform destructive git operations without explicit permission
 - Review changes with `git diff` before committing
 - Use imperative mood in commit messages, keep subject under 72 characters
+
+## Known Issues and Pending Work
+
+1. **CI pipeline path inconsistency (FIXED)** — All pipeline job paths referenced bare `jads-backend/` instead of `do-not-share/jads-backend/`. Corrected in commit `bca0e6d`.
+2. **Missing Android APK build job (FIXED)** — Stage 3 had no APK build. Added `android-apk` job (assembleDebug + artifact upload) in commit `bca0e6d`.
+3. **Forensic suite naming inconsistency (FIXED)** — CI job was named "8 invariants" instead of "10-point verification". Corrected in commit `bca0e6d`.
+4. **PQC degradation test gap (FIXED)** — No CI job ran the `pqc-degradation-logging` suite. Added `pqc-degradation` job to Stage 3b in commit `bca0e6d`.
+5. **Layman rewrite of ANUJ_N_LALIT_PLAN_1.md and DEPLOYMENT_GUIDE.md** — Pending. Both docs need extreme step-by-step detail for non-technical users (every mouse click, every tab, every action).
+6. **Adversarial audit** — Full adversarial security audit of the platform is pending. Not yet started.
