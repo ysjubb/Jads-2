@@ -1,21 +1,22 @@
+---
 name: JADS Platform — Full Pipeline
-on:
+"on":
   push:
     branches: [main, develop, 'release/**']
   pull_request:
     branches: [main, develop]
 
-# ── Shared env — all jobs inherit ──────────────────────────────────────────────
+# Shared env — all jobs inherit
 env:
-  NODE_VERSION:      '20'
-  JAVA_VERSION:      '17'
+  NODE_VERSION: '20'
+  JAVA_VERSION: '17'
   JAVA_DISTRIBUTION: 'temurin'
 
 jobs:
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# STAGE 0 — Environment gate
-# ═══════════════════════════════════════════════════════════════════════════════
+  # ===========================================================
+  # STAGE 0 — Environment gate
+  # ===========================================================
 
   env-check:
     name: Environment Gate
@@ -23,22 +24,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Straight quotes — curly quotes broke shell regex (feedback-1 fix #1)
       - name: Verify Node.js >= 20
-        run: node --version | grep -E 'v2[0-9]\.' || (echo 'Node < 20 — pipeline requires Node 20+' && exit 1)
+        run: >-
+          node --version |
+          grep -E 'v2[0-9]\.' ||
+          (echo 'Node < 20' && exit 1)
 
       - name: Verify Java >= 17
-        run: java -version 2>&1 | grep -E 'version "(1[7-9]|[2-9][0-9])' || (echo 'Java < 17 required' && exit 1)
+        run: >-
+          java -version 2>&1 |
+          grep -E 'version "(1[7-9]|[2-9][0-9])' ||
+          (echo 'Java < 17 required' && exit 1)
 
       - name: Verify Docker available
         run: docker info
 
       - name: Verify Gradle wrapper
-        run: cd jads-android && ./gradlew --version
+        run: >-
+          cd do-not-share/jads-android &&
+          ./gradlew --version
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# STAGE 1 — Security scanning (runs early — no point building if leaking secrets)
-# ═══════════════════════════════════════════════════════════════════════════════
+  # ===========================================================
+  # STAGE 1 — Security scanning
+  # ===========================================================
 
   secret-scan:
     name: Secret Scanning (gitleaks)
@@ -47,7 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # Full history required for secret scanning
+          fetch-depth: 0
       - name: Scan for secrets
         uses: gitleaks/gitleaks-action@v2
         env:
@@ -63,11 +71,17 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: npm audit — backend
-        run: cd jads-backend && npm ci && npm audit --audit-level=high
+        run: >-
+          cd do-not-share/jads-backend &&
+          npm ci && npm audit --audit-level=high
       - name: npm audit — admin portal
-        run: cd jads-admin-portal && npm ci && npm audit --audit-level=high
+        run: >-
+          cd do-not-share/jads-admin-portal &&
+          npm ci && npm audit --audit-level=high
       - name: npm audit — audit portal
-        run: cd jads-audit-portal && npm ci && npm audit --audit-level=high
+        run: >-
+          cd do-not-share/jads-audit-portal &&
+          npm ci && npm audit --audit-level=high
 
   sast-scan:
     name: SAST — CodeQL
@@ -86,12 +100,12 @@ jobs:
       - uses: github/codeql-action/autobuild@v3
       - uses: github/codeql-action/analyze@v3
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# STAGE 2 — Determinism gates (HIGHEST PRIORITY — byte-perfect forensics)
-# ═══════════════════════════════════════════════════════════════════════════════
+  # ===========================================================
+  # STAGE 2 — Determinism gates (byte-perfect forensics)
+  # ===========================================================
 
   canonical-determinism:
-    name: Cross-Runtime Serializer Determinism (TS ↔ Kotlin)
+    name: Cross-Runtime Serializer Determinism
     runs-on: ubuntu-latest
     needs: env-check
     steps:
@@ -101,32 +115,35 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: jads-backend/package-lock.json
+          cache-dependency-path: >-
+            do-not-share/jads-backend/package-lock.json
 
-      - uses: actions/setup-java@v4    # v4 (feedback-1 fix #2)
+      - uses: actions/setup-java@v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           cache: 'gradle'
 
       - name: Build backend TypeScript
-        run: cd jads-backend && npm ci && npm run build
+        run: >-
+          cd do-not-share/jads-backend &&
+          npm ci && npm run build
 
-      - name: Kotlin serializer → write hex to /tmp
-        # --stacktrace --info so failures show WHICH byte differs (feedback-1 fix #3)
+      - name: Kotlin serializer write hex
         run: |
-          cd jads-android
+          cd do-not-share/jads-android
           ./gradlew test \
             --tests '*.CanonicalSerializerTest.crossRuntimeVector' \
             --stacktrace \
             --info
 
-      - name: TypeScript serializer → diff must be 0 bytes
+      - name: TypeScript serializer diff must be 0 bytes
         run: |
-          cd jads-backend
-          node dist/telemetry/crossRuntimeTest.js /tmp/kotlin_canonical.hex
+          cd do-not-share/jads-backend
+          node dist/telemetry/crossRuntimeTest.js \
+            /tmp/kotlin_canonical.hex
 
-      - name: Upload hex artifacts on failure (for debugging)
+      - name: Upload hex artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -134,7 +151,7 @@ jobs:
           path: /tmp/*.hex
 
   ecdsa-determinism:
-    name: ECDSA RFC 6979 Determinism (HMacDSAKCalculator)
+    name: ECDSA RFC 6979 Determinism
     runs-on: ubuntu-latest
     needs: env-check
     steps:
@@ -144,18 +161,18 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           cache: 'gradle'
-      - name: sign() twice → identical DER bytes
+      - name: sign() twice identical DER bytes
         run: |
-          cd jads-android
+          cd do-not-share/jads-android
           ./gradlew test \
             --tests '*.EcdsaSignerTest.signDeterminism' \
             --stacktrace \
             --info
 
-  # Parallel matrix runs: fast check (1000) AND thorough check (10000) simultaneously
-  # feedback-1 fix #5 — parallelization via matrix
   hash-chain-properties:
-    name: Hash Chain Properties (${{ matrix.iterations }} iterations)
+    name: >-
+      Hash Chain Properties
+      (${{ matrix.iterations }} iterations)
     runs-on: ubuntu-latest
     needs: env-check
     strategy:
@@ -169,17 +186,19 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           cache: 'gradle'
-      - name: Hash chain property test (${{ matrix.iterations }} iterations)
+      - name: >-
+          Hash chain property test
+          (${{ matrix.iterations }} iterations)
         run: |
-          cd jads-android
+          cd do-not-share/jads-android
           KOTEST_ITERATIONS=${{ matrix.iterations }} \
             ./gradlew test \
               --tests '*.HashChainPropertyTest' \
               --stacktrace
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# STAGE 3 — Android unit tests
-# ═══════════════════════════════════════════════════════════════════════════════
+  # ===========================================================
+  # STAGE 3 — Android unit tests + APK build
+  # ===========================================================
 
   npnt-gate-tests:
     name: NPNT Compliance Gate + Airport Proximity
@@ -193,15 +212,17 @@ jobs:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           cache: 'gradle'
       - run: |
-          cd jads-android
+          cd do-not-share/jads-android
           ./gradlew test \
             --tests '*.NpntComplianceGateTest' \
             --stacktrace
 
   forensic-suite:
-    name: Forensic Verifier (8 invariants, tamper detection)
+    name: >-
+      Forensic Verifier
+      (10-point verification, tamper detection)
     runs-on: ubuntu-latest
-    needs: canonical-determinism    # Forensics require serializer to be correct first
+    needs: canonical-determinism
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -210,14 +231,41 @@ jobs:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           cache: 'gradle'
       - run: |
-          cd jads-android
+          cd do-not-share/jads-android
           ./gradlew test \
             --tests '*.ForensicVerifierTest' \
             --stacktrace
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# STAGE 3b — Backend unit tests (all run in parallel)
-# ═══════════════════════════════════════════════════════════════════════════════
+  android-apk:
+    name: Android APK Build (assembleDebug)
+    runs-on: ubuntu-latest
+    needs: env-check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          cache: 'gradle'
+      - name: Build debug APK
+        run: >-
+          cd do-not-share/jads-android &&
+          ./gradlew assembleDebug --stacktrace
+      - name: Verify APK exists
+        run: |
+          APK=do-not-share/jads-android/app/build
+          APK=$APK/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jads-android-debug
+          path: >-
+            do-not-share/jads-android/app/build/outputs/apk/debug/app-debug.apk
+
+  # ===========================================================
+  # STAGE 3b — Backend unit tests (all run in parallel)
+  # ===========================================================
 
   adapter-contracts:
     name: Adapter Contract Tests
@@ -229,9 +277,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: jads-backend/package-lock.json
-      - run: npm ci --prefix jads-backend
-      - run: npm test -- adapterContracts --prefix jads-backend
+          cache-dependency-path: >-
+            do-not-share/jads-backend/package-lock.json
+      - run: npm ci --prefix do-not-share/jads-backend
+      - run: >-
+          npm test -- adapterContracts
+          --prefix do-not-share/jads-backend
 
   airspace-cms-tests:
     name: Airspace CMS + Two-Person Rule
@@ -243,11 +294,15 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: jads-backend/package-lock.json
-      - run: npm ci --prefix jads-backend
-      # Both tests in one job — two-person rule is part of CMS, not separate
-      - run: npm test -- airspaceCMS --prefix jads-backend
-      - run: npm test -- airspaceCMS.twoPersonRule --prefix jads-backend
+          cache-dependency-path: >-
+            do-not-share/jads-backend/package-lock.json
+      - run: npm ci --prefix do-not-share/jads-backend
+      - run: >-
+          npm test -- airspaceCMS
+          --prefix do-not-share/jads-backend
+      - run: >-
+          npm test -- airspaceCMS.twoPersonRule
+          --prefix do-not-share/jads-backend
 
   auth-tests:
     name: Auth — Civilian OTP + Special Unit Password
@@ -259,12 +314,15 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: jads-backend/package-lock.json
-      - run: npm ci --prefix jads-backend
-      - run: npm test -- civilianAuth specialUser --prefix jads-backend
+          cache-dependency-path: >-
+            do-not-share/jads-backend/package-lock.json
+      - run: npm ci --prefix do-not-share/jads-backend
+      - run: >-
+          npm test -- civilianAuth specialUser
+          --prefix do-not-share/jads-backend
 
   ofpl-validation-tests:
-    name: OFPL Validation (RVSM, Semicircular Rule, Route)
+    name: OFPL Validation (RVSM, Semicircular, Route)
     runs-on: ubuntu-latest
     needs: env-check
     steps:
@@ -273,12 +331,15 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: jads-backend/package-lock.json
-      - run: npm ci --prefix jads-backend
-      - run: npm test -- ofplValidation --prefix jads-backend
+          cache-dependency-path: >-
+            do-not-share/jads-backend/package-lock.json
+      - run: npm ci --prefix do-not-share/jads-backend
+      - run: >-
+          npm test -- ofplValidation
+          --prefix do-not-share/jads-backend
 
   telemetry-decoder:
-    name: Telemetry Decoder (DEC-01–DEC-14, TV-001/TV-002)
+    name: Telemetry Decoder (DEC-01-DEC-14)
     runs-on: ubuntu-latest
     needs: env-check
     steps:
@@ -287,14 +348,33 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: jads-backend/package-lock.json
-      - run: npm ci --prefix jads-backend
-      - run: npm test -- telemetryDecoder --prefix jads-backend
+          cache-dependency-path: >-
+            do-not-share/jads-backend/package-lock.json
+      - run: npm ci --prefix do-not-share/jads-backend
+      - run: >-
+          npm test -- telemetryDecoder
+          --prefix do-not-share/jads-backend
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# STAGE 4 — Schema + Migration validation (real Postgres)
-# feedback-2 new addition
-# ═══════════════════════════════════════════════════════════════════════════════
+  pqc-degradation:
+    name: PQC Degradation Logging (ML-DSA-65 fallback)
+    runs-on: ubuntu-latest
+    needs: env-check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: >-
+            do-not-share/jads-backend/package-lock.json
+      - run: npm ci --prefix do-not-share/jads-backend
+      - run: >-
+          npm test -- pqc-degradation-logging
+          --prefix do-not-share/jads-backend
+
+  # ===========================================================
+  # STAGE 4 — Schema + Migration validation (real Postgres)
+  # ===========================================================
 
   schema-validation:
     name: Prisma Schema Syntax
@@ -306,9 +386,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: jads-backend/package-lock.json
-      - run: npm ci --prefix jads-backend
-      - run: cd jads-backend && npx prisma validate
+          cache-dependency-path: >-
+            do-not-share/jads-backend/package-lock.json
+      - run: npm ci --prefix do-not-share/jads-backend
+      - run: >-
+          cd do-not-share/jads-backend &&
+          npx prisma validate
 
   migration-check:
     name: Prisma Migration Integrity (real Postgres)
@@ -318,9 +401,9 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER:     jads_test
+          POSTGRES_USER: jads_test
           POSTGRES_PASSWORD: jads_test_pw
-          POSTGRES_DB:       jads_migration
+          POSTGRES_DB: jads_migration
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -334,29 +417,32 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: jads-backend/package-lock.json
-      - run: npm ci --prefix jads-backend
+          cache-dependency-path: >-
+            do-not-share/jads-backend/package-lock.json
+      - run: npm ci --prefix do-not-share/jads-backend
       - name: Apply migrations to clean DB
         env:
-          DATABASE_URL: postgresql://jads_test:jads_test_pw@localhost:5432/jads_migration
-        run: cd jads-backend && npx prisma migrate deploy
-      - name: Verify no schema drift (schema.prisma matches migrations)
+          DATABASE_URL: >-
+            postgresql://jads_test:jads_test_pw@localhost:5432/jads_migration
+        run: >-
+          cd do-not-share/jads-backend &&
+          npx prisma migrate deploy
+      - name: Verify no schema drift
         env:
-          DATABASE_URL: postgresql://jads_test:jads_test_pw@localhost:5432/jads_migration
+          DATABASE_URL: >-
+            postgresql://jads_test:jads_test_pw@localhost:5432/jads_migration
         run: |
-          cd jads-backend
+          cd do-not-share/jads-backend
           npx prisma migrate diff \
             --from-migrations ./prisma/migrations \
             --to-schema-datamodel ./prisma/schema.prisma \
-            --shadow-database-url postgresql://jads_test:jads_test_pw@localhost:5432/jads_migration \
+            --shadow-database-url \
+            postgresql://jads_test:jads_test_pw@localhost:5432/jads_migration \
             --exit-code
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# STAGE 5 — E2E integration tests
-# Isolated per suite (feedback-2 fix). Parallel matrix (feedback-1 fix).
-# Credentials from secrets, never hardcoded (feedback-2 fix).
-# No conditional skips — failures surface immediately (feedback-2 fix).
-# ═══════════════════════════════════════════════════════════════════════════════
+  # ===========================================================
+  # STAGE 5 — E2E integration tests
+  # ===========================================================
 
   e2e-integration:
     name: E2E — ${{ matrix.suite }}
@@ -368,22 +454,22 @@ jobs:
       - migration-check
       - auth-tests
     strategy:
-      fail-fast: false    # All suites run — see ALL failures not just first
+      fail-fast: false
       matrix:
         suite:
-          - manned       # E2E-1  → E2E-5
-          - airspace     # E2E-10 → E2E-14
-          - drone        # E2E-15 → E2E-20
-          - audit        # E2E-21 → E2E-27
-          - security     # SCOPE-01 → SCOPE-11 (S2/S3 post-flight-only enforcement)
+          - manned
+          - airspace
+          - drone
+          - audit
+          - security
 
     services:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER:     jads_e2e
+          POSTGRES_USER: jads_e2e
           POSTGRES_PASSWORD: jads_e2e_pw
-          POSTGRES_DB:       jads_e2e_${{ matrix.suite }}
+          POSTGRES_DB: jads_e2e_${{ matrix.suite }}
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -393,11 +479,11 @@ jobs:
           - 5432:5432
 
     env:
-      # Secrets injected at runtime — never in source (feedback-2 fix)
+      # yamllint disable-line rule:line-length
       TEST_DATABASE_URL: postgresql://jads_e2e:jads_e2e_pw@localhost:5432/jads_e2e_${{ matrix.suite }}
-      JWT_SECRET:        ${{ secrets.TEST_JWT_SECRET }}
-      ADMIN_JWT_SECRET:  ${{ secrets.TEST_ADMIN_JWT_SECRET }}
-      NODE_ENV:          test
+      JWT_SECRET: ${{ secrets.TEST_JWT_SECRET }}
+      ADMIN_JWT_SECRET: ${{ secrets.TEST_ADMIN_JWT_SECRET }}
+      NODE_ENV: test
 
     steps:
       - uses: actions/checkout@v4
@@ -405,13 +491,16 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: jads-backend/package-lock.json
-      - run: npm ci --prefix jads-backend
-      - name: Apply migrations to isolated test DB
-        run: cd jads-backend && npx prisma migrate deploy
+          cache-dependency-path: >-
+            do-not-share/jads-backend/package-lock.json
+      - run: npm ci --prefix do-not-share/jads-backend
+      - name: Apply migrations
+        run: >-
+          cd do-not-share/jads-backend &&
+          npx prisma migrate deploy
       - name: Run ${{ matrix.suite }} E2E suite
         run: |
-          cd jads-backend
+          cd do-not-share/jads-backend
           npm test -- \
             --testPathPattern='e2e/${{ matrix.suite }}' \
             --forceExit \
@@ -422,19 +511,20 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-results-${{ matrix.suite }}
-          path: jads-backend/test-results/
+          path: >-
+            do-not-share/jads-backend/test-results/
 
   e2e-performance:
-    name: Performance Tests (upload throughput + audit latency)
+    name: Performance Tests (throughput + latency)
     runs-on: ubuntu-latest
-    needs: e2e-integration    # Perf only runs if functional tests pass
+    needs: e2e-integration
     services:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER:     jads_perf
+          POSTGRES_USER: jads_perf
           POSTGRES_PASSWORD: jads_perf_pw
-          POSTGRES_DB:       jads_perf
+          POSTGRES_DB: jads_perf
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -443,23 +533,27 @@ jobs:
         ports:
           - 5432:5432
     env:
-      TEST_DATABASE_URL: postgresql://jads_perf:jads_perf_pw@localhost:5432/jads_perf
-      JWT_SECRET:        ${{ secrets.TEST_JWT_SECRET }}
-      ADMIN_JWT_SECRET:  ${{ secrets.TEST_ADMIN_JWT_SECRET }}
-      NODE_ENV:          test
-      CI:                'true'    # Activates relaxed CI thresholds
+      TEST_DATABASE_URL: >-
+        postgresql://jads_perf:jads_perf_pw@localhost:5432/jads_perf
+      JWT_SECRET: ${{ secrets.TEST_JWT_SECRET }}
+      ADMIN_JWT_SECRET: ${{ secrets.TEST_ADMIN_JWT_SECRET }}
+      NODE_ENV: test
+      CI: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: jads-backend/package-lock.json
-      - run: npm ci --prefix jads-backend
-      - run: cd jads-backend && npx prisma migrate deploy
+          cache-dependency-path: >-
+            do-not-share/jads-backend/package-lock.json
+      - run: npm ci --prefix do-not-share/jads-backend
+      - run: >-
+          cd do-not-share/jads-backend &&
+          npx prisma migrate deploy
       - name: Performance tests
         run: |
-          cd jads-backend
+          cd do-not-share/jads-backend
           npm test -- \
             --testPathPattern='e2e/perf' \
             --forceExit \
@@ -467,9 +561,9 @@ jobs:
             --verbose
         timeout-minutes: 15
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# STAGE 6 — Frontend builds
-# ═══════════════════════════════════════════════════════════════════════════════
+  # ===========================================================
+  # STAGE 6 — Frontend builds
+  # ===========================================================
 
   build-portals:
     name: Portal Build — ${{ matrix.portal }}
@@ -478,15 +572,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        portal: [jads-admin-portal, jads-audit-portal]
+        portal:
+          - jads-admin-portal
+          - jads-audit-portal
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: ${{ matrix.portal }}/package-lock.json
-      - run: cd ${{ matrix.portal }} && npm ci && npm run build
+          cache-dependency-path: >-
+            do-not-share/${{ matrix.portal }}/package-lock.json
+      - run: >-
+          cd do-not-share/${{ matrix.portal }} &&
+          npm ci && npm run build
 
   lint-pipeline:
     name: YAML Lint
@@ -495,11 +594,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: pip install yamllint --quiet
-      - run: yamllint .github/workflows/jads-platform-pipeline.yml
+      - run: >-
+          yamllint
+          do-not-share/ci/jads-platform-pipeline.yml
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# FINAL BUILD GATE — every job must pass, no exceptions
-# ═══════════════════════════════════════════════════════════════════════════════
+  # ===========================================================
+  # FINAL BUILD GATE — every job must pass, no exceptions
+  # ===========================================================
 
   build-gate:
     name: Build Gate — All Jobs Green
@@ -514,11 +615,13 @@ jobs:
       - hash-chain-properties
       - npnt-gate-tests
       - forensic-suite
+      - android-apk
       - adapter-contracts
       - airspace-cms-tests
       - auth-tests
       - ofpl-validation-tests
       - telemetry-decoder
+      - pqc-degradation
       - schema-validation
       - migration-check
       - e2e-integration
@@ -532,12 +635,12 @@ jobs:
           CANCELLED="${{ contains(needs.*.result, 'cancelled') }}"
 
           if [[ "$FAILED" == "true" ]]; then
-            echo "❌ One or more jobs FAILED. Build is NOT green."
+            echo "One or more jobs FAILED."
             exit 1
           fi
           if [[ "$CANCELLED" == "true" ]]; then
-            echo "⚠️  One or more jobs were CANCELLED."
+            echo "One or more jobs were CANCELLED."
             exit 1
           fi
 
-          echo "✅ JADS Platform v4.0 — All pipeline jobs passed. Build is green."
+          echo "JADS Platform v4.0 — All jobs passed."

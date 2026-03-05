@@ -383,9 +383,9 @@ Maximum:                       100
 | swarm-scale | 8 | 100 drones × 1,000 records each, throughput SLAs (<15s for 100K records) |
 | AuditService | 6 | Role scoping, AAI_AUDITOR access denial, investigation grants |
 
-**Total: 517 tests, 18 suites, 0 failures.**
+**Total: 522 tests, 18 suites, 0 failures.**
 
-Additionally: 7-stage CI pipeline with 18 jobs. Determinism gates (Stage 2) verify Kotlin↔TypeScript byte-identical output before any functional test runs. Security scanning (Stage 1) includes gitleaks, npm audit, and CodeQL SAST.
+Additionally: 7-stage CI pipeline with 23 jobs. Determinism gates (Stage 2) verify Kotlin↔TypeScript byte-identical output before any functional test runs. Security scanning (Stage 1) includes gitleaks, npm audit, and CodeQL SAST. Stage 3 includes Android APK build with artifact upload. Stage 3b includes dedicated PQC degradation logging job that catches silent ML-DSA-65 fallback to ECDSA-only.
 
 ---
 
@@ -439,8 +439,8 @@ JADS Platform v4.0 is a **dual-purpose airspace platform** providing:
 - **Admin collusion prevention** (two-person rule + provisioning lineage tracking)
 
 **Across both domains:**
-- **517 tests, 18 suites, 0 failures** — including 108-test chaos suite, PQC verification, swarm scale
-- **7-stage CI pipeline** — determinism gates verify Kotlin↔TypeScript byte-identical output before anything else runs
+- **522 tests, 18 suites, 0 failures** — including 108-test chaos suite, PQC verification, swarm scale
+- **7-stage CI pipeline, 23 jobs** — determinism gates verify Kotlin↔TypeScript byte-identical output before anything else runs
 - **4 deterministic agent microservices** — NOTAM interpretation, forensic narration, AFTN drafting, anomaly detection
 - **7 government adapter interfaces** — stubbed and interface-frozen, ready for live integration without core logic changes
 
