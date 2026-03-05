@@ -732,16 +732,18 @@ data class StubRecord(
 // FAILURE:  GPS loss causes mission to auto-terminate → operator loses evidence chain
 // OWNER:    MissionForegroundService.stopGpsListener() / startSimulationLoop()
 // REQUIREMENT: GPS loss MUST NOT terminate a mission (UAS Rules 2021 §16(2))
-test("SC-MISSION-01: GPS loss does not trigger mission termination") {
-    // Simulate what happens when GPS provider is disabled:
-    // The LocationListener.onProviderDisabled fires but the mission state machine
-    // must NOT call controller.finalizeMission() — only operator ACTION_STOP_MISSION does.
-    // We verify this by checking that MissionState.missionActive invariant holds.
-    val missionWasActive = true    // mission started
-    val gpsLost = true             // GPS provider disabled
-    // Correct behaviour: gpsLost does NOT change missionActive
-    val stillActive = missionWasActive && gpsLost
-    assert(stillActive, "GPS loss must not terminate active mission")
+// AUDIT FINDING [CRITICAL]: SC-MISSION-01 was testing `true && true == true`.
+// The real GPS loss behavior is in MissionForegroundService (Android runtime required).
+// This test now verifies that GnssPlausibilityValidator correctly classifies a
+// zero-satellite fix as REJECTED (not valid), confirming the degraded handling path.
+test("SC-MISSION-01: Zero-satellite GPS fix → GnssPlausibilityValidator rejects (not valid)") {
+    val reading = GnssPlausibilityValidator.GnssReading(
+        hdop = 99.9f, satelliteCount = 0,
+        latDeg = 28.625, lonDeg = 77.245, altMeters = 50.0
+    )
+    val result = GnssPlausibilityValidator.validate(reading, null)
+    assert(result is GnssPlausibilityValidator.PlausibilityResult.Rejected,
+        "Zero-satellite fix must be Rejected, got $result")
 }
 
 // TRIGGER:  GPS returns after 30-second gap (provider re-enabled)
@@ -749,13 +751,26 @@ test("SC-MISSION-01: GPS loss does not trigger mission termination") {
 //           sequence continues from last stored sequence number (no gap in DB)
 // FAILURE:  Sequence restarted from 0 → chain broken, ForensicVerifier raises SEQUENCE_GAP
 // OWNER:    MissionForegroundService.startRealGpsListener() — sequence is owned by MissionController
-test("SC-MISSION-02: GPS recovery continues sequence without gap") {
-    // The sequence counter lives inside MissionController, not the GPS listener.
-    // As long as processReading() is called with the next record, sequence is gapless.
-    // Verify: sequence 0..4, gap, then 5..9 is continuous
-    val sequences = (0L..4L).toList() + (5L..9L).toList()
-    val hasGap = sequences.zipWithNext().any { (a, b) -> b - a > 1 }
-    assert(!hasGap, "Sequence must be gapless despite GPS gap: $sequences")
+// AUDIT FINDING [CRITICAL]: Was testing list concatenation, not MissionController.
+// Replaced with test that verifies GnssPlausibilityValidator correctly classifies
+// a recovered fix (good HDOP, enough sats) as Valid after a degraded period.
+test("SC-MISSION-02: GPS recovery → GnssPlausibilityValidator accepts recovered fix") {
+    val degraded = GnssPlausibilityValidator.GnssReading(
+        hdop = 99.9f, satelliteCount = 0,
+        latDeg = 28.625, lonDeg = 77.245, altMeters = 50.0
+    )
+    val recovered = GnssPlausibilityValidator.GnssReading(
+        hdop = 1.2f, satelliteCount = 8,
+        latDeg = 28.626, lonDeg = 77.246, altMeters = 51.0
+    )
+    // Degraded fix must be rejected
+    val degradedResult = GnssPlausibilityValidator.validate(degraded, null)
+    assert(degradedResult is GnssPlausibilityValidator.PlausibilityResult.Rejected,
+        "Degraded fix must be Rejected")
+    // Recovered fix with good signal must be accepted (previous=null since degraded was rejected)
+    val recoveredResult = GnssPlausibilityValidator.validate(recovered, null)
+    assert(recoveredResult is GnssPlausibilityValidator.PlausibilityResult.Valid,
+        "Recovered fix must be Valid, got $recoveredResult")
 }
 
 // TRIGGER:  GPS returns 0 satellites (hdop=99.9, satelliteCount=0)
@@ -764,22 +779,25 @@ test("SC-MISSION-02: GPS recovery continues sequence without gap") {
 //           (GNSS degradation is advisory, not a violation)
 // FAILURE:  Zero-satellite record treated as GEOFENCE_BREACH → false violation → mission abort
 // OWNER:    GnssPlausibilityValidator — degraded ≠ breach
-test("SC-MISSION-03: Zero-satellite GPS fix stored as degraded, not as geofence breach") {
-    val raw = RawSensorFields(
-        latDeg = 28.625, lonDeg = 77.245, altMeters = 50.0,
+// AUDIT FIX: Was reimplementing degradation check locally. Now calls real
+// GnssPlausibilityValidator AND verifies GeofenceChecker independently.
+test("SC-MISSION-03: Zero-satellite GPS fix → Rejected by validator, inside geofence") {
+    // Step 1: GnssPlausibilityValidator must reject zero-satellite fix
+    val reading = GnssPlausibilityValidator.GnssReading(
         hdop = 99.9f, satelliteCount = 0,
-        velNorthMs = 0.0, velEastMs = 0.0, velDownMs = 0.0,
-        flightState = 0x01
+        latDeg = 28.625, lonDeg = 77.245, altMeters = 50.0
     )
-    // GNSS degradation check: hdop > 5.0 OR satelliteCount < 4 → degraded
-    val isDegraded = raw.hdop > 5.0f || raw.satelliteCount < 4
-    assert(isDegraded, "Zero-satellite fix must be classified as GNSS degraded")
-    // Degraded record must NOT cause a geofence breach classification
-    // (geofence breach requires point-in-polygon failure, not signal quality)
-    val lat = raw.latDeg; val lon = raw.lonDeg
-    // A degraded fix inside the approved polygon must not trigger GEOFENCE_BREACH
-    val insidePragati = lat in 28.615..28.640 && lon in 77.230..77.265
-    assert(insidePragati, "Test setup: degraded fix must be inside approved zone")
+    val result = GnssPlausibilityValidator.validate(reading, null)
+    assert(result is GnssPlausibilityValidator.PlausibilityResult.Rejected,
+        "Zero-satellite fix must be Rejected by validator, got $result")
+    // Step 2: Even though signal is bad, the position (if recorded) is inside
+    // the geofence — so GeofenceChecker must NOT flag it as GEOFENCE_BREACH
+    val approvedPoly = listOf(
+        LatLon(28.615, 77.230), LatLon(28.640, 77.230),
+        LatLon(28.640, 77.265), LatLon(28.615, 77.265)
+    )
+    val insideFence = GeofenceChecker.isPointInPolygon(28.625, 77.245, approvedPoly)
+    assert(insideFence, "Degraded fix at 28.625,77.245 must be inside approved polygon")
 }
 
 // ── PROCESS KILL / RESUME ────────────────────────────────────────────────────
@@ -791,12 +809,35 @@ test("SC-MISSION-03: Zero-satellite GPS fix stored as degraded, not as geofence 
 //           currentHash = ByteArray(32) → chain broken from first post-resume record
 // OWNER:    MissionController.resumeMission() — C1-03 fix
 // REQUIREMENT: UAS Rules 2021 §16(2) — mission records must be continuous
-test("SC-MISSION-04: resumeMission after process kill — sequence continues from lastSeq+1") {
-    // Simulate: mission had 100 records (seq 0..99) before kill
-    val lastStoredSeq = 99L
-    val resumedSeq = lastStoredSeq + 1   // correct behaviour
-    assert(resumedSeq == 100L,
-        "After kill with lastSeq=99, next sequence must be 100, got $resumedSeq")
+// AUDIT FINDING [CRITICAL]: Was testing `99 + 1 == 100` (arithmetic).
+// MissionController.resumeMission() requires Android runtime (SQLCipher DB).
+// Replaced with HashChainEngine test verifying chain continuity after simulated
+// resume — the hash chain must remain valid when starting from a mid-chain hash.
+test("SC-MISSION-04: Hash chain continuity after simulated resume from mid-chain") {
+    val engine = com.jads.crypto.HashChainEngine()
+    val missionId = 42L
+    // Simulate first 5 records
+    val hash0 = engine.computeHash0(missionId)
+    var prevHash = hash0
+    val payloads = mutableListOf<ByteArray>()
+    for (i in 0 until 5) {
+        val payload = ByteArray(96)
+        com.jads.telemetry.EndianWriter.writeUint64Be(payload, 0, missionId)
+        com.jads.telemetry.EndianWriter.writeUint64Be(payload, 8, i.toLong())
+        val hash = engine.chainHash(payload, prevHash)
+        payloads.add(payload)
+        prevHash = hash
+    }
+    // Simulate resume: start from prevHash (last known hash at seq=4)
+    val resumeHash = prevHash
+    val resumePayload = ByteArray(96)
+    com.jads.telemetry.EndianWriter.writeUint64Be(resumePayload, 0, missionId)
+    com.jads.telemetry.EndianWriter.writeUint64Be(resumePayload, 8, 5L)  // seq=5
+    val postResumeHash = engine.chainHash(resumePayload, resumeHash)
+    // The hash must be non-zero and different from the resume point
+    assert(!postResumeHash.contentEquals(resumeHash),
+        "Post-resume hash must differ from resume point hash")
+    assert(postResumeHash.size == 32, "Chain hash must be 32 bytes (SHA-256)")
 }
 
 // TRIGGER:  resumeMission() called with existingMissionId that does not exist in DB
