@@ -11,7 +11,7 @@
 
 JADS (Joint Airspace Drone System) is India's sovereign airspace management and forensic audit platform. It serves two functions:
 
-1. **Manned aircraft** — Full ICAO-compliant flight plan filing with live ADC, FIC, NOTAM, and METAR integration via a 5-stage validation pipeline (OFPL syntax → route semantics → altitude compliance → FIR sequencing → AFTN filing). Replaces conventional OFPL workflows.
+1. **Manned aircraft** — Full ICAO-compliant flight plan filing with ADC (Air Defence Clearance from IAF), FIC (clearance from AAI), NOTAM, and METAR integration via a 5-stage validation pipeline (OFPL syntax → route semantics → altitude compliance → FIR sequencing → AFTN filing). Replaces conventional OFPL workflows.
 2. **Drones** — Forensic-grade mission telemetry with cryptographic integrity chains, post-quantum signatures, and legally admissible evidence generation.
 
 This whitepaper details the cryptographic architecture, defense-in-depth strategy, and regulatory compliance controls across both domains.
@@ -67,7 +67,7 @@ Interface (IDigitalSkyAdapter)  →  Stub (DigitalSkyAdapterStub)
 **Adapters:**
 1. **Digital Sky** (DGCA) — Permission Artefact, UIN, pilot license, flight log submission
 2. **UIDAI** — Aadhaar OTP eKYC for civilian drone operators
-3. **AFMLU** — Air Force ADC (Airspace Design Cell) records
+3. **AFMLU — Air Force Movement Liaison Unit (issues ADC — Air Defence Clearance numbers)
 4. **FIR** — Flight Information Circulars from 4 Indian FIRs
 5. **AFTN** — Aeronautical Fixed Telecommunication Network (ICAO Doc 4444)
 6. **METAR** — Aerodrome weather reports (12 major Indian airports)
@@ -427,7 +427,7 @@ JADS Platform v4.0 is a **dual-purpose airspace platform** providing:
 
 **For manned aircraft:**
 - **ICAO-compliant flight plan filing** with 5-stage automated validation (OFPL → route → altitude → FIR → AFTN)
-- **Live ADC, FIC, METAR, NOTAM integration** — validating against actual Indian airspace state, not stale data
+- **ADC (Air Defence Clearance from IAF), FIC (clearance from AAI), METAR, NOTAM integration** — validating against actual Indian airspace state, not stale data
 - **AFTN message automation** — FPL, CNL, DLA with auto-generated addressees for all 4 Indian FIRs
 - **Real-time clearance notifications** — SSE stream replaces phone calls and counter visits
 

@@ -10,7 +10,7 @@
 
 **JADS (Joint Airspace Drone System)** is India's sovereign airspace management and forensic audit platform. It serves two functions under one system:
 
-1. **Manned aircraft** — Full ICAO-compliant flight plan filing with live ADC, FIC, NOTAM, and METAR integration. Replaces conventional OFPL workflows.
+1. **Manned aircraft** — Full ICAO-compliant flight plan filing with ADC (Air Defence Clearance from IAF), FIC (Flight Information Centre clearance from AAI), NOTAM, and METAR integration. Replaces conventional OFPL workflows.
 2. **Drones** — Forensic-grade mission telemetry with cryptographic integrity chains, post-quantum signatures, and legally admissible evidence generation.
 
 The platform handles 27 government entities (DGCA, IAF, Army, Navy, DRDO, HAL, BSF, CRPF, and more), enforces two-person approval for all airspace changes, and produces evidence admissible under the Indian Evidence Act (Section 65B).
@@ -172,7 +172,7 @@ All environment variables are managed through `src/env.ts`. **Never use `process
 | `DIGITAL_SKY_API_KEY` | _(empty)_ | Digital Sky API key |
 | `UIDAI_BASE_URL` | _(empty)_ | UIDAI Aadhaar verification API |
 | `UIDAI_API_KEY` | _(empty)_ | UIDAI API key |
-| `AFMLU_BASE_URL` | _(empty)_ | AFMLU webhook base URL (for ADC zone pushes) |
+| `AFMLU_BASE_URL` | _(empty)_ | AFMLU base URL (for ADC — Air Defence Clearance coordination) |
 | `AFMLU_API_KEY` | _(empty)_ | AFMLU API key |
 | `FIR_BASE_URL` | _(empty)_ | FIR office API base URL |
 | `AFTN_GATEWAY_HOST` | _(empty)_ | AFTN gateway hostname for flight plan filing |
