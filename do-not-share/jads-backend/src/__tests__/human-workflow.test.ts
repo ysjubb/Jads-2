@@ -326,29 +326,41 @@ describe('HW-INVEST-01–06: Investigation access — grant, revoke, scope, expi
   })
 
   // TRIGGER:  Two-person rule enforcement: revokedByUserId must differ from the original grantedBy
-  //           This test defines the REQUIRED behaviour (enhancement not yet implemented)
   // OUTPUT:   When revokedByUserId === grantedBy, throw AuditScopeError SELF_REVOCATION_DENIED
   // FAILURE:  Self-revocation possible → investigation officer can be given and lose access
   //           without any second party being involved → audit trail is present but procedurally invalid
-  // OWNER:    AuditService.revokeAccess() (proposed enhancement)
-  test('HW-INVEST-03: Two-person rule — revokedBy must differ from grantedBy (documents required enhancement)', () => {
-    // This test defines the contract for the enhancement:
-    function enforceRevocationTwoPersonRule(
-      revokedByUserId: string,
-      grantedByUserId: string
-    ): void {
-      if (revokedByUserId === grantedByUserId) {
-        const e = new Error('Self-revocation denied: the grantor cannot revoke their own grant')
-        ;(e as any).code = 'SELF_REVOCATION_DENIED'
-        throw e
+  // OWNER:    AuditService.revokeAccess()
+  // AUDIT FIX: Replaced local function with real AuditService.revokeAccess()
+  test('HW-INVEST-03: Two-person rule — revokedBy must differ from grantedBy (real production code)', async () => {
+    const prisma = makePrisma({
+      prisma: {
+        auditLog: { create: async (d: any) => d },
+        investigationAccess: {
+          create: async (d: any) => ({ id: 'access-revoke-test', ...d.data }),
+          findUnique: async () => ({ grantedBy: 'user-A', grantedToUserId: 'officer-X' }),
+          delete: async () => ({}),
+        },
       }
-    }
+    })
+    const audit = new AuditService(prisma)
 
-    expect(() => enforceRevocationTwoPersonRule('user-A', 'user-A'))
-      .toThrow('Self-revocation denied')
+    // Same user tries to revoke → must throw SELF_REVOCATION_DENIED
+    await expect(audit.revokeAccess('user-A', 'access-revoke-test', 'test'))
+      .rejects.toThrow('original grantor cannot revoke')
 
-    expect(() => enforceRevocationTwoPersonRule('user-B', 'user-A'))
-      .not.toThrow()
+    // Different user revokes → should succeed
+    const prisma2 = makePrisma({
+      prisma: {
+        auditLog: { create: async (d: any) => d },
+        investigationAccess: {
+          findUnique: async () => ({ grantedBy: 'user-A', grantedToUserId: 'officer-X' }),
+          delete: async () => ({}),
+        },
+      }
+    })
+    const audit2 = new AuditService(prisma2)
+    await expect(audit2.revokeAccess('user-B', 'access-revoke-test', 'test'))
+      .resolves.not.toThrow()
   })
 
   // TRIGGER:  INVESTIGATION_OFFICER calls getMissions() (a full list query)
@@ -366,56 +378,84 @@ describe('HW-INVEST-01–06: Investigation access — grant, revoke, scope, expi
     expect(result.scopeApplied).toBe('ENTITY_DGCA')
   })
 
-  // TRIGGER:  Access grant with expiresAt = now - 1 hour (already expired)
-  // OUTPUT:   AuditService.grantAccess() creates the record (no expiry validation at grant time)
-  //           BUT the investigation access check must validate expiresAt before allowing access
-  // FAILURE:  Expired access accepted → officer retains access after time-limited grant lapses →
-  //           continued access to sensitive data after authorization period
-  // OWNER:    InvestigationAccess middleware / access check — must validate expiresAt > now()
-  test('HW-INVEST-05: Expired access grant — documents that expiry must be enforced at access time', async () => {
-    const expiredAt = new Date(Date.now() - 3600_000).toISOString()  // 1 hour ago
-
-    function checkAccessValidity(expiresAt: string): { valid: boolean; reason?: string } {
-      if (new Date(expiresAt) < new Date()) {
-        return { valid: false, reason: `Investigation access expired at ${expiresAt}` }
+  // TRIGGER:  INVESTIGATION_OFFICER calls getMissionById with expired grant
+  // OUTPUT:   AuditScopeError INVESTIGATION_SCOPE_DENIED thrown
+  // FAILURE:  Expired access accepted → continued access after grant lapses
+  // OWNER:    AuditService.getMissionById() — validates expiresAt > now()
+  // AUDIT FIX: Replaced local function with real AuditService.getMissionById()
+  test('HW-INVEST-05: Expired access grant — rejected at access time by real AuditService', async () => {
+    // Mock: investigationAccess.findFirst returns null (expired grant not found by Prisma's gt filter)
+    const prisma = makePrisma({
+      prisma: {
+        investigationAccess: {
+          findFirst: async () => null,  // Prisma where expiresAt: { gt: new Date() } → no match for expired
+        },
+        droneMission: {
+          findMany: async () => [], count: async () => 0,
+          findUnique: async () => ({ id: 'mission-001' }),
+        },
       }
-      return { valid: true }
+    })
+    const audit = new AuditService(prisma)
+    // INVESTIGATION_OFFICER with userId tries to access a mission — no active grant
+    try {
+      await audit.getMissionById('mission-001', 'INVESTIGATION_OFFICER', 'DGCA', 'officer-expired')
+      fail('Should have thrown')
+    } catch (e: any) {
+      expect(e.code).toBe('INVESTIGATION_SCOPE_DENIED')
+      expect(e.message).toContain('No active investigation grant')
     }
-
-    const result = checkAccessValidity(expiredAt)
-    expect(result.valid).toBe(false)
-    expect(result.reason).toContain('expired')
   })
 
   // TRIGGER:  INVESTIGATION_OFFICER attempts to access missionId B when their grant is for missionId A
-  // OUTPUT:   Access denied — grant is scoped to missionId A only
-  // FAILURE:  Grant scope not enforced → officer uses missionId A grant to pivot to missionId B →
-  //           lateral movement through mission database under investigation authority
-  // OWNER:    Investigation access check middleware (proposed) — must verify
-  //           request missionId matches grant.missionId
-  test('HW-INVEST-06: Investigation scope misuse — grant for mission A cannot be used for mission B', () => {
-    const grantedMissionId   = 'mission-alpha-001'
-    const requestedMissionId = 'mission-beta-002'  // Different mission
-
-    function checkInvestigationScope(
-      grantMissionId: string | null,
-      requestedId: string
-    ): { allowed: boolean; reason?: string } {
-      if (grantMissionId !== null && grantMissionId !== requestedId) {
-        return {
-          allowed: false,
-          reason: `Investigation grant is scoped to mission ${grantMissionId} — access to ${requestedId} denied`,
-        }
+  // OUTPUT:   INVESTIGATION_SCOPE_DENIED thrown — Prisma where clause filters by missionId
+  // FAILURE:  Grant scope not enforced → lateral movement through mission database
+  // OWNER:    AuditService.getMissionById() — where clause includes missionId
+  // AUDIT FIX: Replaced local function with real AuditService.getMissionById()
+  test('HW-INVEST-06: Investigation scope misuse — grant for mission A cannot be used for mission B', async () => {
+    // Grant exists for mission-alpha but officer requests mission-beta
+    const prisma = makePrisma({
+      prisma: {
+        investigationAccess: {
+          // findFirst with where: { missionId: 'mission-beta' } → no match (grant is for alpha)
+          findFirst: async ({ where }: any) => {
+            if (where.missionId === 'mission-alpha-001') {
+              return { id: 'grant-1', grantedToUserId: 'officer-001', missionId: 'mission-alpha-001' }
+            }
+            return null  // No grant for mission-beta
+          },
+        },
+        droneMission: {
+          findMany: async () => [], count: async () => 0,
+          findUnique: async () => ({ id: 'mission-beta-002' }),
+        },
       }
-      return { allowed: true }
+    })
+    const audit = new AuditService(prisma)
+
+    // Accessing mission-beta with grant for mission-alpha → denied
+    try {
+      await audit.getMissionById('mission-beta-002', 'INVESTIGATION_OFFICER', 'DGCA', 'officer-001')
+      fail('Should have thrown')
+    } catch (e: any) {
+      expect(e.code).toBe('INVESTIGATION_SCOPE_DENIED')
     }
 
-    const result = checkInvestigationScope(grantedMissionId, requestedMissionId)
-    expect(result.allowed).toBe(false)
-    expect(result.reason).toContain('mission-alpha-001')
-
-    // Same mission: allowed
-    expect(checkInvestigationScope(grantedMissionId, grantedMissionId).allowed).toBe(true)
+    // Accessing mission-alpha with grant for mission-alpha → allowed
+    const prisma2 = makePrisma({
+      prisma: {
+        investigationAccess: {
+          findFirst: async () => ({ id: 'grant-1', grantedToUserId: 'officer-001', missionId: 'mission-alpha-001' }),
+        },
+        droneMission: {
+          findMany: async () => [], count: async () => 0,
+          findUnique: async () => ({ id: 'mission-alpha-001', telemetryRecords: [], violations: [] }),
+        },
+      }
+    })
+    const audit2 = new AuditService(prisma2)
+    await expect(audit2.getMissionById('mission-alpha-001', 'INVESTIGATION_OFFICER', 'DGCA', 'officer-001'))
+      .resolves.not.toThrow()
   })
 })
 
@@ -478,34 +518,36 @@ describe('HW-ADMIN-01–06: Admin privilege escalation and boundary misuse', () 
     })).rejects.toThrow()
   })
 
-  // TRIGGER:  Two admins required for a privileged operation (conceptual two-person rule)
-  //           Admin A initiates a ledger anchor-now. Admin B must confirm it.
-  //           Admin A tries to both initiate AND confirm.
-  // OUTPUT:   The second confirmation must be rejected if same userId as initiator
-  // FAILURE:  Single admin can trigger anchor operations unilaterally →
-  //           evidence ledger manipulated by one actor without peer oversight
-  // OWNER:    AuditService two-person enforcement (proposed) — documents required enhancement
-  test('HW-ADMIN-03: Two-person rule for privileged operations — same actor cannot initiate and confirm', () => {
-    function twoPersonApprove(
-      initiatorId: string,
-      confirmerId: string,
-      operation: string
-    ): { approved: boolean; reason?: string } {
-      if (initiatorId === confirmerId) {
-        return {
-          approved: false,
-          reason: `TWO_PERSON_REQUIRED: ${operation} requires a second approver distinct from the initiator`,
-        }
-      }
-      return { approved: true }
-    }
+  // TRIGGER:  Two admins required for drone zone approval (real production two-person rule)
+  //           Admin A creates zone, Admin A tries to approve it.
+  // OUTPUT:   TWO_PERSON_RULE_VIOLATION thrown by real AirspaceVersioningService
+  // FAILURE:  Single admin can approve their own zone → unilateral airspace changes
+  // OWNER:    AirspaceVersioningService.approveDroneZoneVersion()
+  // AUDIT FIX: Replaced local function with real AirspaceVersioningService
+  test('HW-ADMIN-03: Two-person rule for privileged operations — real AirspaceVersioningService', async () => {
+    const { AirspaceVersioningService } = await import('../services/AirspaceVersioningService')
+    const prisma = {
+      airspaceVersion: {
+        findUniqueOrThrow: async () => ({
+          id: 'draft-hw03', dataType: 'DRONE_ZONE', approvalStatus: 'DRAFT',
+          createdBy: 'admin-A',
+          payloadJson: JSON.stringify({ zoneId: 'Z1', zoneName: 'Test', zoneType: 'GREEN', polygon: { type: 'Polygon', coordinates: [[[77,28],[78,28],[78,29],[77,29],[77,28]]] }, maxAglFt: 400, effectiveArea: 'Delhi', notes: '', authority: 'DGCA' }),
+        }),
+        findMany: async () => [],
+        update: jest.fn(async () => ({})),
+      },
+      specialUser: { findUnique: async () => ({ createdByAdminId: 'admin-unrelated' }) },
+      auditLog: { create: jest.fn(async (d: any) => d) },
+    } as any
+    const svc = new AirspaceVersioningService(prisma)
 
-    const initiate = twoPersonApprove('admin-A', 'admin-A', 'LEDGER_ANCHOR')
-    expect(initiate.approved).toBe(false)
-    expect(initiate.reason).toContain('TWO_PERSON_REQUIRED')
+    // Same admin tries to approve their own zone → TWO_PERSON_RULE_VIOLATION
+    await expect(svc.approveDroneZoneVersion('admin-A', 'draft-hw03'))
+      .rejects.toThrow('TWO_PERSON_RULE_VIOLATION')
 
-    const valid = twoPersonApprove('admin-A', 'admin-B', 'LEDGER_ANCHOR')
-    expect(valid.approved).toBe(true)
+    // Different admin approves → succeeds
+    await expect(svc.approveDroneZoneVersion('admin-B', 'draft-hw03'))
+      .resolves.not.toThrow()
   })
 
   // TRIGGER:  requireRole(['PLATFORM_SUPER_ADMIN']) is bypassed by passing an array role

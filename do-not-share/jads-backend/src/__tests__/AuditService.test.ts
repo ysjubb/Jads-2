@@ -1,33 +1,35 @@
 // Unit tests for AuditService role scoping.
-// These tests do NOT hit the database — they verify the scope rules inline.
+// AUDIT FIX: Original file defined local reimplementations of assertDroneMissionAccess,
+// assertFlightPlanAccess, and assertAuditLogAccess. Rewritten to test via real
+// AuditService public API (getMissions, getFlightPlans, getAuditLog) with mocked Prisma.
 
-import { AuditScopeError } from '../services/AuditService'
+import { AuditService, AuditScopeError } from '../services/AuditService'
 
-// ── Inline scope rules matching AuditService.assertDroneMissionAccess ────────
-function assertDroneMissionAccess(role: string): void {
-  if (role === 'AAI_AUDITOR') {
-    throw new AuditScopeError('AAI_NO_DRONE_ACCESS',
-      'AAI Auditors do not have access to drone mission data.')
-  }
-  const allowed = ['DGCA_AUDITOR', 'IAF_AUDITOR', 'ARMY_AUDITOR', 'NAVY_AUDITOR',
-                   'INVESTIGATION_OFFICER', 'PLATFORM_SUPER_ADMIN']
-  if (!allowed.includes(role)) {
-    throw new AuditScopeError('INSUFFICIENT_ROLE', `Role ${role} cannot access drone missions`)
+// ── Minimal Prisma mock ─────────────────────────────────────────────────────
+function makePrisma(): any {
+  return {
+    droneMission:    { findMany: async () => [], count: async () => 0 },
+    droneViolation:  { findMany: async () => [], count: async () => 0 },
+    mannedFlightPlan:{ findMany: async () => [], count: async () => 0 },
+    auditLog:        { findMany: async () => [], count: async () => 0, create: async (d: any) => d },
+    investigationAccess: { create: async (d: any) => ({ id: 'test', ...d.data }), findFirst: async () => null },
   }
 }
 
-describe('AuditService — role scoping', () => {
+describe('AuditService — role scoping (real production code)', () => {
 
   // ── AAI_AUDITOR must be 403, not empty list ────────────────────────────
 
-  test('AAI_AUDITOR requesting drone missions → throws AuditScopeError (not empty array)', () => {
-    expect(() => assertDroneMissionAccess('AAI_AUDITOR'))
-      .toThrow(AuditScopeError)
+  test('AAI_AUDITOR requesting drone missions → throws AuditScopeError (not empty array)', async () => {
+    const audit = new AuditService(makePrisma())
+    await expect(audit.getMissions('AAI_AUDITOR', 'AAI', {}))
+      .rejects.toThrow(AuditScopeError)
   })
 
-  test('AAI_AUDITOR error code is AAI_NO_DRONE_ACCESS', () => {
+  test('AAI_AUDITOR error code is AAI_NO_DRONE_ACCESS', async () => {
+    const audit = new AuditService(makePrisma())
     try {
-      assertDroneMissionAccess('AAI_AUDITOR')
+      await audit.getMissions('AAI_AUDITOR', 'AAI', {})
       fail('Should have thrown')
     } catch (e) {
       expect(e).toBeInstanceOf(AuditScopeError)
@@ -40,8 +42,9 @@ describe('AuditService — role scoping', () => {
   test.each(['DGCA_AUDITOR', 'IAF_AUDITOR', 'ARMY_AUDITOR', 'NAVY_AUDITOR',
              'INVESTIGATION_OFFICER', 'PLATFORM_SUPER_ADMIN'])(
     '%s has drone mission access',
-    (role) => {
-      expect(() => assertDroneMissionAccess(role)).not.toThrow()
+    async (role) => {
+      const audit = new AuditService(makePrisma())
+      await expect(audit.getMissions(role, undefined, {})).resolves.not.toThrow()
     }
   )
 
@@ -49,9 +52,10 @@ describe('AuditService — role scoping', () => {
 
   test.each(['PILOT', 'DRONE_OPERATOR', 'GOVT_ADMIN', 'INVALID'])(
     '%s → throws INSUFFICIENT_ROLE',
-    (role) => {
+    async (role) => {
+      const audit = new AuditService(makePrisma())
       try {
-        assertDroneMissionAccess(role)
+        await audit.getMissions(role, undefined, {})
         fail('Should have thrown')
       } catch (e) {
         expect(e).toBeInstanceOf(AuditScopeError)
@@ -71,34 +75,25 @@ describe('AuditService — role scoping', () => {
     expect(err.name).toBe('AuditScopeError')
   })
 
-  // ── Flight plan access ─────────────────────────────────────────────────
+  // ── Flight plan access (real AuditService.getFlightPlans) ─────────────
 
-  const FP_ALLOWED = ['DGCA_AUDITOR', 'AAI_AUDITOR', 'IAF_AUDITOR',
-                      'ARMY_AUDITOR', 'NAVY_AUDITOR', 'INVESTIGATION_OFFICER', 'PLATFORM_SUPER_ADMIN']
-  function assertFlightPlanAccess(role: string): void {
-    if (!FP_ALLOWED.includes(role))
-      throw new AuditScopeError('INSUFFICIENT_ROLE', `Role ${role} cannot access flight plans`)
-  }
-
-  test('AAI_AUDITOR CAN access flight plans', () => {
-    expect(() => assertFlightPlanAccess('AAI_AUDITOR')).not.toThrow()
+  test('AAI_AUDITOR CAN access flight plans', async () => {
+    const audit = new AuditService(makePrisma())
+    await expect(audit.getFlightPlans('AAI_AUDITOR', {})).resolves.not.toThrow()
   })
 
-  test('DRONE_OPERATOR cannot access flight plans via audit', () => {
-    expect(() => assertFlightPlanAccess('DRONE_OPERATOR')).toThrow(AuditScopeError)
+  test('DRONE_OPERATOR cannot access flight plans via audit', async () => {
+    const audit = new AuditService(makePrisma())
+    await expect(audit.getFlightPlans('DRONE_OPERATOR', {})).rejects.toThrow(AuditScopeError)
   })
 
-  // ── PLATFORM_SUPER_ADMIN audit log gating ─────────────────────────────
+  // ── PLATFORM_SUPER_ADMIN audit log gating (real AuditService.getAuditLog) ──
 
-  function assertAuditLogAccess(role: string): void {
-    if (role !== 'PLATFORM_SUPER_ADMIN')
-      throw new AuditScopeError('SUPER_ADMIN_ONLY', 'Only PLATFORM_SUPER_ADMIN can access raw audit logs')
-  }
-
-  test('Only PLATFORM_SUPER_ADMIN can read raw audit logs', () => {
-    expect(() => assertAuditLogAccess('PLATFORM_SUPER_ADMIN')).not.toThrow()
+  test('Only PLATFORM_SUPER_ADMIN can read raw audit logs', async () => {
+    const audit = new AuditService(makePrisma())
+    await expect(audit.getAuditLog('PLATFORM_SUPER_ADMIN', {})).resolves.not.toThrow()
     for (const role of ['DGCA_AUDITOR', 'IAF_AUDITOR', 'AAI_AUDITOR']) {
-      expect(() => assertAuditLogAccess(role)).toThrow(AuditScopeError)
+      await expect(audit.getAuditLog(role, {})).rejects.toThrow(AuditScopeError)
     }
   })
 })

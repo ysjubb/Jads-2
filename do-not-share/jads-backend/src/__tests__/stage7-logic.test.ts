@@ -485,86 +485,142 @@ describe('Item18Parser', () => {
   })
 })
 
-// ── AirspaceVersioningService — rules ────────────────────────────────────────
+// ── AirspaceVersioningService — tested via real production code ──────────────
+// AUDIT FIX: AV-01–AV-10 were tautological (tested string literals / local
+// variables, never called any production service). Rewritten to exercise the
+// real AirspaceVersioningService.approveDroneZoneVersion() with mocked Prisma.
 
-describe('AirspaceVersioningService — state invariants (pure logic)', () => {
+import { AirspaceVersioningService } from '../services/AirspaceVersioningService'
 
-  test('AV-01: DRAFT drone zone is not ACTIVE', () => {
-    const status = 'DRAFT'
-    expect(status).not.toBe('ACTIVE')
-  })
+function makeMockPrisma(overrides: Record<string, any> = {}): any {
+  return {
+    airspaceVersion: {
+      findUniqueOrThrow: async ({ where }: any) => overrides.draft ?? {
+        id: where.id, dataType: 'DRONE_ZONE', approvalStatus: 'DRAFT',
+        createdBy: 'admin-A', payloadJson: JSON.stringify({ zoneId: 'Z1', zoneName: 'Test', zoneType: 'GREEN', polygon: { type: 'Polygon', coordinates: [[[77,28],[78,28],[78,29],[77,29],[77,28]]] }, maxAglFt: 400, effectiveArea: 'Delhi', notes: '', authority: 'DGCA' }),
+        versionNumber: 1, effectiveFrom: new Date(), effectiveTo: null,
+      },
+      findMany: async () => overrides.existingVersions ?? [],
+      update: jest.fn(async () => ({})),
+      create: jest.fn(async (d: any) => ({ id: 'new-version-id', ...d.data })),
+    },
+    specialUser: {
+      findUnique: async () => overrides.approverAccount ?? { createdByAdminId: 'admin-unrelated' },
+    },
+    auditLog: {
+      create: jest.fn(async (d: any) => d),
+    },
+    ...overrides.prisma,
+  }
+}
 
-  test('AV-02: Two-person rule: approver === creator → violation', () => {
-    const draft = { createdByUserId: 'admin-A', approvalStatus: 'DRAFT' }
-    const approvingAdminId = 'admin-A'
-    const violated = draft.createdByUserId === approvingAdminId
-    expect(violated).toBe(true)
-  })
+describe('AirspaceVersioningService — state invariants (real production code)', () => {
 
-  test('AV-03: Two-person rule: approver !== creator → no violation', () => {
-    const draft = { createdByUserId: 'admin-A', approvalStatus: 'DRAFT' }
-    const approvingAdminId = 'admin-B'
-    expect(draft.createdByUserId === approvingAdminId).toBe(false)
-  })
-
-  test('AV-04: WITHDRAWN and SUPERSEDED statuses exist — no DELETE', () => {
-    const validStatuses = ['DRAFT', 'ACTIVE', 'SUPERSEDED', 'WITHDRAWN']
-    expect(validStatuses).toContain('WITHDRAWN')
-    expect(validStatuses).toContain('SUPERSEDED')
-    expect(validStatuses).not.toContain('DELETED')
-  })
-
-  test('AV-05: NOTAM requires no second approval', () => {
-    // NOTAMs are published immediately — single admin, no DRAFT step
-    const notamApprovalFlow = 'IMMEDIATE'
-    expect(notamApprovalFlow).toBe('IMMEDIATE')
-  })
-
-  test('AV-06: Drone zone validation: DRAFT zones excluded from flight validation', () => {
-    const zones = [
-      { zoneId: 'Z1', approvalStatus: 'ACTIVE' },
-      { zoneId: 'Z2', approvalStatus: 'DRAFT' },
-    ]
-    const validForFlight = zones.filter(z => z.approvalStatus === 'ACTIVE')
-    expect(validForFlight).toHaveLength(1)
-    expect(validForFlight[0].zoneId).toBe('Z1')
-  })
-
-  test('AV-07: Supersession: old zone gets SUPERSEDED status', () => {
-    let oldStatus = 'ACTIVE'
-    const supersede = () => { oldStatus = 'SUPERSEDED' }
-    supersede()
-    expect(oldStatus).toBe('SUPERSEDED')
-  })
-
-  test('AV-08: getSnapshotAtTime semantic — only ACTIVE at that time', () => {
-    const now  = new Date('2024-06-01T12:00:00Z')
-    const past = new Date('2024-01-01T00:00:00Z')
-    const versions = [
-      { id: 'v1', approvalStatus: 'ACTIVE',    effectiveFrom: past, effectiveTo: null },
-      { id: 'v2', approvalStatus: 'ACTIVE',    effectiveFrom: now,  effectiveTo: null },
-      { id: 'v3', approvalStatus: 'WITHDRAWN', effectiveFrom: past, effectiveTo: now  },
-    ]
-    const queryTime = new Date('2024-03-15T00:00:00Z')
-    const atTime = versions.filter(v =>
-      v.approvalStatus === 'ACTIVE' &&
-      v.effectiveFrom <= queryTime &&
-      (v.effectiveTo === null || v.effectiveTo > queryTime)
+  test('AV-01: DRAFT drone zone approval by different admin → status becomes ACTIVE', async () => {
+    const prisma = makeMockPrisma()
+    const svc = new AirspaceVersioningService(prisma)
+    // admin-B approves admin-A's draft — should succeed
+    await svc.approveDroneZoneVersion('admin-B', 'draft-001')
+    expect(prisma.airspaceVersion.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'draft-001' }, data: expect.objectContaining({ approvalStatus: 'ACTIVE' }) })
     )
-    expect(atTime).toHaveLength(1)
-    expect(atTime[0].id).toBe('v1')  // v2 not yet effective, v3 withdrawn
   })
 
-  test('AV-09: airspaceSnapshotVersionIds records all version IDs used in validation', () => {
-    const usedIds = ['wp-v1', 'airway-v2', 'wp-v3']
-    const unique  = [...new Set(usedIds)]
-    expect(unique).toEqual(['wp-v1', 'airway-v2', 'wp-v3'])
+  test('AV-02: Two-person rule: approver === creator → TWO_PERSON_RULE_VIOLATION thrown', async () => {
+    const prisma = makeMockPrisma()
+    const svc = new AirspaceVersioningService(prisma)
+    // admin-A tries to approve their own draft — must throw
+    await expect(svc.approveDroneZoneVersion('admin-A', 'draft-001'))
+      .rejects.toThrow('TWO_PERSON_RULE_VIOLATION')
   })
 
-  test('AV-10: Version numbering is sequential per dataType', () => {
-    const versions = [{ versionNumber: 1 }, { versionNumber: 2 }, { versionNumber: 3 }]
-    const last = Math.max(...versions.map(v => v.versionNumber))
-    const next = last + 1
-    expect(next).toBe(4)
+  test('AV-03: Two-person rule: approver !== creator → no violation', async () => {
+    const prisma = makeMockPrisma()
+    const svc = new AirspaceVersioningService(prisma)
+    // admin-B approves admin-A's draft — should NOT throw
+    await expect(svc.approveDroneZoneVersion('admin-B', 'draft-001')).resolves.not.toThrow()
+  })
+
+  test('AV-04: Non-DRONE_ZONE version → NOT_A_DRONE_ZONE_VERSION thrown', async () => {
+    const prisma = makeMockPrisma({ draft: {
+      id: 'draft-002', dataType: 'WAYPOINT', approvalStatus: 'DRAFT', createdBy: 'admin-A',
+      payloadJson: '{}', versionNumber: 1, effectiveFrom: new Date(), effectiveTo: null,
+    }})
+    const svc = new AirspaceVersioningService(prisma)
+    await expect(svc.approveDroneZoneVersion('admin-B', 'draft-002'))
+      .rejects.toThrow('NOT_A_DRONE_ZONE_VERSION')
+  })
+
+  test('AV-05: Already ACTIVE version → ALREADY_ACTIVE thrown', async () => {
+    const prisma = makeMockPrisma({ draft: {
+      id: 'draft-003', dataType: 'DRONE_ZONE', approvalStatus: 'ACTIVE', createdBy: 'admin-A',
+      payloadJson: '{}', versionNumber: 1, effectiveFrom: new Date(), effectiveTo: null,
+    }})
+    const svc = new AirspaceVersioningService(prisma)
+    await expect(svc.approveDroneZoneVersion('admin-B', 'draft-003'))
+      .rejects.toThrow('ALREADY_ACTIVE')
+  })
+
+  test('AV-06: Approval by admin provisioned by zone creator → ADMIN_LINEAGE_VIOLATION', async () => {
+    // admin-A created the zone AND provisioned admin-B's account — collusion vector
+    const prisma = makeMockPrisma({
+      approverAccount: { createdByAdminId: 'admin-A' },  // approver was provisioned by creator
+    })
+    const svc = new AirspaceVersioningService(prisma)
+    await expect(svc.approveDroneZoneVersion('admin-B', 'draft-001'))
+      .rejects.toThrow('ADMIN_LINEAGE_VIOLATION')
+  })
+
+  test('AV-07: Approval by admin who provisioned the zone creator → ADMIN_LINEAGE_VIOLATION', async () => {
+    // admin-B provisioned admin-A's account, then admin-A creates zone, admin-B approves
+    const prisma = makeMockPrisma({
+      approverAccount: { createdByAdminId: 'admin-unrelated' },
+    })
+    // Override specialUser.findUnique to return different results for different IDs
+    let callCount = 0
+    prisma.specialUser.findUnique = async () => {
+      callCount++
+      if (callCount === 1) return { createdByAdminId: 'admin-unrelated' }  // approver
+      return { createdByAdminId: 'admin-B' }  // creator was provisioned by approver
+    }
+    const svc = new AirspaceVersioningService(prisma)
+    await expect(svc.approveDroneZoneVersion('admin-B', 'draft-001'))
+      .rejects.toThrow('ADMIN_LINEAGE_VIOLATION')
+  })
+
+  test('AV-08: TWO_PERSON_RULE_VIOLATION is logged to auditLog', async () => {
+    const prisma = makeMockPrisma()
+    const svc = new AirspaceVersioningService(prisma)
+    try { await svc.approveDroneZoneVersion('admin-A', 'draft-001') } catch {}
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'drone_zone_approval_rejected_same_admin',
+          errorCode: 'SAME_ADMIN_APPROVAL_FORBIDDEN',
+        })
+      })
+    )
+  })
+
+  test('AV-09: Already WITHDRAWN version → ALREADY_WITHDRAWN thrown', async () => {
+    const prisma = makeMockPrisma({ draft: {
+      id: 'draft-004', dataType: 'DRONE_ZONE', approvalStatus: 'WITHDRAWN', createdBy: 'admin-A',
+      payloadJson: '{}', versionNumber: 1, effectiveFrom: new Date(), effectiveTo: null,
+    }})
+    const svc = new AirspaceVersioningService(prisma)
+    await expect(svc.approveDroneZoneVersion('admin-B', 'draft-004'))
+      .rejects.toThrow('ALREADY_WITHDRAWN')
+  })
+
+  test('AV-10: Successful approval supersedes existing active version of same zone', async () => {
+    const existingActive = {
+      id: 'old-active', dataType: 'DRONE_ZONE', approvalStatus: 'ACTIVE', createdBy: 'admin-C',
+      payloadJson: JSON.stringify({ zoneId: 'Z1' }), versionNumber: 1,
+    }
+    const prisma = makeMockPrisma({ existingVersions: [existingActive] })
+    const svc = new AirspaceVersioningService(prisma)
+    await svc.approveDroneZoneVersion('admin-B', 'draft-001')
+    // Should have called update twice: once to supersede old, once to activate new
+    expect(prisma.airspaceVersion.update).toHaveBeenCalledTimes(2)
   })
 })
