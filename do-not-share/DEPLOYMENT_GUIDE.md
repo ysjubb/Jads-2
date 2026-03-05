@@ -434,7 +434,7 @@ volumes:
 - [ ] Log aggregation configured for critical events (see Section 5.2)
 - [ ] Database backup automated (daily pg_dump)
 - [ ] Anchor log file backed up to separate system
-- [ ] Test suite passes (517 tests across 18 suites, 0 failures)
+- [ ] Test suite passes (522 tests across 18 suites, 0 failures)
 - [ ] Agent microservices health checks responding (ports 3101–3104) — optional but recommended
 - [ ] First admin account provisioned via direct DB seed (not API)
 - [ ] Genesis anchor created and published to external backends

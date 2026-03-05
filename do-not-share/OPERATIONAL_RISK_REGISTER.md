@@ -183,7 +183,7 @@ Last reviewed: 2026-03-04
 
 ## General Notes
 
-- These risks are **infrastructure/ops concerns**, not application logic bugs. The pure logic layer (AFTN, Merkle, geofence, forensic verification, OFPL validation, altitude compliance, FIR sequencing, etc.) is covered by the 517-test suite.
+- These risks are **infrastructure/ops concerns**, not application logic bugs. The pure logic layer (AFTN, Merkle, geofence, forensic verification, OFPL validation, altitude compliance, FIR sequencing, etc.) is covered by the 522-test suite.
 - None of these are exploitable attack vectors on their own — they are availability and consistency risks.
 - The evidence chain remains **tamper-detectable** even if these risks materialize. The gap is in **tamper-resistance** (external anchoring) and **availability** (HSM, clock, AFTN gateway).
 - Manned aircraft risks (OPS-RISK-05, 06, 08) are pre-flight/filing risks — they affect service availability, not evidence integrity.

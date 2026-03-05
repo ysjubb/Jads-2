@@ -144,11 +144,11 @@ JADS is the first Indian airspace platform to implement **post-quantum cryptogra
 ## Scale
 
 - **100-drone swarm support** — verified via simulation (100 drones × 1,000 records each = 100,000 records processed within 15 seconds)
-- **517 automated tests** across 18 suites, all passing — including 108-test mega stress/chaos suite (500K+ operations), PQC verification tests, and swarm scale benchmarks
+- **522 automated tests** across 18 suites, all passing — including 108-test mega stress/chaos suite (500K+ operations), PQC verification tests, and swarm scale benchmarks
 - **Handles military and civilian** operations — both manned aircraft and drones — under a single platform
 - **27 government entities** supported (DGCA, IAF, Army, Navy, DRDO, HAL, BSF, CRPF, and more)
 - **26 Indian airports** in aerodrome database with haversine proximity gate enforcement
-- **7 CI pipeline stages, 18 jobs** — determinism gates run before functional tests (if Kotlin and TypeScript don't produce identical bytes, nothing else matters)
+- **7 CI pipeline stages, 23 jobs** — determinism gates run before functional tests (if Kotlin and TypeScript don't produce identical bytes, nothing else matters). Includes dedicated Android APK build, PQC degradation detection, and YAML lint jobs.
 
 ---
 
@@ -208,9 +208,9 @@ JADS is the first Indian airspace platform to implement **post-quantum cryptogra
 | Audit portal (React) | Production-ready | Forensic mission viewer, 10-point report display, DJI import visibility, role-scoped access |
 | Agent microservices (4) | Production-ready | NOTAM Interpreter, Forensic Narrator, AFTN Draft, Anomaly Advisor — all deterministic |
 | Government adapter stubs (all 7) | Ready for live swap | Interface contracts frozen — zero code changes needed when government provides live endpoints |
-| Test suite (517 tests, 18 suites) | All passing | Includes 108-test chaos suite, PQC verification, swarm scale, scope enforcement |
+| Test suite (522 tests, 18 suites) | All passing | Includes 108-test chaos suite, PQC verification, swarm scale, scope enforcement |
 | Security documentation | Complete | Threat model (10 threats), security whitepaper (6 layers), deployment guide, operational risk register |
-| CI/CD pipeline | Complete | 7 stages, 18 jobs — determinism gates, security scanning, cross-runtime byte verification |
+| CI/CD pipeline | Complete | 7 stages, 23 jobs — determinism gates, security scanning, cross-runtime byte verification, Android APK build, PQC degradation detection |
 
 ---
 

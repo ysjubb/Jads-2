@@ -21,7 +21,7 @@ JADS (Joint Airspace Drone System) is India's **sovereign airspace management an
 **For manned aircraft**, the platform provides pre-flight validation and filing — a fundamentally different security posture. SSE streams for clearance notifications are authorized for flight plans (not drones).
 
 **System Components:**
-- Backend API server (Node.js/TypeScript, Express, Prisma, PostgreSQL) — 517 tests, 18 suites
+- Backend API server (Node.js/TypeScript, Express, Prisma, PostgreSQL) — 522 tests, 18 suites
 - Android app (Kotlin, Jetpack Compose) — on-drone telemetry capture with ECDSA + ML-DSA-65 signing
 - Admin Portal (React) — airspace management, user provisioning, ADC/FIC clearance issuance, OFPL comparison
 - Audit Portal (React) — forensic report viewing, investigation access, DJI import visibility

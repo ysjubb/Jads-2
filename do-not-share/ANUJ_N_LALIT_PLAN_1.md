@@ -719,19 +719,19 @@ Both zone AND proximity checks can independently block a mission. Airport proxim
 
 ## Testing & CI Pipeline
 
-### CI Pipeline (`ci/jads-platform-pipeline.yml`) — 18 Jobs, 7 Stages
+### CI Pipeline (`ci/jads-platform-pipeline.yml`) — 23 Jobs, 7 Stages
 
 | Stage | Jobs | What It Does |
 |-------|------|-------------|
 | **0 — Environment Gate** | 1 | Verify Node 20+, Java 17+, Docker, Gradle wrapper |
 | **1 — Security Scanning** | 3 | gitleaks (secret scan), npm audit (dependency vulns), CodeQL (SAST) |
 | **2 — Determinism Gates** | 3 | **Canonical TS↔Kotlin byte match**, ECDSA cross-runtime, hash chain properties (1K + 10K iterations) |
-| **3 — Android Unit Tests** | 2 | NPNT gate + airport proximity, forensic suite (49 + 65 tests) |
-| **3b — Backend Unit Tests** | 5 | Adapters, airspace CMS, auth, OFPL validation, telemetry decoder |
+| **3 — Android Tests + APK** | 3 | NPNT gate + airport proximity, forensic verifier (10-point), Android APK build (assembleDebug + artifact upload) |
+| **3b — Backend Unit Tests** | 6 | Adapters, airspace CMS, auth, OFPL validation, telemetry decoder, PQC degradation logging (ML-DSA-65 fallback detection) |
 | **4 — Schema & Migration** | 2 | Prisma validate, migration integrity |
 | **5 — E2E Integration** | 6 | manned, airspace, drone, audit, security (scope), performance |
 | **6 — Frontend Builds** | 2 | Admin Portal, Audit Portal |
-| **Final — Build Gate** | 1 | All 18 jobs must pass — single gate for merge |
+| **Final — Build Gate** | 1 | All 23 jobs must pass — single gate for merge |
 
 **Key design**: Determinism gates (Stage 2) run BEFORE functional tests. If Kotlin and TypeScript serializers don't produce identical bytes, nothing else matters.
 

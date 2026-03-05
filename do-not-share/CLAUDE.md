@@ -1,8 +1,8 @@
 # CLAUDE.md — JADS Platform v4.0
 
 **Version:** 4.0.0
-**Last updated:** 2026-03-04
-**Document revision:** 4
+**Last updated:** 2026-03-05
+**Document revision:** 5
 
 ---
 
@@ -52,7 +52,7 @@ JADS implements defence-in-depth across six layers. Each layer operates independ
 | scope-enforcement | 10 | Role-based data isolation (27 entities) |
 | swarm-scale | 8 | 100-drone swarm: 100K records in <15 seconds |
 | AuditService | 6 | Append-only audit log integrity |
-| **Total** | **517** | **18 suites, all passing** |
+| **Total** | **522** | **18 suites, all passing** |
 
 ## Repository Structure
 
@@ -85,7 +85,7 @@ Jads-2/
 - **Crypto**: Node.js native `crypto` (ECDSA P-256, SHA-256), `@noble/post-quantum` (ML-DSA-65 / FIPS 204)
 - **Auth**: JWT (jsonwebtoken), bcryptjs, OTP-based civilian login
 - **Security**: Helmet, CORS, rate limiting, PostgreSQL audit triggers, row-level hashing
-- **Testing**: Jest + Supertest (517 tests across 18 suites)
+- **Testing**: Jest + Supertest (522 tests across 18 suites)
 - **Jobs**: node-cron scheduled jobs (METAR, NOTAM, ADC/FIC polling, evidence ledger, reverification)
 
 ### Android (`jads-android/`)
@@ -184,7 +184,7 @@ All environment variables are managed through `src/env.ts`. **Never use `process
 
 ### Backend Commands
 - `npm run dev` — Start dev server with hot reload
-- `npm test` — Run Jest test suite (517 tests, 18 suites)
+- `npm test` — Run Jest test suite (522 tests, 18 suites)
 - `npm run typecheck` — TypeScript type checking
 - `npm run build` — Production build
 
