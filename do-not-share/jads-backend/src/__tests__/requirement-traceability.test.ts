@@ -32,6 +32,7 @@
 
 import { AftnMessageBuilder } from '../services/AftnMessageBuilder'
 import { Item18Parser }       from '../services/Item18Parser'
+import { FirGeometryEngine }  from '../services/FirGeometryEngine'
 
 const builder = new AftnMessageBuilder()
 const parser  = new Item18Parser()
@@ -255,24 +256,14 @@ describe('RT-NPNT: DGCA NPNT / UAS Rules 2021 requirements', () => {
   // Owner:  MissionController.checkViolations() + GeofenceChecker
   // Gap:    C1-05 (closed)
   test('RT-NPNT-07: Geofence breach detection — ray-casting returns outside for point exterior to polygon', () => {
-    // Pure algorithm test — no DB needed
-    function raycast(lat: number, lon: number, poly: [number,number][]): boolean {
-      const n = poly.length
-      if (n < 3) return true
-      let crossings = 0
-      for (let i = 0; i < n; i++) {
-        const [aLat,aLon] = poly[i]
-        const [bLat,bLon] = poly[(i+1)%n]
-        const straddles = (aLat < lat && bLat >= lat) || (bLat < lat && aLat >= lat)
-        if (!straddles) continue
-        const xLon = aLon + (lat-aLat)*(bLon-aLon)/(bLat-aLat)
-        if (xLon > lon) crossings++
-      }
-      return (crossings%2)===1
-    }
-    const square: [number,number][] = [[28,77],[29,77],[29,78],[28,78]]
-    expect(raycast(28.5, 77.5, square)).toBe(true)    // inside → not a breach
-    expect(raycast(30.0, 77.5, square)).toBe(false)   // outside → breach
+    // AUDIT FIX: Uses production FirGeometryEngine instead of local raycast reimplementation
+    const geoEngine = new FirGeometryEngine()
+    const square = [
+      { lat: 28, lon: 77 }, { lat: 29, lon: 77 },
+      { lat: 29, lon: 78 }, { lat: 28, lon: 78 },
+    ]
+    expect(geoEngine.isPointInPolygon(28.5, 77.5, square)).toBe(true)    // inside → not a breach
+    expect(geoEngine.isPointInPolygon(30.0, 77.5, square)).toBe(false)   // outside → breach
   })
 
   // REQ:    NPNT-08

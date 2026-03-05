@@ -1,5 +1,9 @@
 // Pure logic tests for background job invariants.
 // No database required — these verify the rules the jobs enforce.
+// AUDIT FIX: JOB-L07/L08/L09 now import real constants from src/constants.ts
+// instead of defining local copies that could drift from production.
+
+import { INDIA_FIRS, MAJOR_AERODROME_ICAOS, AFMLU_IDS } from '../../constants'
 
 describe('Background Job Invariants', () => {
 
@@ -95,26 +99,24 @@ describe('Background Job Invariants', () => {
   })
 
   test('JOB-L07: NotamPollJob covers all 4 India FIRs', () => {
-    const INDIA_FIRS = ['VIDF', 'VABB', 'VECC', 'VOMF']
-    expect(INDIA_FIRS).toHaveLength(4)
-    expect(INDIA_FIRS).toContain('VIDF')
-    expect(INDIA_FIRS).toContain('VABB')
-    expect(INDIA_FIRS).toContain('VECC')
-    expect(INDIA_FIRS).toContain('VOMF')
+    // AUDIT FIX: Now uses production INDIA_FIRS from src/constants.ts
+    const firIcaos = Object.values(INDIA_FIRS).map(f => f.icao)
+    expect(firIcaos).toHaveLength(4)
+    expect(firIcaos).toContain('VIDF')
+    expect(firIcaos).toContain('VABB')
+    expect(firIcaos).toContain('VECC')
+    expect(firIcaos).toContain('VOMF')
   })
 
   test('JOB-L08: MetarPollJob covers exactly 12 major aerodromes', () => {
-    const POLL_ICAO_CODES = [
-      'VIDP', 'VABB', 'VOMM', 'VECC', 'VOBL', 'VOHB',
-      'VAAH', 'VOGO', 'VOCL', 'VIBN', 'VORY', 'VIPT',
-    ]
-    expect(POLL_ICAO_CODES).toHaveLength(12)
+    // AUDIT FIX: Now uses production MAJOR_AERODROME_ICAOS from src/constants.ts
+    expect(MAJOR_AERODROME_ICAOS).toHaveLength(12)
     // Ensure no duplicates
-    expect(new Set(POLL_ICAO_CODES).size).toBe(12)
+    expect(new Set(MAJOR_AERODROME_ICAOS).size).toBe(12)
   })
 
   test('JOB-L09: AFMLU_IDS covers exactly 10 AFMLUs', () => {
-    const AFMLU_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    // AUDIT FIX: Now uses production AFMLU_IDS from src/constants.ts
     expect(AFMLU_IDS).toHaveLength(10)
     expect(Math.min(...AFMLU_IDS)).toBe(1)
     expect(Math.max(...AFMLU_IDS)).toBe(10)
