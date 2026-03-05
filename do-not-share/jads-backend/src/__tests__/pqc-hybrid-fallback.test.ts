@@ -246,4 +246,23 @@ describe('PQC-01–12: PQC hybrid fallback & degradation detection', () => {
     expect(result.detail).toContain('+')
     expect(result.detail).toContain('more')
   })
+
+  // TRIGGER:  Sign the same payload twice with the same key
+  // OUTPUT:   Both signatures are byte-identical (ML-DSA-65 is deterministic per FIPS 204)
+  // FAILURE:  Non-deterministic signing → breaks reproducibility guarantees for forensic evidence
+  // OWNER:    @noble/post-quantum ml_dsa65.sign()
+  test('PQC-13: ML-DSA-65 signing is deterministic — same key+message → identical signature', () => {
+    const payload = buildCanonicalPayload(42)
+    const msg     = Buffer.from(payload, 'hex')
+
+    const sig1 = ml_dsa65.sign(testKeypair.secretKey, msg)
+    const sig2 = ml_dsa65.sign(testKeypair.secretKey, msg)
+
+    // Byte-identical output — FIPS 204 §3.6 deterministic signing
+    expect(Buffer.from(sig1).toString('hex')).toBe(Buffer.from(sig2).toString('hex'))
+    expect(sig1.length).toBeGreaterThan(0)
+
+    // Both must verify with the same public key
+    expect(ml_dsa65.verify(testKeypair.publicKey, msg, sig1)).toBe(true)
+  })
 })

@@ -117,6 +117,53 @@ describe('RouteSemanticEngine — geodesics', () => {
     expect(result.errors.find(e => e.code === 'WAYPOINT_NOT_FOUND')).toBeUndefined()
   })
 
+  // EET CALCULATION — verifies the production RouteSemanticEngine computes
+  // totalEetMinutes from distance and TAS, not just passes through a string.
+  test('RS-EET-01: VIDP→VABB DCT at N0450 → EET ≈ 80–90 minutes', async () => {
+    const result = await makeRouteEngine().validateAndCompute({
+      departureIcao: 'VIDP', destinationIcao: 'VABB',
+      routeString: 'DCT',
+      speedIndicator: 'N', speedValue: '0450',
+      depLatDeg: 28.5665, depLonDeg: 77.1031, depMagVar: 0,
+      destLatDeg: 19.0896, destLonDeg: 72.8656,
+    })
+    // ~620 NM at 450 kts → ~83 minutes
+    expect(result.totalEetMinutes).toBeGreaterThan(70)
+    expect(result.totalEetMinutes).toBeLessThan(100)
+    expect(result.cruiseTasKts).toBe(450)
+  })
+
+  test('RS-EET-02: Slower speed K0500 → longer EET than N0450', async () => {
+    const fast = await makeRouteEngine().validateAndCompute({
+      departureIcao: 'VIDP', destinationIcao: 'VABB',
+      routeString: 'DCT',
+      speedIndicator: 'N', speedValue: '0450',
+      depLatDeg: 28.5665, depLonDeg: 77.1031, depMagVar: 0,
+      destLatDeg: 19.0896, destLonDeg: 72.8656,
+    })
+    const slow = await makeRouteEngine().validateAndCompute({
+      departureIcao: 'VIDP', destinationIcao: 'VABB',
+      routeString: 'DCT',
+      speedIndicator: 'K', speedValue: '0500',  // 500 km/h ≈ 270 kts
+      depLatDeg: 28.5665, depLonDeg: 77.1031, depMagVar: 0,
+      destLatDeg: 19.0896, destLonDeg: 72.8656,
+    })
+    // Same distance, slower TAS → longer EET
+    expect(slow.totalEetMinutes).toBeGreaterThan(fast.totalEetMinutes)
+    expect(slow.cruiseTasKts).toBeLessThan(fast.cruiseTasKts)
+  })
+
+  test('RS-EET-03: Zero distance (same dep/dest) → EET = 0', async () => {
+    const result = await makeRouteEngine().validateAndCompute({
+      departureIcao: 'VIDP', destinationIcao: 'VIDP',
+      routeString: 'DCT',
+      speedIndicator: 'N', speedValue: '0450',
+      depLatDeg: 28.5665, depLonDeg: 77.1031, depMagVar: 0,
+      destLatDeg: 28.5665, destLonDeg: 77.1031,
+    })
+    expect(result.totalEetMinutes).toBe(0)
+  })
+
   test('RS-14: Unknown airway Z999 → AIRWAY_NOT_FOUND error', async () => {
     const result = await makeRouteEngine().validateAndCompute({
       departureIcao: 'VIDP', destinationIcao: 'VABB',
