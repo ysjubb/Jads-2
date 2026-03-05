@@ -1,111 +1,388 @@
 # Anuj n Lalit Plan -1
 
-## JADS Platform — Laptop Setup & Android Deployment Guide
+## JADS Platform -- Complete Laptop Setup Guide (Zero Coding Experience Required)
 
-**Date:** 4 March 2026
+**Date:** 5 March 2026
 **Platform version:** 4.0.0
-**Goal:** Run the complete JADS platform on the laptop — backend API (with 6-layer security architecture auto-configured), admin portal, audit portal, 4 agent microservices, and Android app — for both manned aircraft flight plan filing and drone forensic audit.
+**Goal:** Run the complete JADS platform on your laptop -- backend API (with 6-layer security architecture auto-configured), admin portal, audit portal, 4 agent microservices, and Android app -- for both manned aircraft flight plan filing and drone forensic audit.
+
+**Who this guide is for:** You have a laptop, you use a phone, and you know how to install apps. That's it. Every single step is written out in full.
 
 ---
 
-## Architecture Overview
+## What You Are About to Build
 
-| Component | Port | Technology | Purpose |
-|-----------|------|-----------|---------|
-| **PostgreSQL Database** | `localhost:5432` | Docker (postgres:16-alpine) | Primary data store + audit log with immutability triggers |
-| **Backend API** | `localhost:8080` | Node.js + Express + Prisma | 5-stage OFPL pipeline, 10-point forensic engine, 7 background jobs |
-| **Admin Portal** | `localhost:5173` | React + Vite | Airspace CMS, flight plans, ADC/FIC clearance, OFPL comparison |
-| **Audit Portal** | `localhost:5174` | React + Vite | Forensic mission viewer, DJI import, role-scoped access |
-| **NOTAM Interpreter** | `localhost:3101` | Express microservice | Parses raw NOTAMs → structured advisories |
-| **Forensic Narrator** | `localhost:3102` | Express microservice | Mission data → human-readable forensic narrative |
-| **AFTN Draft** | `localhost:3103` | Express microservice | Structured input → ICAO AFTN message draft |
-| **Anomaly Advisor** | `localhost:3104` | Express microservice | Telemetry → anomaly detection report |
-| **Android App** | Physical device / emulator | Kotlin + Jetpack Compose | ECDSA + ML-DSA-65 signing, hash chains, NTP quorum |
+You are going to start **9 separate programs** on your laptop that together form the JADS platform. Think of it like starting 9 different apps -- each does one job and they all talk to each other.
+
+| # | What It Is | What It Does | How You'll See It |
+|---|-----------|-------------|-------------------|
+| 1 | **Database** (PostgreSQL) | Stores all the data (users, missions, flight plans) | Runs silently in background -- no window |
+| 2 | **Backend API** | The brain -- handles all logic, security, verification | Runs in a terminal window -- shows log messages |
+| 3 | **Admin Portal** | Website for DGCA admins to manage airspace, issue clearances | Opens in your web browser at `localhost:5173` |
+| 4 | **Audit Portal** | Website for auditors to view forensic mission reports | Opens in your web browser at `localhost:5174` |
+| 5-8 | **4 Agent Services** | Small helper programs (NOTAM, Forensics, AFTN, Anomaly) | Run in terminal windows (optional) |
+| 9 | **Android App** | The phone app that records drone missions | Runs on your Android phone or emulator |
 
 ---
 
-## PHASE 1: Prerequisites — Install These First
+## Before You Start -- What Is a Terminal?
 
-### Software Required on the Laptop
+A **terminal** (also called "command line" or "command prompt") is a text-based way to give instructions to your computer. Instead of clicking buttons, you type commands and press Enter.
 
-| Software | Version | Install |
-|----------|---------|---------|
-| **Node.js** | v20+ | https://nodejs.org (LTS) or `nvm install 20` |
-| **Docker Desktop** | Latest | https://docker.com/products/docker-desktop |
-| **Git** | Any | `sudo apt install git` / comes with macOS |
-| **Android Studio** | Iguana 2024.1+ | https://developer.android.com/studio |
-| **JDK** | 17 | Bundled with Android Studio |
+### How to Open a Terminal
 
-### Verify After Install
+**On Windows:**
+1. Press the **Windows key** on your keyboard (the key with the Windows logo, bottom-left)
+2. Type `cmd` or `powershell`
+3. Click on **"Windows PowerShell"** or **"Command Prompt"** that appears
+4. A black (or blue) window will open with a blinking cursor -- this is your terminal
 
-```bash
-node --version      # should print v20.x or higher
-npm --version       # should print 10.x or higher
-docker --version    # should print Docker version 2x.x
-git --version
-java -version       # should print 17.x
+**On Mac:**
+1. Press **Cmd + Space** (opens Spotlight search)
+2. Type `Terminal`
+3. Press **Enter**
+4. A white window will open with a blinking cursor -- this is your terminal
+
+**On Linux (Ubuntu):**
+1. Press **Ctrl + Alt + T**
+2. A terminal window opens
+
+### How to Open Multiple Terminal Tabs/Windows
+
+You will need **4-8 terminal windows open at the same time** (one for each program). Here's how:
+
+**On Windows (PowerShell):**
+- Right-click the PowerShell icon in the taskbar > click "Windows PowerShell" again
+- OR inside PowerShell, press **Ctrl + Shift + T** (if using Windows Terminal app)
+
+**On Mac (Terminal):**
+- Press **Cmd + T** to open a new tab inside the same Terminal window
+- OR press **Cmd + N** to open a brand new Terminal window
+
+**On Linux:**
+- Press **Ctrl + Shift + T** for a new tab
+- OR press **Ctrl + Shift + N** for a new window
+
+### How Terminal Commands Work
+
+When this guide says:
+```
+cd ~/Jads-2
 ```
 
+It means:
+1. Click inside your terminal window so it's active
+2. Type exactly `cd ~/Jads-2` (no extra spaces)
+3. Press **Enter**
+4. Wait until the blinking cursor comes back (means the command is done)
+
+**Important rules:**
+- Copy-paste is your friend. Select the command text in this document, copy it (Ctrl+C on Windows/Linux, Cmd+C on Mac), then paste it into the terminal (right-click in the terminal window, or Ctrl+Shift+V on Linux, or Cmd+V on Mac)
+- If a command shows an error (red text or the word "error"), STOP and read the error message
+- If nothing seems to happen and the cursor doesn't come back for more than 5 minutes, something is wrong
+
 ---
 
-## PHASE 2: Clone the Repository
+## PHASE 1: Install Required Software
 
-```bash
+You need to install 4 programs on your laptop. This is like installing apps on your phone -- you download them, run the installer, and click Next a few times.
+
+### 1A. Install Node.js (the engine that runs the backend)
+
+1. Open your web browser (Chrome, Edge, Safari, Firefox -- any will work)
+2. Go to: **https://nodejs.org**
+3. You will see a big green button that says **"XX.XX.X LTS"** (the numbers may vary -- that's okay)
+4. Click that green **LTS** button -- a file will download
+5. **On Windows:**
+   - Find the downloaded file (usually in your Downloads folder) -- it's called something like `node-v20.xx.x-x64.msi`
+   - Double-click it
+   - Click **Next** > **Next** > **Next** > **Install** > **Finish**
+   - That's it. Node.js is installed.
+6. **On Mac:**
+   - Find the downloaded `.pkg` file in Downloads
+   - Double-click it
+   - Click **Continue** > **Continue** > **Agree** > **Install** (enter your Mac password when asked) > **Close**
+7. **On Linux (Ubuntu):**
+   - Open a terminal and type these two commands, pressing Enter after each:
+   ```
+   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+   ```
+   - It will ask for your password -- type it (you won't see any characters appear, that's normal) and press Enter
+   ```
+   sudo apt-get install -y nodejs
+   ```
+
+**Verify it worked:** Open a NEW terminal window (close the old one and open a fresh one) and type:
+```
+node --version
+```
+Press Enter. You should see something like `v20.11.1` (the exact numbers don't matter, as long as it starts with `v20` or higher).
+
+If you see `'node' is not recognized` or `command not found`, close the terminal, reopen it, and try again. If it still doesn't work, restart your laptop and try once more.
+
+### 1B. Install Docker Desktop (runs the database)
+
+Docker is a program that runs other programs inside little isolated boxes called "containers". You need it to run the PostgreSQL database.
+
+1. Go to: **https://www.docker.com/products/docker-desktop/**
+2. Click the big **"Download for Windows"** (or Mac, or Linux) button
+3. **On Windows:**
+   - Run the downloaded `Docker Desktop Installer.exe`
+   - Click **OK** on all prompts. If it asks about "WSL 2", say **Yes**
+   - It may ask you to restart your computer -- do it
+   - After restart, Docker Desktop will start automatically. You'll see a small whale icon in your system tray (bottom-right corner of your screen near the clock)
+   - **IMPORTANT:** The first time Docker starts, it takes 1-2 minutes to fully load. Wait until the whale icon stops animating
+4. **On Mac:**
+   - Open the downloaded `.dmg` file
+   - Drag the Docker icon into the Applications folder
+   - Open Docker from your Applications (or Spotlight: Cmd+Space, type "Docker", Enter)
+   - It will ask for your password -- enter it
+   - Wait for the whale icon to appear in the top menu bar and stop animating
+5. **On Linux (Ubuntu):**
+   - Follow the instructions at: https://docs.docker.com/desktop/install/linux/ubuntu/
+   - OR install Docker Engine directly:
+   ```
+   sudo apt-get update
+   sudo apt-get install -y docker.io docker-compose
+   sudo usermod -aG docker $USER
+   ```
+   - Log out and log back in (or restart) for the group change to take effect
+
+**CRITICAL: Docker must be RUNNING before you continue.** Look for:
+- **Windows/Mac:** The whale icon in your system tray / menu bar. If it's not there, find Docker Desktop in your Start Menu (Windows) or Applications (Mac) and open it
+- **Linux:** Type `docker ps` in terminal. If it doesn't give an error, Docker is running
+
+**Verify it worked:**
+```
+docker --version
+```
+You should see something like `Docker version 25.0.3`. If you see an error, make sure Docker Desktop is open and running.
+
+### 1C. Install Git (downloads the code)
+
+Git is a program that downloads code from the internet and tracks changes to it.
+
+**On Windows:**
+1. Go to: **https://git-scm.com/download/win**
+2. The download starts automatically
+3. Run the installer
+4. Click **Next** on EVERY screen (the default settings are fine)
+5. Click **Install** > **Finish**
+
+**On Mac:**
+- Git is already installed on most Macs. Open Terminal and type `git --version`. If it shows a version number, you're done.
+- If it says "xcode-select: note: no developer tools were found", a popup will appear asking to install Command Line Tools. Click **Install** and wait.
+
+**On Linux:**
+```
+sudo apt-get install -y git
+```
+
+**Verify it worked:**
+```
+git --version
+```
+You should see something like `git version 2.43.0`.
+
+### 1D. Install Android Studio (builds the phone app)
+
+This is only needed if you want to run the Android app. You can skip this for now and come back later.
+
+1. Go to: **https://developer.android.com/studio**
+2. Click **"Download Android Studio"**
+3. Accept the terms and click **Download**
+4. **On Windows:** Run the `.exe` installer. Click **Next** > **Next** > **Next** > **Install**. It will download additional files (~1GB) -- this takes a while on slow internet
+5. **On Mac:** Open the `.dmg` and drag Android Studio to Applications
+6. When Android Studio opens for the first time, choose **"Standard"** setup and click through all the prompts. It will download SDK components (~2GB) -- let it finish
+
+**Verify it worked:** Open Android Studio. If you see a "Welcome to Android Studio" screen, it's working.
+
+---
+
+## PHASE 2: Download the JADS Code
+
+Now you will download the entire JADS project onto your laptop.
+
+### Step 2.1: Open a terminal
+
+Open a terminal (see "How to Open a Terminal" section above).
+
+### Step 2.2: Navigate to your home folder
+
+Type this and press Enter:
+
+**On Windows (PowerShell):**
+```
+cd $HOME
+```
+
+**On Mac or Linux:**
+```
 cd ~
+```
+
+(`~` is a shortcut that means "my home folder" -- like My Documents but one level up)
+
+### Step 2.3: Download (clone) the project
+
+Type this and press Enter:
+```
 git clone https://github.com/ysjubb/Jads-2.git
+```
+
+**What this does:** It downloads the entire JADS project from GitHub (a code-sharing website) and creates a folder called `Jads-2` on your laptop.
+
+**What you should see:** Lines of text scrolling by, ending with something like "Resolving deltas: 100% ... done."
+
+**If you see "fatal: repository not found":** The repository might be private. Contact the project owner for access. You may need to:
+1. Create a GitHub account at https://github.com
+2. Share your username with the project owner
+3. Accept the repository invitation via email
+4. Try the clone command again
+
+**How long this takes:** 30 seconds to 5 minutes depending on internet speed.
+
+### Step 2.4: Enter the project folder
+
+```
 cd Jads-2
+```
+
+### Step 2.5: Switch to the correct branch
+
+```
 git checkout claude/add-claude-documentation-YA3Eb
 ```
 
-All project files are inside the `do-not-share/` directory.
+**What this does:** The project has different versions (called "branches"). This command switches to the version that has all the latest setup files.
+
+**What you should see:** Either "Switched to branch 'claude/add-claude-documentation-YA3Eb'" or "Already on 'claude/add-claude-documentation-YA3Eb'".
 
 ---
 
-## PHASE 3: Start the Database (PostgreSQL via Docker)
+## PHASE 3: Start the Database
 
-```bash
-cd ~/Jads-2/do-not-share
+The database is where all information is stored -- users, missions, flight plans, everything. We use a program called PostgreSQL, running inside Docker.
+
+### Step 3.1: Make sure Docker is running
+
+Before this step, check that Docker Desktop is open and running (see Phase 1B above). The whale icon should be visible in your system tray.
+
+### Step 3.2: Navigate to the project's core folder
+
+In the same terminal, type:
+```
+cd do-not-share
+```
+
+(If you get "no such file or directory", type `cd ~/Jads-2/do-not-share` instead -- this is the full path.)
+
+### Step 3.3: Start the database
+
+```
 docker-compose up -d
 ```
 
-This starts a Postgres container with:
-- **User**: `jads`
-- **Password**: `jads_dev_password`
-- **Database**: `jads_dev`
-- **Port**: `5432`
+**What this does:** Tells Docker to download the PostgreSQL database program and start it in the background.
 
-Verify:
-```bash
+**What you should see:**
+- First time: It downloads the PostgreSQL image (~80MB). You'll see "Pulling postgres..." and progress bars.
+- After download: You'll see "Creating jads_postgres ... done"
+
+**The `-d` means "detached"** -- the database runs in the background so you can keep using this terminal.
+
+**How to know it worked:**
+```
 docker ps
-# Should show jads_postgres as running
 ```
 
-To wipe everything and start fresh:
-```bash
+This shows all running Docker containers. You should see one line with `jads_postgres` and `healthy` (or `Up`):
+```
+CONTAINER ID   IMAGE              STATUS                  NAMES
+abc123...      postgres:16-alpine Up 30 seconds (healthy) jads_postgres
+```
+
+If you see nothing, or the status says "Exited" or "Restarting", something is wrong. Common fix:
+- Make sure Docker Desktop is open
+- Try again: `docker-compose down` then `docker-compose up -d`
+
+### If You Need a Fresh Start Later
+
+If the database gets messed up and you want to erase everything and start over:
+```
 docker-compose down -v
 docker-compose up -d
 ```
 
+**WARNING:** This deletes ALL data in the database. Only do this if you want a completely clean slate.
+
 ---
 
-## PHASE 4: Setup & Start the Backend
+## PHASE 4: Setup & Start the Backend Server
 
-### 4a. Install dependencies
+The backend is the "brain" of the platform. It handles all the logic, security checks, and data processing.
 
-```bash
-cd ~/Jads-2/do-not-share/jads-backend
+### Step 4.1: Navigate to the backend folder
+
+In the same terminal:
+```
+cd jads-backend
+```
+
+(If this doesn't work, use the full path: `cd ~/Jads-2/do-not-share/jads-backend`)
+
+### Step 4.2: Install backend dependencies
+
+```
 npm install
 ```
 
-### 4b. Create the `.env` file
+**What this does:** Downloads all the small software libraries that the backend needs to run (hundreds of them). Think of it like installing an app's required updates.
 
-```bash
+**What you should see:** Lines scrolling by, eventually ending with "added XXX packages in XX.XXs". This takes 1-3 minutes.
+
+**If you see "npm: command not found":** Node.js isn't installed properly. Go back to Phase 1A.
+
+### Step 4.3: Create the configuration file (.env)
+
+The backend needs a configuration file that tells it passwords, database locations, etc. We'll copy a template and fill it in.
+
+```
 cp .env.example .env
 ```
 
-Edit `.env` and set these values:
+**What this does:** Copies the template file `.env.example` and creates a new file called `.env` (the period at the start is intentional -- it means "hidden file").
 
-```env
+**On Windows PowerShell**, if `cp` doesn't work, use:
+```
+Copy-Item .env.example .env
+```
+
+Now you need to **edit this file** to put in the correct values. Here's how to edit it:
+
+**On Windows:**
+```
+notepad .env
+```
+This opens the file in Notepad (the basic text editor).
+
+**On Mac:**
+```
+open -e .env
+```
+This opens it in TextEdit.
+
+**On Linux:**
+```
+nano .env
+```
+This opens a simple text editor inside the terminal. (To save: press Ctrl+O then Enter. To exit: press Ctrl+X.)
+
+### Step 4.4: What to put in the .env file
+
+Delete everything in the file and paste this EXACT content:
+
+```
 NODE_ENV=development
 PORT=8080
 
@@ -118,114 +395,200 @@ ADAPTER_INBOUND_KEY=deadbeef12345678deadbeef12345678
 USE_LIVE_ADAPTERS=false
 ```
 
-These are development-only secrets. Fine for demo purposes.
+**Save the file** (Ctrl+S on Windows/Linux, Cmd+S on Mac) and close the editor.
 
-To generate proper random secrets (optional):
-```bash
-openssl rand -hex 64    # for JWT_SECRET and ADMIN_JWT_SECRET
-openssl rand -hex 32    # for ADAPTER_INBOUND_KEY
+These are development-only test passwords. They are NOT real secrets -- they're fine for running on your laptop.
+
+### Step 4.5: Set up the database tables
+
+Now we need to create all the database tables (think of them like spreadsheets where data will be stored) and fill in some demo data.
+
+Run these three commands **one at a time**, waiting for each to finish before running the next:
+
+**Command 1 -- Generate the database tools:**
 ```
-
-### 4c. Setup the database schema + seed data
-
-```bash
 npx prisma generate
+```
+Wait for it to finish (you'll see "Generated Prisma Client"). Takes about 10 seconds.
+
+**Command 2 -- Create all the database tables:**
+```
 npx prisma migrate deploy
+```
+Wait for it to finish (you'll see "All migrations have been successfully applied"). Takes about 10-30 seconds.
+
+**Command 3 -- Fill in demo data (test users, sample missions):**
+```
 npx prisma db seed
 ```
+Wait for it to finish (you'll see "Seeding finished"). Takes about 10-30 seconds.
 
-The seed creates these demo accounts:
+**What is `npx`?** It's a tool that comes with Node.js. It runs programs that were downloaded by `npm install`. You don't need to install it separately.
 
-| Account | Username | Password | Use In |
-|---------|----------|----------|--------|
-| **DGCA Super Admin** | `dgca.admin` | `Admin@JADS2024` | Admin Portal + Audit Portal |
-| **IAF 28 Sqn** | `iaf.28sqn` | `28SQN@Secure2024` | Android App (special user) |
-| **Civilian Pilot** | phone: `9999000001` | — | Android App (civilian) |
+**What is Prisma?** It's a tool that manages the database -- creates tables, adds data, etc. Think of it as a translator between the code and the database.
 
-Plus: 3 drone missions with telemetry, 2 manned flight plans, airspace versions, NOTAMs, METARs.
+### Step 4.6: What the demo data contains
 
-### 4d. Start the backend server
+The seed command created these test accounts you can use:
 
-```bash
+| Account Type | Username | Password | Where to Use It |
+|-------------|----------|----------|----------------|
+| **DGCA Super Admin** | `dgca.admin` | `Admin@JADS2024` | Admin Portal website + Audit Portal website |
+| **IAF 28 Squadron** | `iaf.28sqn` | `28SQN@Secure2024` | Android App (military user) |
+| **Civilian Pilot** | phone: `9999000001` | Any OTP works in dev mode | Android App (civilian user) |
+
+It also created: 3 sample drone missions with GPS data, 2 sample flight plans, airspace zones, NOTAMs, and weather reports.
+
+### Step 4.7: Start the backend server
+
+```
 npm run dev
 ```
 
-Expected output:
+**What you should see after a few seconds:**
 ```
 [server_started] { port: 8080, version: '4.0' }
 ```
 
-Test it (in a new terminal):
-```bash
+You might also see other log messages about jobs starting, triggers being installed, etc. That's all normal.
+
+**IMPORTANT: DO NOT CLOSE THIS TERMINAL WINDOW.** The backend runs as long as this terminal is open. If you close it, the backend stops and nothing else will work.
+
+If you need to stop the backend later (e.g., to restart it), press **Ctrl+C** in this terminal window.
+
+### Step 4.8: Test that the backend is working
+
+Open a **new terminal window** (see "How to Open Multiple Terminal Tabs" section above). In this new terminal, type:
+
+```
 curl http://localhost:8080/health
-# Should return: {"status":"ok","version":"4.0",...}
 ```
 
-**KEEP THIS TERMINAL RUNNING.** The backend must stay on.
+**What you should see:**
+```json
+{"status":"ok","version":"4.0",...}
+```
+
+If you see this, the backend is running correctly.
+
+**On Windows** if `curl` doesn't work: Open your web browser and go to `http://localhost:8080/health`. You should see the same JSON text in the browser.
+
+**If you see "connection refused":** The backend isn't running. Go back to your other terminal and check for error messages.
 
 ---
 
 ## PHASE 5: Start the Admin Portal
 
-Open a **new terminal tab**:
+The Admin Portal is a website that runs on your laptop. Government admins use it to manage airspace, view flight plans, and issue clearances.
 
-```bash
+### Step 5.1: Open a NEW terminal window
+
+You need a fresh terminal. The backend terminal must stay open and running.
+
+Open a new terminal window or tab (see instructions above).
+
+### Step 5.2: Navigate to the admin portal folder
+
+```
 cd ~/Jads-2/do-not-share/jads-admin-portal
+```
+
+**On Windows PowerShell**, use:
+```
+cd $HOME\Jads-2\do-not-share\jads-admin-portal
+```
+
+### Step 5.3: Install dependencies and start
+
+```
 npm install
+```
+Wait for it to finish (1-2 minutes).
+
+```
 npm run dev
 ```
 
-Expected output:
+**What you should see:**
 ```
 VITE v5.x.x  ready in xxx ms
   Local:   http://localhost:5173/
 ```
 
-### Open in browser: http://localhost:5173
+### Step 5.4: Open the Admin Portal in your browser
 
-**Login with:**
-- Username: `dgca.admin`
-- Password: `Admin@JADS2024`
+Open your web browser (Chrome, Edge, Firefox, Safari) and go to:
 
-### What you can do in Admin Portal:
-- **Dashboard** — system overview, active stats, entity counts
-- **Flight Plans** — view filed manned aircraft plans, issue ADC/FIC clearance numbers, compare with OFPL, view generated AFTN messages (FPL, CNL, DLA)
-- **OFPL Comparison Tool** — paste an external OFPL, JADS highlights differences and validates against its own 5-stage pipeline
-- **ADC/FIC Clearance Issuance** — simulate AFMLU/FIR issuing clearance numbers (pilot app gets real-time SSE notification)
-- **Users** — manage civilian operators (Aadhaar-verified)
-- **Special Users** — manage IAF/DGCA/Army/Navy/DRDO/HAL/BSF/CRPF accounts (27 entities)
-- **Drone Zones** — manage RED/YELLOW/GREEN airspace zones with 5km/8km airport proximity gates
-- **Airspace** — version control with two-person approval workflow (lineage collusion detection)
+**http://localhost:5173**
 
-**KEEP THIS TERMINAL RUNNING.**
+(Type it in the address bar at the top of the browser, not in Google search.)
+
+You should see a **login page**.
+
+### Step 5.5: Log in
+
+- **Username:** `dgca.admin`
+- **Password:** `Admin@JADS2024`
+
+Click the Login button. You should see a dashboard with system statistics.
+
+### What you can explore in the Admin Portal:
+
+- **Dashboard** -- System overview, active stats
+- **Flight Plans** -- View filed manned aircraft plans, issue ADC/FIC clearance, compare OFPL, view AFTN messages (FPL, CNL, DLA)
+- **OFPL Comparison Tool** -- Paste an external OFPL, JADS highlights differences
+- **Users** -- Manage civilian operators
+- **Special Users** -- Manage IAF/DGCA/Army/Navy/DRDO/HAL/BSF/CRPF accounts (27 entities)
+- **Drone Zones** -- Manage RED/YELLOW/GREEN airspace zones
+- **Airspace** -- Version control with two-person approval workflow
+
+**KEEP THIS TERMINAL RUNNING.** Do not close it.
 
 ---
 
 ## PHASE 6: Start the Audit Portal
 
-Open another **new terminal tab**:
+The Audit Portal is another website for forensic auditors to examine drone mission data with cryptographic proof.
 
-```bash
+### Step 6.1: Open ANOTHER new terminal window
+
+You now have at least 2 terminals running (backend + admin portal). Open a third one.
+
+### Step 6.2: Navigate, install, and start
+
+```
 cd ~/Jads-2/do-not-share/jads-audit-portal
+```
+
+(On Windows: `cd $HOME\Jads-2\do-not-share\jads-audit-portal`)
+
+```
 npm install
+```
+Wait for it to finish.
+
+```
 npm run dev
 ```
 
-Expected output:
+**What you should see:**
 ```
 VITE v5.x.x  ready in xxx ms
   Local:   http://localhost:5174/
 ```
 
-### Open in browser: http://localhost:5174
+### Step 6.3: Open in browser
 
-### What you can do in Audit Portal:
-- **Missions** — browse all drone missions with 10-point forensic verification status (hash chain, NTP, cert, zone, GNSS, PQC...)
-- **Mission Detail** — full forensic breakdown: telemetry records, hash chain integrity, ECDSA P-256 signatures, ML-DSA-65 PQC status, device attestation trust score, GNSS integrity
-- **DJI Import** — imported DJI flight logs appear alongside native missions
-- **Flight Plans** — view filed manned aircraft flight plans with AFTN message history and clearance status
-- **Violations** — browse geofence, altitude, and airport proximity violations with severity classification
-- **Role-Scoped Access** — DGCA sees everything, AAI sees only manned aircraft (drone access returns 403), Investigation Officers see only granted missions
+Go to: **http://localhost:5174**
+
+Login with the same credentials: `dgca.admin` / `Admin@JADS2024`
+
+### What you can explore:
+
+- **Missions** -- Browse drone missions with 10-point forensic verification
+- **Mission Detail** -- Full cryptographic breakdown (hash chain, ECDSA signatures, NTP sync, geofence compliance)
+- **Flight Plans** -- View manned aircraft flight plans with AFTN message history
+- **Violations** -- Browse geofence, altitude, and proximity violations
 
 **KEEP THIS TERMINAL RUNNING.**
 
@@ -233,335 +596,471 @@ VITE v5.x.x  ready in xxx ms
 
 ## PHASE 6B: Start the Agent Microservices (Optional but Recommended)
 
-These are 4 deterministic, rule-based services. **No LLM, no Ollama, no external AI.** Each is ~200 lines of Express + pattern matching.
+These are 4 small helper programs. They add "smart" features like interpreting NOTAMs in plain English or generating forensic narratives. The main system works without them, but they make the demo better.
 
-Open **4 new terminal tabs** (or use a single tab with background processes):
+### Option A: Start each agent in a separate terminal (recommended for beginners)
 
-```bash
-# Terminal 5 — NOTAM Interpreter
-cd ~/Jads-2/do-not-share/agents/notam-interpreter
-npm install && npx ts-node index.ts
-# → NOTAM Interpreter running on port 3101
+You need **4 more terminal windows**. For each agent, open a new terminal and run the commands shown.
 
-# Terminal 6 — Forensic Narrator
-cd ~/Jads-2/do-not-share/agents/forensic-narrator
-npm install && npx ts-node index.ts
-# → Forensic Narrator running on port 3102
-
-# Terminal 7 — AFTN Draft
-cd ~/Jads-2/do-not-share/agents/aftn-draft
-npm install && npx ts-node index.ts
-# → AFTN Draft running on port 3103
-
-# Terminal 8 — Anomaly Advisor
-cd ~/Jads-2/do-not-share/agents/anomaly-advisor
-npm install && npx ts-node index.ts
-# → Anomaly Advisor running on port 3104
+**Agent 1 -- NOTAM Interpreter (Terminal 5):**
 ```
+cd ~/Jads-2/do-not-share/agents/notam-interpreter
+npm install
+npx ts-node index.ts
+```
+You should see: `NOTAM Interpreter running on port 3101`
 
-**Or start all 4 in one command (background):**
-```bash
+**Agent 2 -- Forensic Narrator (Terminal 6):**
+```
+cd ~/Jads-2/do-not-share/agents/forensic-narrator
+npm install
+npx ts-node index.ts
+```
+You should see: `Forensic Narrator running on port 3102`
+
+**Agent 3 -- AFTN Draft (Terminal 7):**
+```
+cd ~/Jads-2/do-not-share/agents/aftn-draft
+npm install
+npx ts-node index.ts
+```
+You should see: `AFTN Draft running on port 3103`
+
+**Agent 4 -- Anomaly Advisor (Terminal 8):**
+```
+cd ~/Jads-2/do-not-share/agents/anomaly-advisor
+npm install
+npx ts-node index.ts
+```
+You should see: `Anomaly Advisor running on port 3104`
+
+### Option B: Start all 4 agents with one command (advanced)
+
+If you're comfortable with the terminal, open ONE new terminal and run:
+```
 cd ~/Jads-2/do-not-share/agents
 for agent in notam-interpreter forensic-narrator aftn-draft anomaly-advisor; do
   (cd $agent && npm install && npx ts-node index.ts &)
 done
 ```
 
-Verify all agents:
-```bash
-curl http://localhost:3101/health   # NOTAM Interpreter
-curl http://localhost:3102/health   # Forensic Narrator
-curl http://localhost:3103/health   # AFTN Draft
-curl http://localhost:3104/health   # Anomaly Advisor
+### Verify all agents are running
+
+Open yet another terminal (or use any existing one) and run:
+```
+curl http://localhost:3101/health
+curl http://localhost:3102/health
+curl http://localhost:3103/health
+curl http://localhost:3104/health
 ```
 
-**These agents are optional.** The backend, portals, and Android app work without them. Agents enhance the experience with human-readable NOTAM interpretation, forensic narratives, AFTN message drafting, and anomaly reports.
+Each should return a JSON response. If any returns "connection refused", that agent isn't running.
 
 ---
 
 ## PHASE 7: Build & Deploy the Android App
 
-### 7a. Generate the Gradle wrapper (one-time only)
+This is the most complex phase. If you just want to test the web portals, you can skip this entirely.
 
-```bash
+### 7a. Open the project in Android Studio
+
+1. Open **Android Studio** (from Start Menu / Applications / etc.)
+2. If you see the "Welcome" screen, click **"Open"**
+   - If you see an existing project, go to **File > Open**
+3. A file browser appears. Navigate to:
+   - **Windows:** `C:\Users\YOUR_USERNAME\Jads-2\do-not-share\jads-android`
+   - **Mac:** `/Users/YOUR_USERNAME/Jads-2/do-not-share/jads-android`
+   - **Linux:** `/home/YOUR_USERNAME/Jads-2/do-not-share/jads-android`
+4. Select the `jads-android` folder and click **OK** (or **Open**)
+5. Android Studio will start "syncing" the project -- this means it's downloading all the Android libraries the app needs
+
+**First-time sync takes 5-15 minutes and downloads ~150MB.** You need internet. You'll see a progress bar at the bottom of Android Studio.
+
+**What "success" looks like:** A green checkmark or "BUILD SUCCESSFUL" in the bottom bar. No red error banners at the top.
+
+### 7b. Generate the Gradle wrapper (only if sync fails)
+
+If Android Studio says something about "Gradle wrapper not found", do this:
+
+1. Open a terminal
+2. Navigate to the android folder:
+   ```
+   cd ~/Jads-2/do-not-share/jads-android
+   ```
+3. **On Mac/Linux:**
+   ```
+   brew install gradle
+   ```
+   (If `brew` is not found on Mac, install it first: go to https://brew.sh and follow their one-line install command)
+
+   **On Linux (Ubuntu):**
+   ```
+   sudo apt install gradle
+   ```
+
+   **On Windows:**
+   - Go to https://gradle.org/install/
+   - Download the zip file
+   - Extract it to `C:\Gradle`
+   - Add `C:\Gradle\bin` to your PATH (Google "add to PATH Windows" if unsure)
+
+4. Then run:
+   ```
+   gradle wrapper --gradle-version 8.6
+   ```
+
+5. Go back to Android Studio and click **"Sync Project with Gradle Files"** (the elephant icon with a blue arrow at the top toolbar)
+
+### 7c. Fix the backend URL (CRITICAL)
+
+By default, the Android app tries to connect to a production server that doesn't exist. You need to change it to connect to your laptop instead.
+
+**You need to edit 2 files.** Here's how to find and edit them in Android Studio:
+
+#### File 1: MissionForegroundService.kt
+
+1. In Android Studio, look at the left panel (called "Project" panel). If you don't see it, press **Alt+1** (Windows/Linux) or **Cmd+1** (Mac)
+2. Navigate through the folders: `app` > `src` > `main` > `kotlin` > `com` > `jads` > `service`
+3. Double-click on **`MissionForegroundService.kt`** to open it
+4. Press **Ctrl+G** (Windows/Linux) or **Cmd+L** (Mac) to "Go to Line"
+5. Type `107` and press Enter -- this takes you to line 107
+6. You should see a line that says:
+   ```
+   backendUrl = "https://jads.internal/api"
+   ```
+7. Change it to:
+   - **If using Android Emulator:**
+     ```
+     backendUrl = "http://10.0.2.2:8080/api"
+     ```
+   - **If using a real phone on the same WiFi:**
+     ```
+     backendUrl = "http://YOUR_LAPTOP_IP:8080/api"
+     ```
+     (Replace `YOUR_LAPTOP_IP` with your actual laptop IP -- see below for how to find it)
+
+8. Save the file: **Ctrl+S** (Windows/Linux) or **Cmd+S** (Mac)
+
+#### File 2: AppPreferences.kt
+
+1. In the left panel, navigate: `app` > `src` > `main` > `kotlin` > `com` > `jads` > `storage`
+2. Double-click **`AppPreferences.kt`**
+3. Go to line 75 (Ctrl+G or Cmd+L, type 75)
+4. You should see:
+   ```
+   private const val DEFAULT_BACKEND_URL = "http://10.0.2.2:3000"
+   ```
+5. Change it to:
+   - **Emulator:** `"http://10.0.2.2:8080"`
+   - **Real phone:** `"http://YOUR_LAPTOP_IP:8080"`
+6. Save the file
+
+#### How to Find Your Laptop's IP Address
+
+Your laptop's IP address is a number like `192.168.1.105` that identifies it on your WiFi network.
+
+**On Windows:**
+1. Open a terminal (PowerShell or CMD)
+2. Type: `ipconfig`
+3. Press Enter
+4. Look for **"Wireless LAN adapter Wi-Fi"** (or "Ethernet adapter" if using a cable)
+5. Find the line that says **"IPv4 Address"** -- the number next to it (e.g., `192.168.1.105`) is your IP
+
+**On Mac:**
+1. Open a terminal
+2. Type: `ifconfig | grep "inet "`
+3. Press Enter
+4. Look for a line with `192.168.x.x` or `10.x.x.x` -- that's your IP
+5. Ignore the line with `127.0.0.1` (that's not it)
+
+**On Linux:**
+1. Open a terminal
+2. Type: `ip addr show | grep "inet "`
+3. Look for `192.168.x.x` or `10.x.x.x`
+4. Ignore `127.0.0.1`
+
+### 7d. Build the APK (the app file)
+
+**From Android Studio:**
+1. Go to menu: **Build** > **Build Bundle(s) / APK(s)** > **Build APK(s)**
+2. Wait for the build to finish (1-5 minutes)
+3. When done, a small notification appears at the bottom saying "Build APK(s) successful" with a "locate" link -- click it to find the APK file
+
+**From terminal (alternative):**
+```
 cd ~/Jads-2/do-not-share/jads-android
-```
-
-**If Gradle is installed on the laptop:**
-```bash
-gradle wrapper --gradle-version 8.6
-```
-
-**If Gradle is NOT installed, install it first:**
-```bash
-# macOS
-brew install gradle
-
-# Ubuntu/Debian
-sudo apt install gradle
-
-# Windows
-choco install gradle
-```
-
-Then run `gradle wrapper --gradle-version 8.6`.
-
-**OR** just open the folder in Android Studio — it auto-generates the wrapper when prompted.
-
-### 7b. Fix backend URL for local development
-
-**CRITICAL — Two files need editing before building:**
-
-#### File 1: `app/src/main/kotlin/com/jads/service/MissionForegroundService.kt`
-
-Find **line 107**:
-```kotlin
-backendUrl = "https://jads.internal/api"
-```
-
-Change to:
-
-**For emulator:**
-```kotlin
-backendUrl = "http://10.0.2.2:8080/api"
-```
-
-**For physical device on same WiFi:**
-```kotlin
-backendUrl = "http://YOUR_LAPTOP_IP:8080/api"
-```
-
-#### File 2: `app/src/main/kotlin/com/jads/storage/AppPreferences.kt`
-
-Find **line 75**:
-```kotlin
-private const val DEFAULT_BACKEND_URL = "http://10.0.2.2:3000"
-```
-
-Change to:
-
-**For emulator:**
-```kotlin
-private const val DEFAULT_BACKEND_URL = "http://10.0.2.2:8080"
-```
-
-**For physical device on same WiFi:**
-```kotlin
-private const val DEFAULT_BACKEND_URL = "http://YOUR_LAPTOP_IP:8080"
-```
-
-#### Finding your laptop IP:
-```bash
-# macOS / Linux
-ifconfig | grep "inet "
-# or
-ip addr show | grep "inet "
-
-# Windows
-ipconfig
-```
-
-Look for the `192.168.x.x` or `10.x.x.x` address.
-
-### 7c. Open in Android Studio
-
-1. **File > Open** > select `~/Jads-2/do-not-share/jads-android/`
-2. Wait for Gradle sync (first time downloads ~150MB — needs internet)
-3. Green checkmark in bottom bar = sync successful
-
-**If sync fails:**
-- "Gradle JVM not found" — File > Project Structure > SDK Location > set JDK 17
-- "Could not resolve com.android.tools.build:gradle" — needs internet for download
-- "Kotlin daemon failed" — `gradle.properties` already has `-Xmx4g`, check your RAM
-
-### 7d. Build the APK
-
-**From Android Studio menu:**
-```
-Build > Build Bundle(s) / APK(s) > Build APK(s)
-```
-
-**Or from terminal:**
-```bash
 ./gradlew assembleDebug
 ```
+(On Windows: `.\gradlew.bat assembleDebug`)
 
-Output APK: `app/build/outputs/apk/debug/app-debug.apk`
+The APK file will be at: `app/build/outputs/apk/debug/app-debug.apk`
 
-### 7e. Deploy to device
+### 7e. Run the app
 
-#### Option A: Android Emulator
-1. Open AVD Manager in Android Studio (Tools > Device Manager)
-2. Create a virtual device (Pixel 7, API 34)
-3. Click the green **Run** button
+#### Option A: Android Emulator (no phone needed)
 
-#### Option B: Physical Android Device
-1. On the phone: Settings > About Phone > tap "Build number" 7 times (enables Developer Options)
-2. Go to Settings > Developer Options > enable **USB Debugging**
-3. Connect phone to laptop via USB cable
-4. Accept the "Allow USB Debugging?" prompt on the phone
-5. The phone appears in Android Studio's device dropdown
-6. Click **Run**
+1. In Android Studio, go to menu: **Tools > Device Manager**
+2. Click **"Create Virtual Device"**
+3. Select **"Pixel 7"** (or any phone), click **Next**
+4. Select a system image with **API 34** -- click **Download** next to it if needed (downloads ~1GB)
+5. Click **Next** > **Finish**
+6. Back in the main Android Studio window, you'll see the emulator in the device dropdown (top toolbar, near the green play button)
+7. Click the green **Run** button (triangle icon)
+8. The emulator starts (takes 1-2 minutes first time) and the app installs and opens
 
-### 7f. Network setup for physical device
+#### Option B: Physical Android Phone
 
-The phone and laptop **MUST be on the same network**.
+1. **On your phone:** Go to **Settings > About Phone**
+2. Tap **"Build Number"** 7 times rapidly -- you'll see a toast message "You are now a developer!"
+3. Go back to **Settings > System > Developer Options** (might be in a different location depending on your phone brand)
+4. Turn ON **"USB Debugging"**
+5. Connect your phone to your laptop with a USB cable
+6. A popup will appear on your phone: **"Allow USB Debugging?"** -- tap **Allow** (check "Always allow" if you want)
+7. In Android Studio, your phone should now appear in the device dropdown at the top
+8. Click the green **Run** button
 
-**Option A — Same WiFi:**
-- Both connect to the same WiFi router
-- Use the laptop's LAN IP (e.g., `192.168.1.x`)
+### 7f. Network: Phone and Laptop Must Talk to Each Other
 
-**Option B — Phone Hotspot:**
-- Turn on mobile hotspot on the phone
-- Connect the laptop to the phone's hotspot
-- Use the laptop's hotspot IP (usually `192.168.43.x`)
+For the app on your phone to communicate with the backend on your laptop, they must be on the same network.
 
-**Option C — USB Tethering:**
-- Connect phone via USB, enable USB tethering
-- Laptop gets an IP from the phone's tethering interface
+**Option A -- Same WiFi (easiest):**
+- Connect both your phone and laptop to the same WiFi network (e.g., your home WiFi)
+- Use the laptop IP from step 7c
+
+**Option B -- Phone Hotspot:**
+- Turn on mobile hotspot on your phone (Settings > Hotspot)
+- Connect your laptop to the phone's hotspot WiFi
+- Find your laptop's new IP (it will be something like `192.168.43.x`)
+
+**Option C -- USB Tethering:**
+- Connect phone via USB
+- On your phone: Settings > Tethering > USB Tethering: ON
+- The laptop gets an IP from the phone
 
 ---
 
 ## PHASE 8: Test the Complete System
 
-### Test 1: Admin Portal — Flight Plan Demo
+### Test 1: Admin Portal -- Flight Plan Demo
 
-1. Open Admin Portal at http://localhost:5173
-2. Login with `dgca.admin` / `Admin@JADS2024`
-3. Go to **Flight Plans** — you'll see 2 seeded flight plans
-4. Click **AFTN Message** to view the generated ICAO FPL message
-5. Click **Compare with OFPL** to test the comparison tool (paste any external OFPL)
-6. Click **Issue ADC/FIC** to simulate AFMLU/FIR issuing clearance numbers
+1. Open your browser and go to **http://localhost:5173**
+2. Login: `dgca.admin` / `Admin@JADS2024`
+3. Click **"Flight Plans"** in the menu
+4. You'll see 2 pre-loaded flight plans from the demo data
+5. Click on any flight plan to see its details
+6. Try clicking **"AFTN Message"** to see the generated ICAO FPL message
+7. Try the **"Compare with OFPL"** button (paste any text starting with `(FPL-` to test)
 
-### Test 2: Android App — Drone Mission Flow
+### Test 2: Audit Portal -- Forensic Verification
 
-1. Open the app on phone/emulator
-2. Login with an operator ID (e.g., `pilot_demo`, role: Civilian)
-3. Grant location permissions when prompted
-4. Set up a mission (enter mission parameters)
-5. Start the mission — the foreground service starts recording GPS telemetry
-6. Let it run for 30-60 seconds
-7. Stop the mission — it finalizes the hash chain and uploads to the backend
-8. Check the **Audit Portal** (http://localhost:5174) — the mission should appear
-
-### Test 3: Audit Portal — Forensic Verification
-
-1. Open Audit Portal at http://localhost:5174
-2. Go to **Missions** — you'll see 3 seeded missions + any you just created
-3. Click any mission for the full forensic breakdown:
-   - Hash chain integrity (every record cryptographically linked)
+1. Open a new browser tab and go to **http://localhost:5174**
+2. Login: `dgca.admin` / `Admin@JADS2024`
+3. Click **"Missions"** in the menu
+4. You'll see 3 sample drone missions
+5. Click any mission to see the full forensic breakdown:
+   - Hash chain integrity (every record cryptographically linked to the previous)
    - ECDSA signature verification
-   - NTP time sync status
+   - NTP time synchronization status
    - Geofence compliance check
-   - NPNT zone classification
+
+### Test 3: Android App -- Drone Mission (if you set up Phase 7)
+
+1. Open the JADS app on your phone/emulator
+2. Login with: `iaf.28sqn` / `28SQN@Secure2024`
+3. Grant location permissions when prompted (tap "Allow")
+4. Set up a mission (enter mission parameters)
+5. Start the mission -- the phone starts recording GPS data
+6. Let it run for 30-60 seconds
+7. Stop the mission -- it uploads data to the backend
+8. Go to the Audit Portal (http://localhost:5174) -- the mission should appear in the missions list
 
 ---
 
-## Terminal Windows Summary
+## Terminal Windows Summary -- What Should Be Running
 
-You need **4–8 terminals running simultaneously**:
+When everything is set up, you'll have these terminal windows open:
 
-| Terminal | Directory | Command | Port |
-|----------|-----------|---------|------|
-| 1 | `do-not-share/` | `docker-compose up -d` | 5432 (runs in background) |
-| 2 | `jads-backend/` | `npm run dev` | 8080 |
-| 3 | `jads-admin-portal/` | `npm run dev` | 5173 |
-| 4 | `jads-audit-portal/` | `npm run dev` | 5174 |
-| 5 | `agents/notam-interpreter/` | `npx ts-node index.ts` | 3101 (optional) |
-| 6 | `agents/forensic-narrator/` | `npx ts-node index.ts` | 3102 (optional) |
-| 7 | `agents/aftn-draft/` | `npx ts-node index.ts` | 3103 (optional) |
-| 8 | `agents/anomaly-advisor/` | `npx ts-node index.ts` | 3104 (optional) |
+| Terminal # | What's Running | How You Started It | Port |
+|-----------|---------------|-------------------|------|
+| 1 | Database (PostgreSQL) | `docker-compose up -d` | 5432 (runs silently in background) |
+| 2 | Backend API | `npm run dev` in jads-backend/ | 8080 |
+| 3 | Admin Portal | `npm run dev` in jads-admin-portal/ | 5173 |
+| 4 | Audit Portal | `npm run dev` in jads-audit-portal/ | 5174 |
+| 5 | NOTAM Interpreter (optional) | `npx ts-node index.ts` in agents/notam-interpreter/ | 3101 |
+| 6 | Forensic Narrator (optional) | `npx ts-node index.ts` in agents/forensic-narrator/ | 3102 |
+| 7 | AFTN Draft (optional) | `npx ts-node index.ts` in agents/aftn-draft/ | 3103 |
+| 8 | Anomaly Advisor (optional) | `npx ts-node index.ts` in agents/anomaly-advisor/ | 3104 |
 
-Plus **Android Studio** open for building and deploying the app.
+Plus **Android Studio** if you're building the phone app.
 
-**What starts automatically when the backend starts:**
-- PostgreSQL audit triggers (L5 — database immutability) — auto-installed, idempotent
-- RuntimeIntegrityService (SHA-256 baseline of critical files, re-checked every 5 min)
-- All 7 background jobs (METAR poll, NOTAM poll, ADC/FIC poll, evidence ledger, reverification, annual reconfirm, airspace data)
-- Evidence ledger chain (L6 — daily anchoring at 00:05 UTC)
+**Terminals 2, 3, and 4 MUST stay open.** If you close them, those services stop.
+
+Terminal 1 (database) runs in the background -- you can close that terminal window and the database keeps running. To stop the database later: open a terminal, `cd ~/Jads-2/do-not-share`, then `docker-compose down`.
 
 ---
 
-## Quick Reference — All URLs
+## Quick Reference -- All URLs
 
-| What | URL |
-|------|-----|
-| Backend Health Check | http://localhost:8080/health |
-| Admin Portal | http://localhost:5173 |
-| Audit Portal | http://localhost:5174 |
-| Backend API (from phone) | http://YOUR_LAPTOP_IP:8080 |
+| What | URL | Need Backend Running? |
+|------|-----|----------------------|
+| Backend Health Check | http://localhost:8080/health | Yes |
+| Admin Portal | http://localhost:5173 | Yes (backend + admin terminal) |
+| Audit Portal | http://localhost:5174 | Yes (backend + audit terminal) |
+| Phone App Backend (from phone) | http://YOUR_LAPTOP_IP:8080 | Yes (same WiFi required) |
 
 ---
 
-## Quick Reference — All Credentials
+## Quick Reference -- All Credentials
 
-| Portal | Username | Password |
-|--------|----------|----------|
+| Where | Username | Password |
+|-------|----------|----------|
 | Admin Portal | `dgca.admin` | `Admin@JADS2024` |
 | Audit Portal | `dgca.admin` | `Admin@JADS2024` |
-| Android (Special) | `iaf.28sqn` | `28SQN@Secure2024` |
-| Android (Civilian) | phone `9999000001` | OTP (any in dev mode) |
+| Android App (Military) | `iaf.28sqn` | `28SQN@Secure2024` |
+| Android App (Civilian) | phone: `9999000001` | Any OTP (dev mode accepts anything) |
 
 ---
 
-## Troubleshooting
+## Troubleshooting -- If Something Goes Wrong
 
-| Problem | Fix |
-|---------|-----|
-| `FATAL: Missing required environment variable` | `.env` file missing. Run `cp .env.example .env` and fill in values |
-| `docker: command not found` | Install Docker Desktop |
-| `ECONNREFUSED localhost:5432` | Docker isn't running. `docker-compose up -d` |
-| `npx prisma migrate deploy` fails | Postgres not ready. Check `docker ps` |
-| Admin portal blank page | Backend not running. Start with `npm run dev` in `jads-backend/` |
-| Android app "Network Error" | Wrong IP/port in the two Kotlin files. Check laptop IP |
-| Android app "Connection refused" | Phone and laptop not on same WiFi |
-| Gradle sync fails | JDK 17 not set. File > Project Structure > SDK Location |
-| "Kotlin daemon failed" | Not enough RAM. Close other apps. `gradle.properties` already has 4GB heap |
-| AFTN/OFPL comparison not working | Make sure you paste the full OFPL message starting with `(FPL-` |
-| ADC/FIC issuance button grayed out | Flight plan must be in FILED or ACKNOWLEDGED status |
+### "I typed a command and got an error"
+
+Read the error message carefully. Here are the most common ones:
+
+| Error Message | What It Means | How to Fix |
+|--------------|--------------|-----------|
+| `'node' is not recognized` or `command not found: node` | Node.js isn't installed, or the terminal can't find it | Close the terminal, reopen it, try again. If still broken, reinstall Node.js (Phase 1A) and restart your computer |
+| `'docker' is not recognized` or `command not found: docker` | Docker isn't installed or isn't running | Install Docker Desktop (Phase 1B). Make sure the whale icon is in your system tray |
+| `'git' is not recognized` or `command not found: git` | Git isn't installed | Install Git (Phase 1C) |
+| `ECONNREFUSED localhost:5432` or `connect ECONNREFUSED` | The database isn't running | Run `docker-compose up -d` in the `do-not-share/` folder. Check Docker Desktop is open |
+| `FATAL: Missing required environment variable` | The `.env` file is missing or incomplete | Go to `jads-backend/` folder and check the `.env` file exists. Follow Phase 4.3-4.4 |
+| `Error: Cannot find module '...'` | You forgot to run `npm install` | Run `npm install` in the folder that's giving the error |
+| `EADDRINUSE: port already in use` | Something else is using that port, or you started the same thing twice | Close the other terminal that's running the same program, or restart your computer |
+| `npm ERR! code ENOENT` with `package.json` | You're in the wrong folder | Check what folder you're in (`pwd` on Mac/Linux, `Get-Location` on Windows PowerShell) and navigate to the correct one |
+
+### "The Admin Portal / Audit Portal shows a blank white page"
+
+The backend isn't running. Check Terminal 2 -- is it still showing the backend? If not, restart it:
+```
+cd ~/Jads-2/do-not-share/jads-backend
+npm run dev
+```
+
+### "The Android app says 'Network Error' or 'Connection refused'"
+
+1. Check the backend is running (Terminal 2)
+2. Check the IP address in the two Kotlin files (Phase 7c) is correct
+3. Make sure your phone and laptop are on the same WiFi network
+4. Try opening `http://YOUR_LAPTOP_IP:8080/health` in your phone's browser -- if it doesn't work, it's a network issue
+
+### "Android Studio says 'Gradle sync failed'"
+
+- **"Gradle JVM not found":** In Android Studio, go to **File > Project Structure > SDK Location** and make sure the JDK path points to Java 17
+- **"Could not resolve dependencies":** You need internet for the first sync. Check your connection.
+- **"Kotlin daemon failed":** You don't have enough RAM. Close other programs (especially Chrome with many tabs)
+
+### "I closed a terminal by accident"
+
+Just open a new terminal, navigate to the correct folder, and run the startup command again. For example, if you closed the backend terminal:
+```
+cd ~/Jads-2/do-not-share/jads-backend
+npm run dev
+```
+
+### "I want to stop everything and shut down"
+
+1. In each terminal running a service, press **Ctrl+C** to stop it
+2. To stop the database: open a terminal, then:
+   ```
+   cd ~/Jads-2/do-not-share
+   docker-compose down
+   ```
+3. Close all terminal windows
+4. (Optional) Close Docker Desktop
+
+### "I want to start everything again tomorrow"
+
+1. Open Docker Desktop (wait for the whale icon)
+2. Start the database:
+   ```
+   cd ~/Jads-2/do-not-share
+   docker-compose up -d
+   ```
+3. Start the backend:
+   ```
+   cd ~/Jads-2/do-not-share/jads-backend
+   npm run dev
+   ```
+4. Start admin portal (new terminal):
+   ```
+   cd ~/Jads-2/do-not-share/jads-admin-portal
+   npm run dev
+   ```
+5. Start audit portal (new terminal):
+   ```
+   cd ~/Jads-2/do-not-share/jads-audit-portal
+   npm run dev
+   ```
+6. You do NOT need to run `npm install` or `npx prisma` commands again -- those are one-time setup only
+
+---
+
+## Architecture Overview (for reference)
+
+| Component | Port | Technology | Purpose |
+|-----------|------|-----------|---------|
+| **PostgreSQL Database** | `localhost:5432` | Docker (postgres:16-alpine) | Primary data store + audit log with immutability triggers |
+| **Backend API** | `localhost:8080` | Node.js + Express + Prisma | 5-stage OFPL pipeline, 10-point forensic engine, 7 background jobs |
+| **Admin Portal** | `localhost:5173` | React + Vite | Airspace CMS, flight plans, ADC/FIC clearance, OFPL comparison |
+| **Audit Portal** | `localhost:5174` | React + Vite | Forensic mission viewer, DJI import, role-scoped access |
+| **NOTAM Interpreter** | `localhost:3101` | Express microservice | Parses raw NOTAMs into structured advisories |
+| **Forensic Narrator** | `localhost:3102` | Express microservice | Mission data into human-readable forensic narrative |
+| **AFTN Draft** | `localhost:3103` | Express microservice | Structured input into ICAO AFTN message draft |
+| **Anomaly Advisor** | `localhost:3104` | Express microservice | Telemetry into anomaly detection report |
+| **Android App** | Physical device / emulator | Kotlin + Jetpack Compose | ECDSA + ML-DSA-65 signing, hash chains, NTP quorum |
 
 ---
 
 ## What's NOT Working Yet (Known Limitations)
 
-1. **AFTN Gateway** — uses a stub (`AftnGatewayStub.ts`). Does NOT transmit to real AFMLU/FIR networks. ADC/FIC numbers must be issued manually via Admin Portal.
-2. **Digital Sky API** — uses a hardcoded zone map (`HardcodedZoneMapAdapter.kt`). No live connection to DGCA Digital Sky.
-3. **Aadhaar Verification** — stub mode. Accepts any OTP in development.
-4. **METAR/NOTAM** — stub adapters return hardcoded data. No live feed from IMD/AAI.
-5. **Background Upload URL** — `MissionForegroundService.kt` line 107 has a hardcoded URL that must be changed for local dev (see Phase 7b).
+1. **AFTN Gateway** -- Uses a stub (fake). Does NOT transmit to real AFMLU/FIR networks. ADC/FIC numbers must be issued manually via Admin Portal.
+2. **Digital Sky API** -- Uses a hardcoded zone map. No live connection to DGCA Digital Sky.
+3. **Aadhaar Verification** -- Stub mode. Accepts any OTP in development.
+4. **METAR/NOTAM** -- Stub adapters return hardcoded data. No live feed from IMD/AAI.
+5. **Background Upload URL** -- `MissionForegroundService.kt` line 107 has a hardcoded URL that must be changed for local dev (see Phase 7c).
 
 ---
 
-## Sovereign Handover Architecture — Adapter Pattern
+## Sovereign Handover Architecture -- Adapter Pattern
 
-The platform is designed for **government handover**: every external dependency (AFTN, Digital Sky, METAR, NOTAM, UIDAI, AFMLU, FIR) is abstracted behind a TypeScript interface with a development stub. Government integrators replace stubs with live implementations — zero application code changes required.
+The platform is designed for **government handover**: every external dependency (AFTN, Digital Sky, METAR, NOTAM, UIDAI, AFMLU, FIR) is abstracted behind a TypeScript interface with a development stub. Government integrators replace stubs with live implementations -- zero application code changes required.
 
 ### Backend Adapter Interfaces (`jads-backend/src/adapters/interfaces/`)
 
 | Interface | Stub | What It Abstracts |
 |-----------|------|-------------------|
 | `IAftnGateway.ts` | `AftnGatewayStub.ts` | AFTN flight plan filing with ATC (Doc 4444 FPL/DLA/CNL/CHG) |
-| `IAfmluAdapter.ts` | `AfmluAdapterStub.ts` | AFMLU data — ADC (Air Defence Clearance) coordination records, defence airspace GeoJSON polygons |
+| `IAfmluAdapter.ts` | `AfmluAdapterStub.ts` | AFMLU data -- ADC (Air Defence Clearance) coordination records, defence airspace GeoJSON polygons |
 | `IFirAdapter.ts` | `FirAdapterStub.ts` | FIR circulars (FIC records, supersedes chain) |
 | `IMetarAdapter.ts` | `MetarAdapterStub.ts` | Weather observations for 12 major Indian aerodromes |
 | `INotamAdapter.ts` | `NotamAdapterStub.ts` | NOTAMs for all 4 Indian FIRs (VIDF, VABB, VECC, VOMF) |
 
-### Injection Pattern — Constructor Defaults
+### Injection Pattern -- Constructor Defaults
 
 Every consumer accepts an optional adapter, defaulting to the stub:
 
 ```typescript
-// FlightPlanService.ts — swap AftnGatewayStub for live AFTN gateway
+// FlightPlanService.ts -- swap AftnGatewayStub for live AFTN gateway
 constructor(prisma: PrismaClient, aftnGateway: IAftnGateway = new AftnGatewayStub())
 
-// MetarPollJob.ts — swap for live IMD/AAI METAR feed
+// MetarPollJob.ts -- swap for live IMD/AAI METAR feed
 constructor(prisma: PrismaClient, adapter?: IMetarAdapter)
 
-// AirspaceDataPollJob.ts — swap all three simultaneously
+// AirspaceDataPollJob.ts -- swap all three simultaneously
 constructor(prisma, afmluAdapter = new AfmluAdapterStub(), firAdapter = new FirAdapterStub(), metarAdapter = new MetarAdapterStub())
 ```
 
-### Inbound Webhooks — Government Systems Push to JADS
+### Inbound Webhooks -- Government Systems Push to JADS
 
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
@@ -571,7 +1070,7 @@ constructor(prisma, afmluAdapter = new AfmluAdapterStub(), firAdapter = new FirA
 
 Authentication: constant-time comparison (`crypto.timingSafeEqual`) via `adapterAuthMiddleware.ts`. Separate from JWT auth.
 
-### Polling Jobs — JADS Pulls from Government Systems
+### Polling Jobs -- JADS Pulls from Government Systems
 
 | Job | Cron | Adapter | Idempotency |
 |-----|------|---------|-------------|
@@ -591,7 +1090,7 @@ Injected via `AppContainer.kt:62-67`. Replace inline stub with HTTP adapter poin
 
 ### Pre-Plumbed Environment Variables for Live Adapters
 
-All env vars are already defined in `env.ts` — set `USE_LIVE_ADAPTERS=true` and fill in:
+All env vars are already defined in `env.ts` -- set `USE_LIVE_ADAPTERS=true` and fill in:
 
 ```env
 DIGITAL_SKY_BASE_URL=       # eGCA/Digital Sky API endpoint
@@ -609,14 +1108,14 @@ NOTAM_BASE_URL=             # AAI NOTAM feed
 
 ---
 
-## Scope Invariants — Post-Flight Only (S2/S3 Enforcement)
+## Scope Invariants -- Post-Flight Only (S2/S3 Enforcement)
 
 **The platform is NOT a real-time monitoring system. This is enforced in code and tested in CI.**
 
 ### Architectural Boundary
 
 - **S2**: Platform must NOT be a real-time monitoring system
-- **S3**: Drone data flows ONE direction ONLY: device → backend AFTER landing
+- **S3**: Drone data flows ONE direction ONLY: device to backend AFTER landing
 - **S7**: No live telemetry streaming, no WebSocket, no SSE for drone data
 
 ### Enforcement Tests (`e2e/security/scopeEnforcement.test.ts`)
@@ -628,11 +1127,11 @@ NOTAM_BASE_URL=             # AAI NOTAM feed
 | SCOPE-03 | `/ws/drone-position` returns 404 |
 | SCOPE-04 | `/api/drone/stream/position` (SSE) returns 404 |
 | SCOPE-05 | `/api/drone/missions/active/stream` (SSE) returns 404 |
-| SCOPE-11 | Express router stack inspected — no WebSocket/SSE handlers registered anywhere |
+| SCOPE-11 | Express router stack inspected -- no WebSocket/SSE handlers registered anywhere |
 
 If any of these fail, **the build must not ship**. These are architectural boundary tests, not functional tests.
 
-### Frozen Files — DO NOT MODIFY
+### Frozen Files -- DO NOT MODIFY
 
 These files are frozen. Any change breaks cross-runtime hash compatibility:
 
@@ -640,254 +1139,12 @@ These files are frozen. Any change breaks cross-runtime hash compatibility:
 |------|---------|-----------|
 | `HashChainEngine.kt` | Kotlin | HASH_0/HASH_n computation must match TypeScript byte-for-byte |
 | `CanonicalSerializer.kt` | Kotlin | 96-byte frozen layout is the forensic record format |
-| `EndianWriter.kt` | Kotlin | Explicit bit-shift big-endian encoding — no ByteBuffer, no library calls |
+| `EndianWriter.kt` | Kotlin | Explicit bit-shift big-endian encoding -- no ByteBuffer, no library calls |
 | `canonicalSerializer.ts` | TypeScript | Must produce identical bytes to Kotlin serializer |
 
-**Runtime assertion** in `HashChainEngine.kt:29-33`: prefix length check runs at startup — crashes immediately if invariant violated.
+**Runtime assertion** in `HashChainEngine.kt:29-33`: prefix length check runs at startup -- crashes immediately if invariant violated.
 
 **Cross-runtime verification**: `canonical_test_vectors.json` contains frozen test vectors (TV-001 through TV-008) verified by both runtimes in CI Stage 2.
-
----
-
-## Manned Aircraft Compliance — FIR, Semicircular Rule, RVSM, EET
-
-### FIR Geometry Engine (`services/FirGeometryEngine.ts`)
-
-- Determines which India FIRs a route crosses **in route order** (not alphabetical)
-- Four India FIRs: **VIDF** (Delhi), **VABB** (Mumbai), **VECC** (Kolkata), **VOMF** (Chennai)
-- FIR boundaries are **static constants** from `data/IndiaFirBoundaries.ts` — polygon ray-casting, no external geospatial library
-- Computes **EET per FIR segment** using groundspeed from `RouteSemanticEngine`
-- Output: `FirCrossing[]` with `firCode`, `entryPoint`, `exitPoint`, `distanceNm`, `eetMinutes`
-
-### Altitude Compliance Engine (`services/AltitudeComplianceEngine.ts`)
-
-**IFR Semicircular Rule** (ICAO Annex 2, Table 3-1 — India):
-
-| Magnetic Track | Direction | Valid FLs Below RVSM | Valid FLs in RVSM Band |
-|---------------|-----------|---------------------|----------------------|
-| 000-179 | Eastbound | FL070, 090, 110, 130, 150, 170, 190, 210, 230, 250, 270, 290 | FL290, 310, 330, 350, 370, 390, 410 |
-| 180-359 | Westbound | FL080, 100, 120, 140, 160, 180, 200, 220, 240, 260, 280 | FL300, 320, 340, 360, 380, 400 |
-
-**RVSM Equipment Check**: Equipment code 'W' required for FL290+. Error: `RVSM_EQUIPMENT_MISSING`.
-
-**Transition Altitude**: Aerodrome-specific first, then national default (9,000 ft).
-
-**Safety**: If `magneticTrackDeg` is null, emits `SEMICIRCULAR_UNABLE_NO_TRACK` warning — **never silently passes**.
-
-### OFPL Validation (`services/OfplValidationService.ts`)
-
-Full ICAO field validation (Item 7 through Item 19). AFTN message generation per ICAO Doc 4444 Section 4 via `AftnMessageBuilder.ts`.
-
-### Two-Person Rule (`services/AirspaceVersioningService.ts`)
-
-Airspace zone changes require approval from a **different admin**:
-- Draft created by Admin A → status `DRAFT`
-- Admin A tries to approve own draft → **REJECTED** (`CANNOT_APPROVE_OWN_CHANGES`)
-- Lineage check prevents one person using two accounts
-- Only Admin B approval transitions to `ACTIVE`
-- Tested in `HW-ADMIN-02` and `HW-ADMIN-03` (human workflow tests)
-
----
-
-## NPNT Compliance Gate — Category-Aware Enforcement
-
-**File:** `jads-android/.../drone/NpntComplianceGate.kt`
-
-Three independent checks run in sequence (MUST run FIRST — before NTP sync, before cert check):
-
-1. **Drone weight category** (DGCA UAS Rules 2021): NANO (<250g), MICRO (250g-2kg), SMALL (2-25kg), MEDIUM (25-150kg), LARGE (>150kg)
-2. **Zone classification** (RED/YELLOW/GREEN from Digital Sky adapter)
-3. **Airport proximity** (exclusion zones per UAS Rules 2021, haversine distance)
-
-### Category-Aware NPNT Exemptions
-
-| Category | NPNT Required? | UIN Required? | Permission Artefact? | Pilot License? |
-|----------|---------------|--------------|---------------------|---------------|
-| NANO (<250g) | No (GREEN only) | No | No | No |
-| MICRO (250g-2kg) | YELLOW zones only | Simplified | YELLOW zones only | No |
-| SMALL+ (>2kg) | Yes | Full UIN | Yes | Yes |
-
-### Zone Decision Logic
-
-- **RED zone**: Hard stop, no override, blocks all categories
-- **YELLOW zone**: Requires valid permission token (except NANO)
-- **GREEN zone**: Proceed if AGL ≤ 400ft; token required above 400ft
-
-Both zone AND proximity checks can independently block a mission. Airport proximity: inner radius = PROHIBITED, outer radius = COORDINATION_REQUIRED.
-
----
-
-## Testing & CI Pipeline
-
-### CI Pipeline (`ci/jads-platform-pipeline.yml`) — 23 Jobs, 7 Stages
-
-| Stage | Jobs | What It Does |
-|-------|------|-------------|
-| **0 — Environment Gate** | 1 | Verify Node 20+, Java 17+, Docker, Gradle wrapper |
-| **1 — Security Scanning** | 3 | gitleaks (secret scan), npm audit (dependency vulns), CodeQL (SAST) |
-| **2 — Determinism Gates** | 3 | **Canonical TS↔Kotlin byte match**, ECDSA cross-runtime, hash chain properties (1K + 10K iterations) |
-| **3 — Android Tests + APK** | 3 | NPNT gate + airport proximity, forensic verifier (10-point), Android APK build (assembleDebug + artifact upload) |
-| **3b — Backend Unit Tests** | 6 | Adapters, airspace CMS, auth, OFPL validation, telemetry decoder, PQC degradation logging (ML-DSA-65 fallback detection) |
-| **4 — Schema & Migration** | 2 | Prisma validate, migration integrity |
-| **5 — E2E Integration** | 6 | manned, airspace, drone, audit, security (scope), performance |
-| **6 — Frontend Builds** | 2 | Admin Portal, Audit Portal |
-| **Final — Build Gate** | 1 | All 23 jobs must pass — single gate for merge |
-
-**Key design**: Determinism gates (Stage 2) run BEFORE functional tests. If Kotlin and TypeScript serializers don't produce identical bytes, nothing else matters.
-
-### Test Suites
-
-**Backend (`jads-backend/src/__tests__/`):**
-
-| Suite | Focus |
-|-------|-------|
-| `stage7-logic.test.ts` | Core business logic (forensics, AFTN, geofence) |
-| `mega-stress-chaos.test.ts` | High-volume stress testing |
-| `concurrent-stress.test.ts` | Parallel upload races |
-| `stress-chaos.test.ts` | Error injection and recovery |
-| `collapse-chaos.test.ts` | Bit-flip attacks, key rotation, Attack B demonstration |
-| `chaos-integration.test.ts` | Multi-component chaos scenarios |
-| `clearance-logic.test.ts` | ADC/FIC clearance workflows |
-| `human-workflow.test.ts` | Two-person rule, admin self-grant blocking |
-| `jobs/job-logic.test.ts` | Polling job idempotency and scheduling |
-| `vectors/vectorVerifier.test.ts` | Frozen test vectors (VEC-01 through VEC-08) |
-
-**Android (`jads-android/app/src/test/`):**
-
-| Suite | Tests | Focus |
-|-------|-------|-------|
-| `stage8-logic-tests.kt` | 49 | Hash chain, NTP quorum, geofence logic |
-| `stage9-stress-chaos.kt` | 65 | GPS loss, process kill, zone map edge cases |
-| `GeofenceCheckerTest.kt` | — | Geofence boundary conditions |
-
-**E2E (`e2e/`):**
-
-| Suite | Test IDs | Focus |
-|-------|----------|-------|
-| `manned/mannedAircraftFlow.test.ts` | E2E-01 to E2E-05 | Flight plan → AFTN → clearance flow |
-| `airspace/airspaceCmsFlow.test.ts` | E2E-10 to E2E-14 | Airspace versioning + two-person rule |
-| `drone/droneMissionFlow.test.ts` | E2E-15 to E2E-20 | Mission upload → forensic verification |
-| `audit/auditFlow.test.ts` | E2E-21 to E2E-27 | Audit trail integrity |
-| `security/scopeEnforcement.test.ts` | SCOPE-01 to SCOPE-11 | Post-flight-only enforcement |
-| `perf/performanceTests.test.ts` | PERF-01 to PERF-05 | Latency, concurrency, replay detection |
-
----
-
-## Performance Benchmarks
-
-### Scale Targets (Platform Spec)
-
-- 100 concurrent drone missions
-- 1Hz telemetry (1 record/second per drone)
-- Upload burst: entire mission (up to 3,600 records for 1-hour flight) in one POST
-
-### Measured Thresholds (`e2e/perf/performanceTests.test.ts`)
-
-| Metric | CI Threshold | Production Target |
-|--------|-------------|-------------------|
-| Single upload (100 records) | < 2,000 ms | < 500 ms |
-| 10 concurrent uploads | < 5,000 ms (all complete, 0 failures) | < 2,000 ms |
-| Audit query (50 missions) | < 3,000 ms | < 1,000 ms |
-| Idempotent re-upload | Detected (no duplicates) | Same |
-| Replay attack | 409 `REPLAY_ATTEMPT_DETECTED` | Same |
-
-### Chaos & Stress Suites
-
-- `mega-stress-chaos.test.ts` — high-volume stress testing
-- `concurrent-stress.test.ts` — parallel upload race conditions
-- `collapse-chaos.test.ts` — bit-flip attacks, key rotation mid-mission, Attack B (hash chain + payload modification)
-- `stage9-stress-chaos.kt` — Android: GPS loss, process kill, zone map edge cases (65 tests)
-
----
-
-## Cryptography — Current State & PQC Migration Roadmap
-
-### Current Cryptographic Primitives
-
-| Component | Algorithm | Library | Location |
-|-----------|-----------|---------|----------|
-| Android telemetry signing | ECDSA P-256 (RFC 6979 deterministic nonces) | BouncyCastle 1.77 | `crypto/EcdsaSigner.kt` |
-| Backend signature verification | ECDSA P-256 | Node.js `crypto` | `services/ForensicVerifier.ts` |
-| Hash chain | SHA-256 | Both runtimes | `crypto/HashChainEngine.kt`, `services/ForensicVerifier.ts` |
-| Backend key management | HMAC-SHA256 | Node.js `crypto` | `services/KeyManagementService.ts` |
-| Database encryption | SQLCipher (AES-256) | Android SQLCipher | `storage/JadsDatabase.kt` |
-| Device attestation | X.509 + EC P-256 | Node.js `crypto` | `services/DeviceAttestationService.ts` |
-
-**Quantum-safe today**: SHA-256 (hash chain), HMAC-SHA256, AES-256 (SQLCipher). Grover's algorithm only halves symmetric security — 256-bit remains 128-bit post-quantum, which is sufficient.
-
-**Quantum-vulnerable**: ECDSA P-256 (Shor's algorithm breaks elliptic curve discrete log in polynomial time).
-
-### PQC Migration Roadmap
-
-**Target algorithm**: **ML-DSA-65** (FIPS 204, formerly CRYSTALS-Dilithium Level 3) — direct replacement for ECDSA in digital signatures.
-
-#### Size Impact
-
-| Property | ECDSA P-256 (current) | ML-DSA-65 (target) |
-|----------|----------------------|---------------------|
-| Public key | 65 bytes | 1,952 bytes |
-| Signature | ~72 bytes (DER) | 3,293 bytes |
-| Security | 128-bit classical | 128-bit quantum (NIST Level 3) |
-
-For a 1-hour mission (3,600 records): signatures grow from ~253 KB to ~11.6 MB. Acceptable for post-flight upload.
-
-#### Phase 1 — Hybrid Signatures (NIST SP 800-227 recommended)
-
-Sign every telemetry record with BOTH ECDSA P-256 AND ML-DSA-65. Store both signatures. Verify either. If ML-DSA has a flaw, ECDSA is still there. If quantum breaks ECDSA, ML-DSA is there.
-
-**Schema change**: Add `pqcSignatureHex` column alongside existing `signatureHex`.
-
-**Swap points**:
-- Android: `EcdsaSigner.kt` — add parallel `MlDsaSigner.kt` using BouncyCastle PQC provider
-- Backend: `ForensicVerifier.ts:518-526` — add ML-DSA verification path
-
-#### Phase 2 — ML-DSA Primary, ECDSA Fallback
-
-Once ML-DSA libraries are stable in Android Keystore (hardware-backed PQC keys), make ML-DSA the primary signer. ECDSA retained for verifying old missions.
-
-#### Phase 3 — ML-DSA Only
-
-Drop ECDSA for new missions. All legacy missions remain verifiable via stored ECDSA signatures.
-
-#### Current Blockers
-
-1. **Android Keystore**: No hardware-backed ML-DSA support yet. BouncyCastle 1.78+ has software ML-DSA, but no StrongBox/TEE protection.
-2. **Node.js `crypto`**: No native ML-DSA. Requires `liboqs` bindings or BouncyCastle Java bridge.
-3. **Schema**: `signatureHex` column needs companion `pqcSignatureHex` column.
-
-#### Abstraction Layers Already in Place
-
-| Interface | Purpose | Swap Capability |
-|-----------|---------|----------------|
-| `IKeyProvider` | Backend key management (sign/verify/getSecret) | HSM-ready — swap `EnvKeyProvider` for `HsmKeyProvider` |
-| `IAttestationVerifier` | Device attestation (Play Integrity, key attestation) | Provider-swappable |
-
-**Not yet abstracted**: Core ECDSA signing in `EcdsaSigner.kt` (hardcoded `P-256`) and verification in `ForensicVerifier.ts` (hardcoded `namedCurve`). Phase 1 adds a parallel signer rather than abstracting the existing one.
-
-#### What to Say at iDEX
-
-> "Our hash chain (SHA-256) and database encryption (AES-256) are already quantum-resistant. For digital signatures, we use ECDSA P-256 today — the current industry standard with RFC 6979 deterministic nonces. Our PQC migration plan follows NIST SP 800-227: Phase 1 adds hybrid dual-signatures (ECDSA + ML-DSA-65) for cryptographic agility, Phase 2 transitions to PQC-primary once Android Keystore supports hardware-backed FIPS 204 keys. The swap points are identified: `EcdsaSigner.kt` on Android and `ForensicVerifier.ts` on the backend. Estimated effort: 2-4 weeks post-library availability."
-
----
-
-## Compliance Mapping — Show Me the Code
-
-| Regulation / Requirement | Implementation | File |
-|--------------------------|---------------|------|
-| **DGCA UAS Rules 2021 — Weight Categories** | NANO/MICRO/SMALL/MEDIUM/LARGE enum with category-specific NPNT exemptions | `NpntComplianceGate.kt:26-53` |
-| **NPNT Gate Order (F2)** | Weight category → zone classification → airport proximity (sequential, all must pass) | `NpntComplianceGate.kt:138-276` |
-| **Digital Sky Zone Classification** | `IDigitalSkyAdapter.classifyLocation()` → RED/YELLOW/GREEN | `NpntComplianceGate.kt:111-114` |
-| **Airport Proximity Exclusion** | Haversine distance, inner radius (PROHIBITED) + outer radius (COORDINATION) | `NpntComplianceGate.kt:278-360` |
-| **ICAO Doc 4444 — Flight Plan Filing** | Full Item 7-19 validation, AFTN FPL/DLA/CNL/CHG message generation | `OfplValidationService.ts`, `AftnMessageBuilder.ts` |
-| **ICAO Annex 2 — Semicircular Rule** | Eastbound odd FLs, westbound even FLs, RVSM band enforcement | `AltitudeComplianceEngine.ts:25-98` |
-| **RVSM Equipment Check** | Equipment code 'W' required above FL290 | `AltitudeComplianceEngine.ts:93-98` |
-| **FIR Boundary / EET Computation** | Ray-casting across VIDF/VABB/VECC/VOMF with per-FIR EET | `FirGeometryEngine.ts:33-80` |
-| **Two-Person Rule (C3)** | Self-approval blocked, lineage check prevents account farming | `AirspaceVersioningService.ts:166-196` |
-| **Forensic Hash Chain** | SHA-256 chained: HASH_0 = SHA256("MISSION_INIT" ∥ missionId_BE), HASH_n = SHA256(canonical ∥ HASH_(n-1)) | `HashChainEngine.kt:7-55` |
-| **96-Byte Canonical Payload** | Deterministic big-endian serialization, CRC32 self-check, cross-runtime verified | `CanonicalSerializer.kt:5-116` |
-| **ECDSA P-256 Tamper Detection** | RFC 6979 deterministic nonces, DER signatures, defends against Attack B | `EcdsaSigner.kt`, `ForensicVerifier.ts:218-237` |
-| **NTP Quorum Time Authority** | 3 NTP servers, 2-of-3 quorum required, mission blocked if sync fails | `NtpQuorumAuthority.kt` |
-| **Post-Flight Only (S2/S3)** | No WebSocket, no SSE, no live streaming — tested in SCOPE-01 through SCOPE-11 | `e2e/security/scopeEnforcement.test.ts` |
 
 ---
 
@@ -895,57 +1152,57 @@ Drop ECDSA for new missions. All legacy missions remain verifiable via stored EC
 
 ```
 Jads-2/do-not-share/
-├── jads-backend/                  Backend API server
-│   ├── src/
-│   │   ├── server.ts              Express app entry point
-│   │   ├── env.ts                 Environment variable validation
-│   │   ├── routes/                All API route handlers
-│   │   ├── services/              Business logic (FlightPlan, Clearance, Audit, etc.)
-│   │   ├── adapters/stubs/        Stub adapters for gov systems
-│   │   ├── middleware/            Auth, rate limiting, version check
-│   │   ├── jobs/                  Background schedulers (METAR poll, etc.)
-│   │   └── __tests__/             Jest test suites
-│   ├── prisma/
-│   │   ├── schema.prisma          Database schema (authoritative)
-│   │   ├── seed.ts                Demo data seeder
-│   │   └── migrations/            SQL migration files
-│   ├── .env.example               Environment template
-│   └── package.json
-│
-├── jads-admin-portal/             Admin web interface
-│   ├── src/pages/
-│   │   ├── FlightPlansPage.tsx    Flight plans + OFPL comparison + ADC/FIC issuance
-│   │   ├── DashboardPage.tsx      System overview
-│   │   ├── DroneZonesPage.tsx     Airspace zone management
-│   │   └── ...
-│   └── vite.config.ts             Dev server config (proxy → backend:8080)
-│
-├── jads-audit-portal/             Forensic audit web interface
-│   ├── src/pages/
-│   │   ├── MissionDetailPage.tsx  Full forensic breakdown
-│   │   ├── MissionsPage.tsx       Mission list
-│   │   └── ViolationsPage.tsx     Violation browser
-│   └── vite.config.ts             Dev server config (proxy → backend:8080)
-│
-├── jads-android/                  Android app (Kotlin)
-│   ├── app/src/main/kotlin/com/jads/
-│   │   ├── crypto/                ECDSA + SHA-256 hash chain
-│   │   ├── drone/                 Geofence, NPNT, mission controller
-│   │   ├── network/               API client (OkHttp)
-│   │   ├── storage/               SQLCipher encrypted DB
-│   │   ├── telemetry/             96-byte canonical serializer
-│   │   ├── time/                  NTP quorum authority
-│   │   ├── ui/                    Jetpack Compose screens
-│   │   ├── dji/                   DJI flight log ingestion
-│   │   └── service/               Foreground GPS service
-│   └── README-SETUP.md            Android-specific setup
-│
-├── agents/                        AI microservices (optional)
-├── e2e/                           End-to-end test suites
-├── ci/                            CI/CD pipeline config
-├── docker-compose.yml             PostgreSQL container definition
-├── CLAUDE.md                      AI assistant conventions
-├── KOTLIN_DEV_BRIEF.md            Android dev guide
-├── IDEX_BATTLE_PLAN.md            Strategic roadmap
-└── OPERATIONAL_RISK_REGISTER.md   Risk assessment
+|-- jads-backend/                  Backend API server
+|   |-- src/
+|   |   |-- server.ts              Express app entry point
+|   |   |-- env.ts                 Environment variable validation
+|   |   |-- routes/                All API route handlers
+|   |   |-- services/              Business logic (FlightPlan, Clearance, Audit, etc.)
+|   |   |-- adapters/stubs/        Stub adapters for gov systems
+|   |   |-- middleware/            Auth, rate limiting, version check
+|   |   |-- jobs/                  Background schedulers (METAR poll, etc.)
+|   |   +-- __tests__/             Jest test suites
+|   |-- prisma/
+|   |   |-- schema.prisma          Database schema (authoritative)
+|   |   |-- seed.ts                Demo data seeder
+|   |   +-- migrations/            SQL migration files
+|   |-- .env.example               Environment template
+|   +-- package.json
+|
+|-- jads-admin-portal/             Admin web interface
+|   |-- src/pages/
+|   |   |-- FlightPlansPage.tsx    Flight plans + OFPL comparison + ADC/FIC issuance
+|   |   |-- DashboardPage.tsx      System overview
+|   |   |-- DroneZonesPage.tsx     Airspace zone management
+|   |   +-- ...
+|   +-- vite.config.ts             Dev server config (proxy to backend:8080)
+|
+|-- jads-audit-portal/             Forensic audit web interface
+|   |-- src/pages/
+|   |   |-- MissionDetailPage.tsx  Full forensic breakdown
+|   |   |-- MissionsPage.tsx       Mission list
+|   |   +-- ViolationsPage.tsx     Violation browser
+|   +-- vite.config.ts             Dev server config (proxy to backend:8080)
+|
+|-- jads-android/                  Android app (Kotlin)
+|   |-- app/src/main/kotlin/com/jads/
+|   |   |-- crypto/                ECDSA + SHA-256 hash chain
+|   |   |-- drone/                 Geofence, NPNT, mission controller
+|   |   |-- network/               API client (OkHttp)
+|   |   |-- storage/               SQLCipher encrypted DB
+|   |   |-- telemetry/             96-byte canonical serializer
+|   |   |-- time/                  NTP quorum authority
+|   |   |-- ui/                    Jetpack Compose screens
+|   |   |-- dji/                   DJI flight log ingestion
+|   |   +-- service/               Foreground GPS service
+|   +-- README-SETUP.md            Android-specific setup
+|
+|-- agents/                        AI microservices (optional)
+|-- e2e/                           End-to-end test suites
+|-- ci/                            CI/CD pipeline config
+|-- docker-compose.yml             PostgreSQL container definition
+|-- CLAUDE.md                      AI assistant conventions
+|-- KOTLIN_DEV_BRIEF.md            Android dev guide
+|-- IDEX_BATTLE_PLAN.md            Strategic roadmap
++-- OPERATIONAL_RISK_REGISTER.md   Risk assessment
 ```
