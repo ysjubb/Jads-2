@@ -83,7 +83,7 @@ export interface ClearanceRef {
 // FULLY_CLEARED      — both ADC and FIC issued → pilot can fly
 // CLEARANCE_REJECTED — AFMLU or FIR explicitly rejected
 
-function computeClearanceStatus(adcRefs: ClearanceRef[], ficRefs: ClearanceRef[]): string {
+export function computeClearanceStatus(adcRefs: ClearanceRef[], ficRefs: ClearanceRef[]): string {
   const hasAdc = adcRefs.length > 0
   const hasFic = ficRefs.length > 0
   if (hasAdc && hasFic) return 'FULLY_CLEARED'

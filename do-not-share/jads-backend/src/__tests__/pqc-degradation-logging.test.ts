@@ -33,7 +33,9 @@ const checkPqc = (verifier as any).checkPqcSignatures.bind(verifier)
 let testKeypair: { publicKey: Uint8Array; secretKey: Uint8Array }
 
 beforeAll(() => {
-  testKeypair = ml_dsa65.keygen(crypto.randomBytes(32))
+  // AUDIT FIX: Use deterministic seed for reproducible test failures
+  const seed = crypto.createHash('sha256').update('JADS_PQC_DEGRADATION_TEST_SEED_V1').digest()
+  testKeypair = ml_dsa65.keygen(seed)
 })
 
 function signPayload(payloadHex: string): string {

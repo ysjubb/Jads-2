@@ -1,18 +1,9 @@
 // Pure logic tests for ClearanceService invariants.
-// No database or network required.
+// AUDIT FIX: Original file defined a local copy of computeClearanceStatus.
+// Now imports the real function from ClearanceService — any production drift
+// is immediately detected.
 
-// ── Clearance status machine (mirrors ClearanceService.ts) ────────────────
-
-type ClearanceRef = { officerName: string; issuedAt: string }
-
-function computeClearanceStatus(adcRefs: ClearanceRef[], ficRefs: ClearanceRef[]): string {
-  const hasAdc = adcRefs.length > 0
-  const hasFic = ficRefs.length > 0
-  if (hasAdc && hasFic) return 'FULLY_CLEARED'
-  if (hasAdc)           return 'ADC_ISSUED'
-  if (hasFic)           return 'FIC_ISSUED'
-  return 'PENDING_CLEARANCE'
-}
+import { computeClearanceStatus } from '../services/ClearanceService'
 
 const ref = (name: string) => ({ officerName: name, issuedAt: new Date().toISOString() })
 

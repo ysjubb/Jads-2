@@ -55,34 +55,63 @@ describe('SpecialUserAuthService — password generation', () => {
 })
 
 // ── Password complexity validation tests ─────────────────────────────────────
-describe('SpecialUserAuthService — password complexity', () => {
+// AUDIT FIX: Original file had conditional `if (typeof ... === 'function')` that
+// silently skipped 5 tests because `validatePasswordComplexity` doesn't exist as
+// a standalone method. The validation logic is embedded in `changePassword()`.
+// Rewritten to test through the real changePassword() method with mocked Prisma.
+describe('SpecialUserAuthService — password complexity (via changePassword)', () => {
 
-  const svc      = new SpecialUserAuthService({} as any)
-  const validate = (pw: string) =>
-    (svc as any).validatePasswordComplexity?.call(svc, pw)
+  // bcrypt hash for 'OldPassword99!' — used to simulate valid old password
+  const bcrypt = require('bcryptjs')
+  let oldPasswordHash: string
 
-  // Only run if validatePasswordComplexity is public/accessible
-  if (typeof (svc as any).validatePasswordComplexity === 'function') {
-    test('Short password throws PASSWORD_TOO_SHORT', () => {
-      expect(() => validate('Short1!')).toThrow('PASSWORD_TOO_SHORT')
-    })
+  beforeAll(async () => {
+    oldPasswordHash = await bcrypt.hash('OldPassword99!', 4)
+  })
 
-    test('No uppercase throws PASSWORD_NEEDS_UPPERCASE', () => {
-      expect(() => validate('alllowercase123')).toThrow('PASSWORD_NEEDS_UPPERCASE')
-    })
-
-    test('No lowercase throws PASSWORD_NEEDS_LOWERCASE', () => {
-      expect(() => validate('ALLUPPERCASE123')).toThrow('PASSWORD_NEEDS_LOWERCASE')
-    })
-
-    test('No digit throws PASSWORD_NEEDS_DIGIT', () => {
-      expect(() => validate('NoDigitsHere!')).toThrow('PASSWORD_NEEDS_DIGIT')
-    })
-
-    test('Valid strong password passes', () => {
-      expect(() => validate('ValidPass99!')).not.toThrow()
-    })
+  function makeSvc() {
+    const prisma = {
+      specialUser: {
+        findUniqueOrThrow: async () => ({
+          id: 'test-user', passwordHash: oldPasswordHash,
+          forcePasswordChange: false, passwordLastChanged: new Date(),
+        }),
+        update: jest.fn(async () => ({})),
+      },
+      auditLog: { create: jest.fn(async (d: any) => d) },
+    } as any
+    return new SpecialUserAuthService(prisma)
   }
+
+  test('Short password throws PASSWORD_TOO_SHORT', async () => {
+    const svc = makeSvc()
+    await expect(svc.changePassword('test-user', 'OldPassword99!', 'Short1!'))
+      .rejects.toThrow('PASSWORD_TOO_SHORT')
+  })
+
+  test('No uppercase throws PASSWORD_NEEDS_UPPERCASE', async () => {
+    const svc = makeSvc()
+    await expect(svc.changePassword('test-user', 'OldPassword99!', 'alllowercase123'))
+      .rejects.toThrow('PASSWORD_NEEDS_UPPERCASE')
+  })
+
+  test('No lowercase throws PASSWORD_NEEDS_LOWERCASE', async () => {
+    const svc = makeSvc()
+    await expect(svc.changePassword('test-user', 'OldPassword99!', 'ALLUPPERCASE123'))
+      .rejects.toThrow('PASSWORD_NEEDS_LOWERCASE')
+  })
+
+  test('No digit throws PASSWORD_NEEDS_DIGIT', async () => {
+    const svc = makeSvc()
+    await expect(svc.changePassword('test-user', 'OldPassword99!', 'NoDigitsHereAtAll'))
+      .rejects.toThrow('PASSWORD_NEEDS_DIGIT')
+  })
+
+  test('Valid strong password passes', async () => {
+    const svc = makeSvc()
+    await expect(svc.changePassword('test-user', 'OldPassword99!', 'ValidPass99!'))
+      .resolves.not.toThrow()
+  })
 })
 
 // ── Username pattern sanity ───────────────────────────────────────────────────

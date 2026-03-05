@@ -1,6 +1,7 @@
 import { decodeCanonical, PAYLOAD_OFFSETS } from '../../telemetry/telemetryDecoder'
 import * as fs   from 'fs'
 import * as path from 'path'
+import CRC32     from 'crc-32'
 
 const vectorFile = path.join(__dirname, '../vectors/canonical_test_vectors.json')
 const vectors    = JSON.parse(fs.readFileSync(vectorFile, 'utf-8'))
@@ -62,7 +63,7 @@ describe('TelemetryDecoder', () => {
     const buf = Buffer.from(tv001.expected.canonicalHex, 'hex')
     buf.writeInt32BE(-28_632_500, 12)  // negative = southern hemisphere
     // Recompute CRC
-    const CRC32 = require('crc-32')
+
     buf.writeUInt32BE((CRC32.buf(buf.slice(0, 92)) >>> 0), 92)
     const hex = buf.toString('hex')
     const dec = decodeCanonical(hex)
@@ -72,7 +73,7 @@ describe('TelemetryDecoder', () => {
   test('DEC-03f: western longitude uses W suffix', () => {
     const buf = Buffer.from(tv001.expected.canonicalHex, 'hex')
     buf.writeInt32BE(-77_219_500, 16)  // negative = western hemisphere
-    const CRC32 = require('crc-32')
+
     buf.writeUInt32BE((CRC32.buf(buf.slice(0, 92)) >>> 0), 92)
     const dec = decodeCanonical(buf.toString('hex'))
     expect(dec.longitudeDisplay).toMatch(/°W$/)
@@ -137,7 +138,7 @@ describe('TelemetryDecoder', () => {
     const buf = Buffer.from(tv001.expected.canonicalHex, 'hex')
     buf[70] = 0x01  // reserved region starts at offset 65
     // Recompute CRC so we don't fail on CRC instead
-    const CRC32 = require('crc-32')
+
     buf.writeUInt32BE((CRC32.buf(buf.slice(0, 92)) >>> 0), 92)
     const dec = decodeCanonical(buf.toString('hex'))
     expect(dec.reservedBytesZero).toBe(false)
@@ -204,7 +205,7 @@ describe('TelemetryDecoder', () => {
   test('DEC-10c: npntClassLabel = "RED" for classification=2', () => {
     const buf = Buffer.from(tv001.expected.canonicalHex, 'hex')
     buf[40] = 2  // RED
-    const CRC32 = require('crc-32')
+
     buf.writeUInt32BE((CRC32.buf(buf.slice(0, 92)) >>> 0), 92)
     const dec = decodeCanonical(buf.toString('hex'))
     expect(dec.npntClassLabel).toBe('RED')

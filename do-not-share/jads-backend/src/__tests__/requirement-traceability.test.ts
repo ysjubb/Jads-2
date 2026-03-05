@@ -30,11 +30,17 @@
 //   AIRINDIA:   4 requirements tested
 // ─────────────────────────────────────────────────────────────────────────────
 
+import fs   from 'fs'
+import path from 'path'
 import { AftnMessageBuilder } from '../services/AftnMessageBuilder'
 import { Item18Parser }       from '../services/Item18Parser'
+import { FirGeometryEngine }  from '../services/FirGeometryEngine'
+import { ForensicVerifier }   from '../services/ForensicVerifier'
+import { buildValidChain }    from './helpers/chainBuilders'
 
-const builder = new AftnMessageBuilder()
-const parser  = new Item18Parser()
+const builder  = new AftnMessageBuilder()
+const parser   = new Item18Parser()
+const verifier = new ForensicVerifier(null as any)
 
 function minInput(overrides: any = {}) {
   return {
@@ -255,24 +261,14 @@ describe('RT-NPNT: DGCA NPNT / UAS Rules 2021 requirements', () => {
   // Owner:  MissionController.checkViolations() + GeofenceChecker
   // Gap:    C1-05 (closed)
   test('RT-NPNT-07: Geofence breach detection — ray-casting returns outside for point exterior to polygon', () => {
-    // Pure algorithm test — no DB needed
-    function raycast(lat: number, lon: number, poly: [number,number][]): boolean {
-      const n = poly.length
-      if (n < 3) return true
-      let crossings = 0
-      for (let i = 0; i < n; i++) {
-        const [aLat,aLon] = poly[i]
-        const [bLat,bLon] = poly[(i+1)%n]
-        const straddles = (aLat < lat && bLat >= lat) || (bLat < lat && aLat >= lat)
-        if (!straddles) continue
-        const xLon = aLon + (lat-aLat)*(bLon-aLon)/(bLat-aLat)
-        if (xLon > lon) crossings++
-      }
-      return (crossings%2)===1
-    }
-    const square: [number,number][] = [[28,77],[29,77],[29,78],[28,78]]
-    expect(raycast(28.5, 77.5, square)).toBe(true)    // inside → not a breach
-    expect(raycast(30.0, 77.5, square)).toBe(false)   // outside → breach
+    // AUDIT FIX: Uses production FirGeometryEngine instead of local raycast reimplementation
+    const geoEngine = new FirGeometryEngine()
+    const square = [
+      { lat: 28, lon: 77 }, { lat: 29, lon: 77 },
+      { lat: 29, lon: 78 }, { lat: 28, lon: 78 },
+    ]
+    expect(geoEngine.isPointInPolygon(28.5, 77.5, square)).toBe(true)    // inside → not a breach
+    expect(geoEngine.isPointInPolygon(30.0, 77.5, square)).toBe(false)   // outside → breach
   })
 
   // REQ:    NPNT-08
@@ -303,15 +299,16 @@ describe('RT-FORENSIC: JADS Evidence Ledger requirements', () => {
   // Cond:   HASH_0 = SHA256('MISSION_INIT' || missionId_big_endian)
   // Owner:  ForensicVerifier.checkHashChain() + Android HashChainEngine
   test('RT-FORENSIC-01: HASH_0 derivation is deterministic and missionId-bound', () => {
+    // AUDIT FIX: Uses production ForensicVerifier.checkHashChain() instead of local reimplementation
     const missionId = BigInt('1709280000000')
-    const prefix = Buffer.from('MISSION_INIT', 'ascii')
-    const idBuf  = Buffer.alloc(8)
-    idBuf.writeBigInt64BE(missionId)
-    const hash0a = require('crypto').createHash('sha256').update(Buffer.concat([prefix, idBuf])).digest('hex')
-    const hash0b = require('crypto').createHash('sha256').update(Buffer.concat([prefix, idBuf])).digest('hex')
-    expect(hash0a).toBe(hash0b)             // deterministic
-    expect(hash0a).toHaveLength(64)         // 32 bytes hex
-    expect(hash0a).not.toMatch(/^0{64}$/)   // non-trivial
+    const chain = buildValidChain(missionId, 1)
+    const result = (verifier as any).checkHashChain(String(missionId), chain)
+    expect(result.pass).toBe(true)
+
+    // Different missionId with same chain must fail — proves HASH_0 is missionId-bound
+    const wrongId = BigInt('1709280000001')
+    const resultWrong = (verifier as any).checkHashChain(String(wrongId), chain)
+    expect(resultWrong.pass).toBe(false)
   })
 
   // REQ:    FORENSIC-02
@@ -319,17 +316,19 @@ describe('RT-FORENSIC: JADS Evidence Ledger requirements', () => {
   // Cond:   Chain link must include both payload and previous hash
   // Owner:  ForensicVerifier.checkHashChain()
   test('RT-FORENSIC-02: Chain link includes both payload and previous hash', () => {
-    const prev    = 'a'.repeat(64)
-    const payload = Buffer.alloc(96, 0xAB).toString('hex')
-    const hash    = require('crypto').createHash('sha256')
-      .update(Buffer.concat([Buffer.from(payload,'hex'), Buffer.from(prev,'hex')]))
-      .digest('hex')
-    // Verify order matters (changing either changes output)
-    const hashAlt = require('crypto').createHash('sha256')
-      .update(Buffer.concat([Buffer.from(prev,'hex'), Buffer.from(payload,'hex')]))
-      .digest('hex')
-    expect(hash).not.toBe(hashAlt)   // payload-first, prev-second is required order
-    expect(hash).toHaveLength(64)
+    // AUDIT FIX: Uses production ForensicVerifier.checkHashChain() to verify chain walking
+    const missionId = BigInt('1709280000000')
+    const chain = buildValidChain(missionId, 5)
+    const result = (verifier as any).checkHashChain(String(missionId), chain)
+    expect(result.pass).toBe(true)
+
+    // Corrupt one chain hash — proves production verifier detects chain breaks
+    const corrupted = chain.map((r: any, i: number) =>
+      i === 2 ? { ...r, chainHashHex: 'ff'.repeat(32) } : r
+    )
+    const resultCorrupted = (verifier as any).checkHashChain(String(missionId), corrupted)
+    expect(resultCorrupted.pass).toBe(false)
+    expect(resultCorrupted.detail).toContain('CHAIN_BROKEN')
   })
 
   // REQ:    FORENSIC-03
@@ -337,13 +336,14 @@ describe('RT-FORENSIC: JADS Evidence Ledger requirements', () => {
   // Cond:   Sequence gap → I-1 FAIL
   // Owner:  ForensicVerifier.checkHashChain() sequence validation
   test('RT-FORENSIC-03: Sequence numbering is gapless 0..N-1', () => {
-    // Verify that expected sequence 0,1,2,...,N-1 with gap detected
-    const seqs = [0, 1, 2, 4, 5]  // gap at 3
-    let gapFound = false
-    for (let i = 0; i < seqs.length; i++) {
-      if (seqs[i] !== i) { gapFound = true; break }
-    }
-    expect(gapFound).toBe(true)
+    // AUDIT FIX: Uses production ForensicVerifier.checkHashChain() gap detection
+    const missionId = BigInt('1709280000000')
+    const chain = buildValidChain(missionId, 5)
+    // Remove record at sequence 3 to create a gap
+    const gapped = chain.filter(r => r.sequence !== 3)
+    const result = (verifier as any).checkHashChain(String(missionId), gapped)
+    expect(result.pass).toBe(false)
+    expect(result.detail).toContain('SEQUENCE_GAP')
   })
 
   // REQ:    FORENSIC-04
@@ -351,14 +351,16 @@ describe('RT-FORENSIC: JADS Evidence Ledger requirements', () => {
   // Cond:   ForensicVerifier must use missionEndUtcMs as the time anchor, not server time
   // Owner:  ForensicVerifier.verify()
   test('RT-FORENSIC-04: complianceTimeAnchor is separate from verifiedAt (not now())', () => {
-    // This is a documentation/contract test — verify the distinction is enforced
-    // The complianceTimeAnchor must be set before verifiedAt is computed
-    const missionEndMs  = 1700000000000  // 2023-11-14 — a past time
-    const verifiedAtMs  = Date.now()     // always >= missionEndMs for historical missions
-    const anchor = new Date(missionEndMs).toISOString()
-    const verified = new Date(verifiedAtMs).toISOString()
-    expect(anchor).not.toBe(verified)    // they must be different
-    expect(new Date(anchor) <= new Date(verified)).toBe(true)  // anchor is always in the past
+    // AUDIT FIX: Verify production ForensicVerifier source uses missionEndUtcMs, not Date.now()
+    // This is a source-level contract test — ensures the invariant is coded correctly
+    const verifierSource = fs.readFileSync(
+      path.resolve(__dirname, '../services/ForensicVerifier.ts'), 'utf8'
+    )
+    // Production must derive complianceTimeAnchor from missionEndUtcMs
+    expect(verifierSource).toContain('complianceTimeAnchor')
+    expect(verifierSource).toMatch(/complianceTimeAnchor\s*=\s*new Date\(Number\(mission\.missionEndUtcMs\)\)/)
+    // Must NOT use Date.now() for complianceTimeAnchor
+    expect(verifierSource).not.toMatch(/complianceTimeAnchor\s*=.*Date\.now\(\)/)
   })
 
   // REQ:    FORENSIC-05
@@ -366,17 +368,20 @@ describe('RT-FORENSIC: JADS Evidence Ledger requirements', () => {
   // Cond:   >20% degraded GNSS records → I-7 advisory failure
   // Owner:  ForensicVerifier.checkGnssIntegrity()
   test('RT-FORENSIC-05: GNSS degradation threshold is exactly 20%', () => {
+    // AUDIT FIX: Uses production ForensicVerifier.checkGnssIntegrity() instead of local arithmetic
+    const checkGnss = (verifier as any).checkGnssIntegrity.bind(verifier)
+
     // 20 bad out of 100 = exactly on threshold (should pass)
     const exactly20pct = [...Array(80).fill({ gnssStatus: 'GOOD' }),
                           ...Array(20).fill({ gnssStatus: 'DEGRADED' })]
-    const pct = Math.round(20/100 * 100)
-    expect(pct <= 20).toBe(true)   // exactly 20% passes
+    const resultPass = checkGnss(exactly20pct)
+    expect(resultPass.pass).toBe(true)
 
     // 21 bad out of 100 = over threshold (should fail)
     const over20pct = [...Array(79).fill({ gnssStatus: 'GOOD' }),
                        ...Array(21).fill({ gnssStatus: 'DEGRADED' })]
-    const pct2 = Math.round(21/100 * 100)
-    expect(pct2 > 20).toBe(true)   // 21% fails
+    const resultFail = checkGnss(over20pct)
+    expect(resultFail.pass).toBe(false)
   })
 
   // REQ:    FORENSIC-06
