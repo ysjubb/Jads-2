@@ -35,8 +35,9 @@ const checkPqc = (verifier as any).checkPqcSignatures.bind(verifier)
 let testKeypair: { publicKey: Uint8Array; secretKey: Uint8Array }
 
 beforeAll(() => {
-  // ML-DSA-65 keygen requires a 32-byte seed
-  const seed = crypto.randomBytes(32)
+  // AUDIT FIX: Use deterministic seed for reproducible test failures
+  // Fixed 32-byte seed derived from SHA-256('JADS_PQC_TEST_SEED_V1')
+  const seed = crypto.createHash('sha256').update('JADS_PQC_TEST_SEED_V1').digest()
   testKeypair = ml_dsa65.keygen(seed)
 })
 

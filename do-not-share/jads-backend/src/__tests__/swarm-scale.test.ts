@@ -167,11 +167,13 @@ describe('SW-01–08: Swarm scale simulation (100 drones × 1000 records)', () =
     expect(elapsed).toBeLessThan(10_000)
   })
 
-  // TRIGGER:  Build AFTN messages for 100 drones concurrently
+  // TRIGGER:  Build AFTN messages for 100 drones independently
   // OUTPUT:   All 100 messages valid; no shared state corruption
   // FAILURE:  Builder has shared mutable state → garbled messages
+  // NOTE:     Sequential loop is correct — Node.js is single-threaded; this tests
+  //           that the builder holds no mutable state between calls, not thread safety.
   // OWNER:    AftnMessageBuilder.build()
-  test('SW-08: 100 concurrent AFTN message builds — no state leakage', () => {
+  test('SW-08: 100 independent AFTN message builds — no shared state leakage', () => {
     const messages: string[] = []
     for (let d = 0; d < DRONE_COUNT; d++) {
       const input = minimalAftnInput({

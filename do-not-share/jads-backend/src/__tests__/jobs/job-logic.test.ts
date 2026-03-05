@@ -12,13 +12,16 @@ describe('Background Job Invariants', () => {
   // ── NOTAM effectiveTo rules ────────────────────────────────────────────
 
   test('JOB-L01: NOTAM effectiveTo null means permanent (stored as null, not far-future)', () => {
-    // Invariant: permanent NOTAMs must be stored as null in effectiveTo.
-    // If a NOTAM has no effectiveTo, the field is null — never a fake date.
-    const stored = null
-    expect(stored).toBeNull()
-    // Verifying the contract: never store a fake far-future date
-    const FAKE_DATE = new Date('2099-12-31')
-    expect(stored !== FAKE_DATE).toBe(true)
+    // AUDIT FIX: Verify production NotamPollJob source stores null, not a fake far-future date
+    const notamSource = fs.readFileSync(
+      path.resolve(__dirname, '../../jobs/NotamPollJob.ts'), 'utf8'
+    )
+    // Production must use ternary with null for missing effectiveTo
+    expect(notamSource).toContain('effectiveTo ? new Date(')
+    expect(notamSource).toMatch(/effectiveTo.*:\s*null/)
+    // Must NOT use a fake far-future date as a sentinel
+    expect(notamSource).not.toContain('2099')
+    expect(notamSource).not.toContain('9999')
   })
 
   test('JOB-L02: NOTAM with effectiveTo in past should be marked inactive', () => {
