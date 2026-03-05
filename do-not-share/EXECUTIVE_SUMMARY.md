@@ -20,8 +20,8 @@ For manned aircraft, JADS provides a **complete ICAO-compliant flight plan filin
 ### Manned Aircraft: Flight Plan Filing is Broken
 
 Today, pilots and dispatchers file flight plans through fragmented, manual workflows. Conventional OFPL systems:
-- Do not cross-check live **ADC (Aerodrome Control)** zone restrictions before filing
-- Do not validate against current **FIC (Flight Information Centre)** advisories
+- Do not cross-check **ADC (Area Defence Clearance)** status from AFMLUs before filing
+- Do not coordinate **FIC (Flight Information Centre)** clearance numbers from AAI
 - Do not integrate live **METAR** weather observations into pre-flight validation
 - Do not pull active **NOTAMs** to warn pilots of airspace hazards before filing
 - Require manual AFTN message construction — error-prone and slow
@@ -57,8 +57,8 @@ JADS replaces conventional OFPL flight plan filing with a **5-stage automated pi
 
 **What JADS does that conventional OFPL does not:**
 
-- **Live ADC (Aerodrome Control) data** — Pulls active ADC zone records from all 10 AFMLUs every 60 minutes. Military exercise areas are automatically hidden from civilian users (P6A frozen rule). Pilots see restricted/prohibited/danger zones before they file.
-- **Live FIC (Flight Information Centre) advisories** — Polls all 4 Indian FIR offices every 60 minutes. FIC advisories are factored into pre-flight validation.
+- **Live ADC (Air Defence Clearance) integration** — ADC is a defence clearance number issued by the Indian Air Force (via AFMLU) for operations within India's ADIZ. Combined with FIC, these two numbers constitute the full flight clearance. JADS connects to all 10 AFMLUs for defence airspace coordination. Military exercise areas are automatically hidden from civilian users (P6A frozen rule).
+- **Live FIC (Flight Information Centre) integration** — FIC number is issued by AAI's Flight Information Centre (Delhi, Mumbai, Kolkata, Chennai), confirming the flight plan is filed and authenticated by civil ATC. JADS polls all 4 FIR offices for coordination.
 - **Live METAR observations** — Polls 12 major Indian aerodromes (VIDP, VABB, VOMM, VECC, VOBL, VOHB, VAAH, VOGO, VOCL, VIBN, VORY, VIPT) every 30 minutes. Current weather is available at filing time.
 - **Live NOTAM integration** — Active NOTAMs per FIR are pulled and displayed. Pilots are warned of airspace hazards before filing.
 - **AFTN CNL and DLA** — Cancel or delay a filed plan with a single API call. JADS builds the correct AFTN CNL/DLA message per ICAO Doc 4444 §11.4.2 and transmits it.
@@ -66,6 +66,14 @@ JADS replaces conventional OFPL flight plan filing with a **5-stage automated pi
 - **Auto-generated AFTN addressees** — JADS maintains a real Indian ATC address book (Delhi FIR: VIDP, VILK, VIAR, VIDD, VIBK, VIBN, VIJR, VIGG; Mumbai FIR: VABB, VAAH, VAPB, VAGN, VOCL, VOGP; Kolkata FIR: VECC, VEPB, VEJH, VOPB; Chennai FIR: VOMM, VOHS, VOBL, VOYR) and auto-routes the FPL to the correct departure ATC, enroute ACCs, and destination ATC.
 
 **Flight plan status tracking**: DRAFT → VALIDATED → FILED → ACKNOWLEDGED → ADC_ISSUED / FIC_ISSUED → FULLY_CLEARED → ACTIVATED → COMPLETED (plus CANCELLED, DELAYED, REJECTED_BY_ATC, OVERDUE)
+
+**The Indian clearance process (implemented in JADS):**
+1. Pilot files flight plan with civil ATC (via JADS AFTN gateway)
+2. FIC number received from AAI Flight Information Centre — confirms plan is filed and authenticated
+3. ADC (Air Defence Clearance) number received from IAF (via AFMLU) — security clearance for ADIZ operations
+4. Both ADC + FIC = full flight clearance. ATC only provides engine start/pushback once both are reconfirmed
+5. ADC validity: 1 hour from ETD (international/standard), 3 hours (domestic non-scheduled)
+6. Flying without valid ADC = serious security violation — potential military interception
 
 ### Tamper-Proof Evidence (Drones)
 
@@ -150,8 +158,8 @@ JADS is the first Indian airspace platform to implement **post-quantum cryptogra
 
 | Feature | Conventional OFPL | JADS |
 |---------|------------------|------|
-| ADC zone check before filing | Manual lookup / none | Live data from all 10 AFMLUs, auto-filtered by role |
-| FIC advisory check | Manual lookup / none | Live polling from all 4 FIR offices |
+| ADC/FIC clearance coordination | Manual lookup / none | Live data from all 10 AFMLUs, auto-filtered by role |
+| FIC clearance number | Manual coordination with AAI | Live integration with all 4 FIR offices — FIC number received via SSE |
 | METAR at filing time | Separate system | Integrated — 12 aerodromes polled every 30 min |
 | NOTAM awareness | Separate lookup | Integrated — active NOTAMs per FIR shown pre-flight |
 | AFTN message construction | Manual / semi-manual | Auto-built per ICAO Doc 4444, including Item 18/19 |
@@ -227,4 +235,4 @@ JADS is designed so the government retains full control:
 
 ---
 
-*JADS delivers what no other Indian platform offers: **ICAO-compliant manned aircraft flight plan filing with live ADC, FIC, METAR, and NOTAM integration** — replacing manual OFPL workflows — alongside **mathematical proof** that drone evidence is authentic, unmodified, and legally admissible. One platform for all Indian airspace operations, today and in the quantum computing era.*
+*JADS delivers what no other Indian platform offers: **ICAO-compliant manned aircraft flight plan filing with ADC (Air Defence Clearance), FIC, METAR, and NOTAM integration** — replacing manual OFPL workflows — alongside **mathematical proof** that drone evidence is authentic, unmodified, and legally admissible. One platform for all Indian airspace operations, today and in the quantum computing era.*

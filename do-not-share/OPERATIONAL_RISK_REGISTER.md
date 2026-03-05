@@ -114,18 +114,18 @@ Last reviewed: 2026-03-04
 
 ---
 
-## OPS-RISK-06: Stale ADC/FIC Data Due to Polling Lag
+## OPS-RISK-06: Stale Defence Airspace Data Due to Polling Lag
 
 **Component:** `AdcFicPollJob`, `AirspaceDataPollJob`
 
-**What happens:** ADC zone records and FIC advisories are polled at intervals (60 min for ADC, 60 min for FIC). Between polls, a military exercise area could be activated or deactivated, and JADS would not reflect this.
+**What happens:** Defence airspace data (from AFMLUs, used for ADC — Air Defence Clearance coordination) and FIC clearance status are polled at intervals (60 min for ADC, 60 min for FIC). Between polls, a military exercise area could be activated or deactivated, and JADS would not reflect this.
 
 **Current behavior:** The polling jobs fetch data on schedule. Between polls, the cached data is used. Pilots filing during the gap see stale data.
 
-**Gap:** For manned aircraft filing, stale ADC data could mean a pilot files a flight plan without knowing about a newly activated restricted zone. For drone operations (post-flight), this is less critical since data is verified after the fact.
+**Gap:** For manned aircraft filing, stale defence airspace data could mean a pilot files a flight plan without knowing about a newly activated restricted zone. For drone operations (post-flight), this is less critical since data is verified after the fact.
 
 **Mitigation (when connecting live ADC/FIC feeds):**
-- Reduce polling interval to 15 minutes for ADC records
+- Reduce polling interval to 15 minutes for AFMLU defence airspace data
 - Implement inbound webhooks (`/api/adapter/adc/push`) so AFMLUs push changes immediately
 - Display "data freshness" indicator on admin portal (minutes since last poll)
 - Add `lastPolledAt` timestamp visible in flight plan validation response

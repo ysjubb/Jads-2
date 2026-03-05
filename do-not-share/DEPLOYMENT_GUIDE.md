@@ -365,7 +365,7 @@ When replacing a stub with a live government adapter:
 |---|---------|-----------|------|--------|
 | 1 | Digital Sky (DGCA) | `IDigitalSkyAdapter` | `DigitalSkyAdapterStub` | Stub ready |
 | 2 | UIDAI (Aadhaar) | `IUidaiAdapter` | `UidaiAdapterStub` | Stub ready |
-| 3 | AFMLU (ADC zones) | `IAfmluAdapter` | `AfmluAdapterStub` | Stub ready |
+| 3 | AFMLU (ADC — Air Defence Clearance) | `IAfmluAdapter` | `AfmluAdapterStub` | Stub ready |
 | 4 | FIR (FIC records) | `IFirAdapter` | `FirAdapterStub` | Stub ready |
 | 5 | AFTN (flight plans) | `IAftnGateway` | `AftnGatewayStub` | Stub ready |
 | 6 | METAR (weather) | `IMetarAdapter` | `MetarAdapterStub` | Stub ready |

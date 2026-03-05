@@ -12,7 +12,7 @@
 
 JADS (Joint Airspace Drone System) is India's **sovereign airspace management and forensic audit platform** serving two domains:
 
-1. **Manned aircraft** — ICAO-compliant flight plan filing with live ADC, FIC, NOTAM, and METAR integration. 5-stage validation pipeline (OFPL syntax → route semantics → altitude compliance → FIR sequencing → AFTN filing). Real-time clearance notifications via SSE. AFTN message automation (FPL, CNL, DLA) with auto-generated addressees for all 4 Indian FIRs and 24+ aerodromes.
+1. **Manned aircraft** — ICAO-compliant flight plan filing with ADC (Air Defence Clearance from IAF/AFMLU), FIC (Flight Information Centre clearance from AAI), NOTAM, and METAR integration. 5-stage validation pipeline (OFPL syntax → route semantics → altitude compliance → FIR sequencing → AFTN filing). Real-time clearance notifications via SSE. AFTN message automation (FPL, CNL, DLA) with auto-generated addressees for all 4 Indian FIRs and 24+ aerodromes.
 
 2. **Drones** — Post-flight forensic audit. Ingests completed drone missions, verifies cryptographic integrity chains (6-layer defence-in-depth), and produces legally admissible forensic reports. 10-point forensic verification with ECDSA P-256 + ML-DSA-65 hybrid signatures.
 

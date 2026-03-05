@@ -541,7 +541,7 @@ The platform is designed for **government handover**: every external dependency 
 | Interface | Stub | What It Abstracts |
 |-----------|------|-------------------|
 | `IAftnGateway.ts` | `AftnGatewayStub.ts` | AFTN flight plan filing with ATC (Doc 4444 FPL/DLA/CNL/CHG) |
-| `IAfmluAdapter.ts` | `AfmluAdapterStub.ts` | AFMLU airspace zone definitions (ADC records, GeoJSON polygons) |
+| `IAfmluAdapter.ts` | `AfmluAdapterStub.ts` | AFMLU data — ADC (Air Defence Clearance) coordination records, defence airspace GeoJSON polygons |
 | `IFirAdapter.ts` | `FirAdapterStub.ts` | FIR circulars (FIC records, supersedes chain) |
 | `IMetarAdapter.ts` | `MetarAdapterStub.ts` | Weather observations for 12 major Indian aerodromes |
 | `INotamAdapter.ts` | `NotamAdapterStub.ts` | NOTAMs for all 4 Indian FIRs (VIDF, VABB, VECC, VOMF) |
@@ -565,7 +565,7 @@ constructor(prisma, afmluAdapter = new AfmluAdapterStub(), firAdapter = new FirA
 
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
-| `/api/adapter/adc/push` | POST | `X-JADS-Adapter-Key` | AFMLU pushes ADC clearance number |
+| `/api/adapter/adc/push` | POST | `X-JADS-Adapter-Key` | AFMLU pushes ADC (Air Defence Clearance) number after IAF approves |
 | `/api/adapter/fic/push` | POST | `X-JADS-Adapter-Key` | FIR pushes FIC number |
 | `/api/adapter/clearance/reject` | POST | `X-JADS-Adapter-Key` | Clearance rejection notification |
 
