@@ -7,10 +7,10 @@ import com.jads.telemetry.EndianWriter
 import com.jads.telemetry.CanonicalSerializer
 import com.jads.telemetry.TelemetryFields
 import com.jads.crypto.HashChainEngine
-import com.jads.drone.GnssPlausibilityValidator
-import com.jads.drone.LandingDetector
+import com.jads.drone.*
 import com.jads.time.MonotonicClock
 import java.security.MessageDigest
+import kotlinx.coroutines.runBlocking
 
 // ── Minimal test harness ─────────────────────────────────────────────────────
 
@@ -339,30 +339,58 @@ test("MC-04: updateCorrection changes future timestamps") {
 }
 
 // ── NpntComplianceGate logic invariants ──────────────────────────────────────
+// AUDIT FIX: NG-01..05 were tautological — tested local variables, never called
+// NpntComplianceGate. Now call real NpntComplianceGate.evaluate() with
+// HardcodedZoneMapAdapter + stub proximity checker.
+
+val ngProxChecker = object : IAirportProximityChecker {
+    override fun check(lat: Double, lon: Double, agl: Double) = AirportProximityResult(
+        clear = true, restriction = ProximityRestriction.NONE,
+        nearestIcaoCode = "NONE", nearestName = "none",
+        distanceKm = 999.0, message = "stub"
+    )
+}
+val ngZoneAdapter = HardcodedZoneMapAdapter()
+val ngGate = NpntComplianceGate(digitalSkyAdapter = ngZoneAdapter, proximityChecker = ngProxChecker)
 
 test("NG-01: RED zone → blocked=true, no override path") {
-    // Verified by code inspection: no conditional in RED branch changes blocked
-    val reasons = listOf("Location is in a RED zone. Operations are strictly prohibited.", "Zone ID: Z001")
-    assert(reasons.any { it.contains("RED zone") })
+    runBlocking {
+        // 28.565, 77.100 is in the IGI Airport RED zone in HardcodedZoneMapAdapter
+        val result = ngGate.evaluate(28.565, 77.100, 100.0, null)
+        assert(result.blocked, "RED zone must block, got blocked=${result.blocked}")
+        assert(result.complianceScore == ComplianceScore.BLOCKED,
+            "RED zone must be BLOCKED, got ${result.complianceScore}")
+    }
 }
 test("NG-02: YELLOW without token → blocked=true") {
-    // Verified: null token in YELLOW branch returns blocked=true immediately
-    val tokenPresent = false
-    assert(!tokenPresent)   // no token = blocked
+    runBlocking {
+        // 28.625, 77.245 is in the iDEX YELLOW zone
+        val result = ngGate.evaluate(28.625, 77.245, 100.0, null)
+        assert(result.blocked, "YELLOW without token must block, reasons: ${result.blockingReasons}")
+    }
 }
 test("NG-03: YELLOW with valid token → blocked=false, CONDITIONAL") {
-    // Verified: valid token clears blocked and sets CONDITIONAL
-    val score = "CONDITIONAL"
-    assert(score == "CONDITIONAL")
+    runBlocking {
+        val result = ngGate.evaluate(28.625, 77.245, 100.0, "DEMO-TOKEN-YELLOW-OK")
+        assert(!result.blocked, "Valid token must pass YELLOW zone, reasons: ${result.blockingReasons}")
+        assert(result.complianceScore == ComplianceScore.CONDITIONAL,
+            "Expected CONDITIONAL, got ${result.complianceScore}")
+    }
 }
 test("NG-04: GREEN <= 400ft, no token → blocked=false, CLEAR") {
-    val agl = 300.0; val limit = 400
-    assert(!false && agl <= limit)
+    runBlocking {
+        // 27.0, 75.0 is unzoned → GREEN
+        val result = ngGate.evaluate(27.0, 75.0, 100.0, null)
+        assert(!result.blocked, "GREEN zone must pass, reasons: ${result.blockingReasons}")
+        assert(result.complianceScore == ComplianceScore.CLEAR,
+            "Expected CLEAR, got ${result.complianceScore}")
+    }
 }
 test("NG-05: GREEN > 400ft, no token → blocked=true") {
-    val agl = 450.0; val limit = 400
-    val blocked = agl > limit
-    assert(blocked)
+    runBlocking {
+        val result = ngGate.evaluate(27.0, 75.0, 450.0, null)
+        assert(result.blocked, "GREEN zone >400ft without token must block")
+    }
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────
