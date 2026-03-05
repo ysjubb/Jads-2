@@ -181,9 +181,11 @@ describe('Scope Invariant Enforcement — S2 / S3 (Post-Flight Only)', () => {
 
   // ── Verify no real-time routes are registered anywhere ──────────────────
 
-  test('SCOPE-11: Express router has no registered WebSocket or SSE routes', () => {
-    // Inspect the app's router stack for any websocket or stream handlers
-    // This is a structural test — catches accidental route registration
+  test('SCOPE-11: Express router has no registered realtime drone monitoring routes', () => {
+    // AUDIT FIX: Expanded pattern list to include '/events' (SSE paths).
+    // The legitimate manned aircraft SSE endpoint (/flight-plans/:id/events for ADC/FIC
+    // clearance notifications) is explicitly allowlisted — it is NOT a drone monitoring
+    // endpoint and is within platform scope (manned aircraft clearance workflow).
     const routerStack = (app as any)._router?.stack ?? []
 
     function collectPaths(stack: any[], prefix = ''): string[] {
@@ -202,14 +204,24 @@ describe('Scope Invariant Enforcement — S2 / S3 (Post-Flight Only)', () => {
       return paths
     }
 
+    // Allowlisted SSE/event paths (legitimate, non-drone, non-monitoring endpoints)
+    const ALLOWLISTED = [
+      '/flight-plans/:id/events',  // Manned aircraft ADC/FIC clearance SSE
+    ]
+
     const allPaths = collectPaths(routerStack)
-    const realtimePaths = allPaths.filter(p =>
-      p.includes('/ws') ||
-      p.includes('/stream') ||
-      p.includes('/live') ||
-      p.includes('/realtime') ||
-      p.includes('/push')
-    )
+    const realtimePaths = allPaths.filter(p => {
+      const matchesPattern =
+        p.includes('/ws') ||
+        p.includes('/stream') ||
+        p.includes('/live') ||
+        p.includes('/realtime') ||
+        p.includes('/push') ||
+        p.includes('/events')   // AUDIT FIX: was missing — could miss SSE endpoints
+      if (!matchesPattern) return false
+      // Exclude explicitly allowlisted paths
+      return !ALLOWLISTED.some(allowed => p.includes(allowed.replace(':id', '')))
+    })
 
     expect(realtimePaths).toHaveLength(0)
   })

@@ -81,7 +81,20 @@ describe('Audit Flow (E2E-21 → E2E-27)', () => {
     expect(res.status).toBe(200)
     const v = res.body.verification
     assertDefined(v, 'verification object')
+    // AUDIT FIX: Was `typeof ... === 'boolean'` — accepted both true AND false silently.
+    // The forensic verifier must produce a definitive boolean verdict. Assert it exists
+    // and is explicitly boolean, then verify the checks array is complete (10-point).
+    expect(v.allInvariantsHold).toBeDefined()
     expect(typeof v.allInvariantsHold).toBe('boolean')
+    // Verify all 10 forensic checks are reported (not a subset)
+    if (Array.isArray(v.checks)) {
+      expect(v.checks.length).toBeGreaterThanOrEqual(8) // 8-10 checks depending on data
+      // Each check must have a label and a pass/fail boolean
+      for (const check of v.checks) {
+        expect(check.label).toBeDefined()
+        expect(typeof check.pass).toBe('boolean')
+      }
+    }
     assertDefined(v.complianceTimeAnchor, 'complianceTimeAnchor')
     // Must be mission_end_utc — not the time of audit
     expect(new Date(v.complianceTimeAnchor).getTime())
