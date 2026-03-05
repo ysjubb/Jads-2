@@ -115,11 +115,20 @@ describe('SE-01–10: Platform scope enforcement', () => {
   // OUTPUT:   No DELETE method allowed (platform invariant from server.ts)
   // FAILURE:  DELETE added, allowing destructive operations
   test('SE-09: CORS methods do not include DELETE', () => {
-    // The server.ts hardcodes: methods: ['GET', 'POST', 'PUT', 'PATCH']
-    // We verify this by checking the source constant
-    // (This is a compile-time check backed by reading server config)
-    const allowedMethods = ['GET', 'POST', 'PUT', 'PATCH']
+    // Read the actual server.ts source to extract CORS methods config
+    const serverPath = path.resolve(__dirname, '../server.ts')
+    const serverSource = fs.readFileSync(serverPath, 'utf8')
+
+    // Extract the methods array from the cors() config in server.ts
+    const methodsMatch = serverSource.match(/methods:\s*\[([^\]]+)\]/)
+    expect(methodsMatch).not.toBeNull()
+
+    const methodsStr = methodsMatch![1]
+    const allowedMethods = methodsStr.split(',').map(m => m.trim().replace(/['"]/g, ''))
+
     expect(allowedMethods).not.toContain('DELETE')
+    expect(allowedMethods).toContain('GET')
+    expect(allowedMethods).toContain('POST')
   })
 
   // TRIGGER:  Check PLATFORM_SCOPE stages are exactly S1-S7

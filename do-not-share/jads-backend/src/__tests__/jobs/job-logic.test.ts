@@ -3,6 +3,8 @@
 // AUDIT FIX: JOB-L07/L08/L09 now import real constants from src/constants.ts
 // instead of defining local copies that could drift from production.
 
+import fs from 'fs'
+import path from 'path'
 import { INDIA_FIRS, MAJOR_AERODROME_ICAOS, AFMLU_IDS } from '../../constants'
 
 describe('Background Job Invariants', () => {
@@ -85,14 +87,19 @@ describe('Background Job Invariants', () => {
   // ── Cron schedule validation ───────────────────────────────────────────
 
   test('JOB-L06: Cron schedules are valid 5-field expressions', () => {
-    const SCHEDULES = {
-      ReverificationJob:  '0 2 * * *',
-      AnnualReconfirmJob: '0 2 * * *',
-      NotamPollJob:       '*/5 * * * *',
-      MetarPollJob:       '*/30 * * * *',
-      AdcFicPollJob:      '0 */6 * * *',
+    // Read cron schedules from the actual production job source files
+    const jobFiles: Record<string, string> = {
+      ReverificationJob:  path.resolve(__dirname, '../../jobs/ReverificationJob.ts'),
+      NotamPollJob:       path.resolve(__dirname, '../../jobs/NotamPollJob.ts'),
+      MetarPollJob:       path.resolve(__dirname, '../../jobs/MetarPollJob.ts'),
+      AdcFicPollJob:      path.resolve(__dirname, '../../jobs/AdcFicPollJob.ts'),
+      EvidenceLedgerJob:  path.resolve(__dirname, '../../jobs/EvidenceLedgerJob.ts'),
     }
-    for (const [name, schedule] of Object.entries(SCHEDULES)) {
+    for (const [name, filePath] of Object.entries(jobFiles)) {
+      const source = fs.readFileSync(filePath, 'utf8')
+      const cronMatch = source.match(/CRON_SCHEDULE\s*=\s*['"]([^'"]+)['"]/)
+      expect(cronMatch).not.toBeNull()
+      const schedule = cronMatch![1]
       const parts = schedule.trim().split(/\s+/)
       expect(parts.length).toBe(5)  // standard cron — 5 fields (no seconds)
     }
