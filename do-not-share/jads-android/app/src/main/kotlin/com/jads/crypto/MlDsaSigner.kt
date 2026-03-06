@@ -6,7 +6,13 @@ import org.bouncycastle.pqc.crypto.mldsa.MLDSAParameters
 import org.bouncycastle.pqc.crypto.mldsa.MLDSAPrivateKeyParameters
 import org.bouncycastle.pqc.crypto.mldsa.MLDSAPublicKeyParameters
 import org.bouncycastle.pqc.crypto.mldsa.MLDSASigner
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import java.security.KeyStore
 import java.security.SecureRandom
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.spec.GCMParameterSpec
 
 // ML-DSA-65 (FIPS 204) — Post-Quantum Digital Signature Algorithm.
 //
@@ -34,8 +40,13 @@ object MlDsaSigner {
      * Generate a new ML-DSA-65 key pair.
      * Returns Pair(privateKeyEncoded, publicKeyEncoded).
      *
-     * The encoded forms are the raw byte representations from BouncyCastle.
-     * Store the private key securely; send the public key to the backend at upload.
+     * KNOWN LIMITATION (Phase 2): The private key is returned as raw bytes.
+     * Android Keystore does not yet support ML-DSA (FIPS 204).
+     * Interim mitigation: wrap the private key with an AES-256-GCM key
+     * held in Android Keystore before persisting. Phase 2 will integrate
+     * hardware-backed PQC key storage when Keystore adds FIPS 204 support.
+     *
+     * DO NOT store the returned private key in SharedPreferences or plain files.
      */
     fun generateKeyPair(): Pair<ByteArray, ByteArray> {
         val kpg = MLDSAKeyPairGenerator()
@@ -76,5 +87,49 @@ object MlDsaSigner {
         val signer = MLDSASigner()
         signer.init(false, pubParams)
         return signer.verifySignature(message, signature)
+    }
+
+    fun wrapPrivateKey(
+        rawPrivateKey: ByteArray,
+        wrapWithAlias: String = "jads_mlDsa_wrapper"
+    ): ByteArray {
+        // Generate or retrieve AES-256-GCM wrapping key in Android Keystore
+        val ks = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
+        if (!ks.containsAlias(wrapWithAlias)) {
+            val spec = KeyGenParameterSpec.Builder(
+                wrapWithAlias,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build()
+            KeyGenerator.getInstance(
+                KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore"
+            ).also { it.init(spec) }.generateKey()
+        }
+        val secretKey = (ks.getEntry(wrapWithAlias, null)
+            as KeyStore.SecretKeyEntry).secretKey
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+        val iv         = cipher.iv          // 12 bytes
+        val ciphertext = cipher.doFinal(rawPrivateKey)
+        // Return iv || ciphertext
+        return iv + ciphertext
+    }
+
+    fun unwrapPrivateKey(
+        wrapped: ByteArray,
+        wrapWithAlias: String = "jads_mlDsa_wrapper"
+    ): ByteArray {
+        val ks = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
+        val secretKey = (ks.getEntry(wrapWithAlias, null)
+            as KeyStore.SecretKeyEntry).secretKey
+        val iv         = wrapped.copyOfRange(0, 12)
+        val ciphertext = wrapped.copyOfRange(12, wrapped.size)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        val spec   = GCMParameterSpec(128, iv)
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
+        return cipher.doFinal(ciphertext)
     }
 }

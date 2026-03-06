@@ -114,7 +114,7 @@ router.get('/', requireAuth, async (req, res) => {
 // POST /api/flight-plans/:id/cancel
 // Cancel a filed flight plan. Builds and transmits AFTN CNL message.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/:id/cancel', requireAuth, requireRole(FPL_ROLES), async (req, res) => {
+router.post('/:id/cancel', requireAuth, requireRole([...FPL_ROLES, 'DGCA_AUDITOR']), async (req, res) => {
   try {
     const { reason } = req.body
     if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
@@ -134,7 +134,7 @@ router.post('/:id/cancel', requireAuth, requireRole(FPL_ROLES), async (req, res)
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     const status = msg.includes('NOT_FOUND') ? 404
-      : msg.includes('NOT_YOUR') ? 403
+      : msg.includes('FORBIDDEN') ? 403
       : msg.includes('CANNOT_CANCEL') ? 409
       : 500
     log.error('flight_plan_cancel_error', { data: { error: msg } })
@@ -163,14 +163,15 @@ router.post('/:id/delay', requireAuth, requireRole(FPL_ROLES), async (req, res) 
       req.auth!.userId,
       req.auth!.userType as 'CIVILIAN' | 'SPECIAL',
       newEobt,
-      reason.trim()
+      reason.trim(),
+      req.auth!.role
     )
 
     res.json({ ...result })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     const status = msg.includes('NOT_FOUND') ? 404
-      : msg.includes('NOT_YOUR') ? 403
+      : msg.includes('FORBIDDEN') ? 403
       : msg.includes('CANNOT_DELAY') ? 409
       : msg.includes('must differ') ? 422
       : msg.includes('DELAY_TOO_SHORT') ? 422
@@ -209,7 +210,7 @@ router.post('/:id/arrive', requireAuth, requireRole(FPL_ROLES), async (req, res)
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     const status = msg.includes('NOT_FOUND') ? 404
-      : msg.includes('NOT_YOUR') ? 403
+      : msg.includes('FORBIDDEN') ? 403
       : msg.includes('CANNOT_ARRIVE') ? 409
       : 500
     log.error('flight_plan_arrive_error', { data: { error: msg } })
