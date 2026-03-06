@@ -940,10 +940,10 @@ describe('MEGA-ALT-01: Altitude compliance — semicircular, RVSM, transitions',
 
 describe('MEGA-CHAOS-01: AFTN builder — injection, overflow, unicode', () => {
 
-  test('SQL injection in callsign — no crash, no SQL in output', () => {
-    const msg = builder.build(minInput({ callsign: "VTA'; DROP TABLE--" as any }))
-    expect(msg.startsWith('(FPL-')).toBe(true)
-    expect(msg.endsWith(')')).toBe(true)
+  test('SQL injection in callsign — rejected by ICAO validation', () => {
+    // Builder validates callsign per ICAO Doc 4444 — 2-7 alphanumeric only.
+    // SQL injection attempt is caught before reaching message construction.
+    expect(() => builder.build(minInput({ callsign: "VTA'; DROP TABLE--" as any }))).toThrow('AFTN_INVALID_CALLSIGN')
   })
 
   test('XSS in RMK field — no crash, angle brackets preserved', () => {
@@ -954,8 +954,9 @@ describe('MEGA-CHAOS-01: AFTN builder — injection, overflow, unicode', () => {
     expect(msg).not.toContain('\n<script')
   })
 
-  test('Unicode emoji in callsign — no crash', () => {
-    expect(() => builder.build(minInput({ callsign: '✈️🔥' as any }))).not.toThrow()
+  test('Unicode emoji in callsign — rejected by ICAO validation', () => {
+    // ICAO Doc 4444 requires alphanumeric callsigns only — emoji is rejected.
+    expect(() => builder.build(minInput({ callsign: '✈️🔥' as any }))).toThrow('AFTN_INVALID_CALLSIGN')
   })
 
   test('10KB route string — completes < 50ms', () => {

@@ -570,10 +570,10 @@ describe('CS-FAIL-01–10: Failure mode verification — documented failure beha
   // OUTPUT:   Message starts with (FPL-- (double dash) — technically invalid but no crash
   // FAILURE:  Crash throws 500 to client → flight plan lost; operator cannot refile without restart
   // OWNER:    OfplValidationService.validate() — must catch empty callsign before reaching builder
-  test('CS-FAIL-06: Empty callsign does not crash builder (upstream validation expected)', () => {
-    // Builder is not responsible for callsign validation — OfplValidationService handles that.
-    // Document: builder handles empty callsign gracefully (no throw)
-    expect(() => builder.build(buildInput({ callsign: '' }))).not.toThrow()
+  test('CS-FAIL-06: Empty callsign throws validation error (ICAO Doc 4444 field guard)', () => {
+    // Builder now validates callsign per ICAO Doc 4444 — must be 2-7 alphanumeric.
+    // Defence-in-depth: OfplValidationService also validates upstream.
+    expect(() => builder.build(buildInput({ callsign: '' }))).toThrow('AFTN_INVALID_CALLSIGN')
   })
 
   // TRIGGER:  SAR fields with trailing whitespace

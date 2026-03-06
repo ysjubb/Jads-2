@@ -337,14 +337,18 @@ export class FlightPlanService {
       messageContent: cnlMessage,
     })
 
-    // Update plan status
+    // Update plan status + persist CNL message and gateway result
     await this.prisma.mannedFlightPlan.update({
       where: { id: flightPlanId },
       data: {
-        status:             'CANCELLED' as any,
-        cancelledAt:        new Date(),
-        cancelledBy:        userId,
-        cancellationReason: reason,
+        status:                  'CANCELLED' as any,
+        cancelledAt:             new Date(),
+        cancelledBy:             userId,
+        cancellationReason:      reason,
+        cnlAftnMessage:          cnlMessage,
+        aftnTransmissionStatus:  filingResult.stubMode ? 'STUB' : (filingResult.accepted ? 'TRANSMITTED' : 'FAILED'),
+        aftnGatewayResultJson:   JSON.stringify(filingResult),
+        aftnTransmittedAt:       new Date(filingResult.transmittedAtUtc),
       }
     })
 
@@ -379,6 +383,14 @@ export class FlightPlanService {
       throw new Error(`CANNOT_DELAY: Plan is ${plan.status}`)
     }
 
+    // ICAO Doc 4444 §11.4.2.4: delay must be ≥ 30 minutes
+    const originalEobtMs = plan.eobt.getTime()
+    const newEobtDate    = this.parseEobt(newEobt)
+    const delayMinutes   = (newEobtDate.getTime() - originalEobtMs) / 60000
+    if (delayMinutes < 30) {
+      throw new Error('DELAY_TOO_SHORT: DLA requires at least 30 minutes delay per ICAO Doc 4444')
+    }
+
     // Build AFTN DLA message
     const originalEobtStr = this.formatEobt(plan.eobt)
     const dlaMessage = this.dlaBuilder.build({
@@ -399,15 +411,19 @@ export class FlightPlanService {
       messageContent: dlaMessage,
     })
 
-    // Update plan with new EOBT and DELAYED status
-    const newEobtDate = this.parseEobt(newEobt)
+    // Update plan with new EOBT, DELAYED status, and persist DLA message + gateway result
     await this.prisma.mannedFlightPlan.update({
       where: { id: flightPlanId },
       data: {
-        status:         'DELAYED' as any,
-        delayedNewEobt: newEobtDate,
-        delayReason:    reason,
-        eobt:           newEobtDate,
+        status:                  'DELAYED' as any,
+        delayedNewEobt:          newEobtDate,
+        delayReason:             reason,
+        eobt:                    newEobtDate,
+        dlaAftnMessage:          dlaMessage,
+        dlaFiledAt:              new Date(),
+        aftnTransmissionStatus:  filingResult.stubMode ? 'STUB' : (filingResult.accepted ? 'TRANSMITTED' : 'FAILED'),
+        aftnGatewayResultJson:   JSON.stringify(filingResult),
+        aftnTransmittedAt:       new Date(filingResult.transmittedAtUtc),
       }
     })
 
@@ -427,7 +443,8 @@ export class FlightPlanService {
     flightPlanId: string,
     userId:       string,
     userType:     'CIVILIAN' | 'SPECIAL',
-    arrivalTime:  string    // HHmm UTC
+    arrivalTime:  string,   // HHmm UTC
+    arrivalIcao?: string    // Override ADES for diversion
   ): Promise<{ success: boolean; status: string; arrMessage?: string }> {
     const plan = await this.prisma.mannedFlightPlan.findUnique({
       where: { id: flightPlanId }
@@ -441,10 +458,11 @@ export class FlightPlanService {
       throw new Error(`CANNOT_ARRIVE: Plan is ${plan.status}`)
     }
 
-    // Build AFTN ARR message
+    // Build AFTN ARR message — use arrivalIcao override for diversions
+    const actualArrivalAerodrome = arrivalIcao ?? plan.ades
     const arrMessage = this.arrBuilder.build({
       callsign:          plan.aircraftId,
-      arrivalAerodrome:  plan.ades,
+      arrivalAerodrome:  actualArrivalAerodrome,
       arrivalTime,
       departureIcao:     plan.adep,
     })
@@ -459,13 +477,17 @@ export class FlightPlanService {
       messageContent: arrMessage,
     })
 
-    // Update plan status to ARRIVED
+    // Update plan status to ARRIVED + persist ARR message and gateway result
     await this.prisma.mannedFlightPlan.update({
       where: { id: flightPlanId },
       data: {
-        status:            'ARRIVED' as any,
-        arrivedAt:         new Date(),
-        actualArrivalTime: arrivalTime,
+        status:                  'ARRIVED' as any,
+        arrivedAt:               new Date(),
+        actualArrivalTime:       arrivalTime,
+        arrAftnMessage:          arrMessage,
+        aftnTransmissionStatus:  filingResult.stubMode ? 'STUB' : (filingResult.accepted ? 'TRANSMITTED' : 'FAILED'),
+        aftnGatewayResultJson:   JSON.stringify(filingResult),
+        aftnTransmittedAt:       new Date(filingResult.transmittedAtUtc),
       }
     })
 
