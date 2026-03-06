@@ -253,6 +253,64 @@ export class OfplValidationService {
         message: `Flight rules ${input.flightRules} indicates IFR/VFR change. Mark change point with VFR/IFR in route string.` })
     }
 
+    // ── STEP 3b: ITEM 19 SAR CODE VALIDATION (ICAO Doc 4444 §4.7.19) ───
+    // Validate SAR equipment codes against ICAO-defined code sets.
+    // Non-blocking (warnings only) — operators may use codes not in our list.
+
+    const VALID_SAR_RADIO   = ['V', 'U', 'E']   // V=VHF, U=UHF, E=ELT
+    const VALID_SAR_SURVIVAL = ['P', 'D', 'M', 'J']   // Polar, Desert, Maritime, Jungle
+    const VALID_SAR_JACKETS  = ['L', 'F', 'U', 'V']   // Light, Fluorescent, UHF, VHF
+
+    if (input.radioEquipment) {
+      const chars = input.radioEquipment.toUpperCase().replace(/[0-9]/g, '')
+      for (const c of chars) {
+        if (!VALID_SAR_RADIO.includes(c)) {
+          warnings.push({ field: 'radioEquipment', code: 'SAR_RADIO_CODE_UNKNOWN',
+            message: `Item 19 R/ code '${c}' is not a standard ICAO SAR radio code (V/U/E)` })
+          break
+        }
+      }
+    }
+    if (input.survivalEquipment) {
+      for (const c of input.survivalEquipment.toUpperCase()) {
+        if (!VALID_SAR_SURVIVAL.includes(c)) {
+          warnings.push({ field: 'survivalEquipment', code: 'SAR_SURVIVAL_CODE_UNKNOWN',
+            message: `Item 19 S/ code '${c}' is not a standard ICAO survival code (P/D/M/J)` })
+          break
+        }
+      }
+    }
+    if (input.jackets) {
+      for (const c of input.jackets.toUpperCase()) {
+        if (!VALID_SAR_JACKETS.includes(c)) {
+          warnings.push({ field: 'jackets', code: 'SAR_JACKET_CODE_UNKNOWN',
+            message: `Item 19 J/ code '${c}' is not a standard ICAO jacket code (L/F/U/V)` })
+          break
+        }
+      }
+    }
+
+    // ── STEP 3c: ITEM 18 RMK/ LENGTH CHECK ─────────────────────────────
+    // ICAO PANS-ATM recommends ≤350 characters for remarks.
+    if (item18.rmk && item18.rmk.length > 350) {
+      warnings.push({ field: 'otherInfo', code: 'RMK_LENGTH_EXCEEDED',
+        message: `Item 18 RMK/ is ${item18.rmk.length} characters (ICAO recommends ≤350). ATC may truncate.` })
+    }
+
+    // ── STEP 3d: EQUIPMENT CODE DUPLICATE DETECTION ────────────────────
+    // Warn if the same equipment code is repeated (likely typo).
+    if (input.equipment !== 'N') {
+      const seen = new Set<string>()
+      for (const c of input.equipment) {
+        if (seen.has(c)) {
+          warnings.push({ field: 'equipment', code: 'EQUIPMENT_CODE_DUPLICATE',
+            message: `Equipment code '${c}' appears more than once in '${input.equipment}'` })
+          break
+        }
+        seen.add(c)
+      }
+    }
+
     // ── STEP 4: AERODROME EXISTENCE CHECKS ──────────────────────────────
 
     if (input.departureIcao !== 'ZZZZ') {

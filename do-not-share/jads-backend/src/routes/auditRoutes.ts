@@ -4,6 +4,7 @@ import express             from 'express'
 import { PrismaClient }   from '@prisma/client'
 import { AuditService, AuditScopeError } from '../services/AuditService'
 import { ForensicVerifier }   from '../services/ForensicVerifier'
+import { Bsa2023CertificateService } from '../services/Bsa2023CertificateService'
 import { EvidenceLedgerJob }  from '../jobs/EvidenceLedgerJob'
 import { createExternalAnchorService } from '../services/ExternalAnchorService'
 import { requireAuditAuth, requireRole } from '../middleware/authMiddleware'
@@ -12,7 +13,8 @@ import { serializeForJson } from '../utils/bigintSerializer'
 const router   = express.Router()
 const prisma   = new PrismaClient()
 const audit    = new AuditService(prisma)
-const verifier = new ForensicVerifier(prisma)
+const verifier    = new ForensicVerifier(prisma)
+const bsaCertSvc  = new Bsa2023CertificateService()
 
 const AUDITOR_ROLES = [
   'DGCA_AUDITOR', 'AAI_AUDITOR', 'IAF_AUDITOR', 'ARMY_AUDITOR',
@@ -70,6 +72,75 @@ router.get('/missions/:id/forensic', async (req, res) => {
     const { role } = req.auth!
     const result = await verifier.verify(req.params.id)
     res.json(serializeForJson(withMeta({ verification: result }, role)))
+  } catch (e) { handleScopeError(res, e) }
+})
+
+// GET /api/audit/missions/:id/bsa-certificate
+// Generates a BSA 2023 Section 63 Part A certificate for court-admissible evidence.
+// Requires forensic verification to run first. Returns structured certificate data
+// that the audit portal renders as a printable HTML document.
+router.get('/missions/:id/bsa-certificate', async (req, res) => {
+  try {
+    const { role, entityCode } = req.auth!
+    const mission  = await audit.getMissionById(role, entityCode ?? '', req.params.id) as Record<string, any>
+    const verification = await verifier.verify(req.params.id)
+    const certificate  = bsaCertSvc.generatePartA(mission, verification)
+    res.json(serializeForJson(withMeta({ certificate }, role)))
+  } catch (e) { handleScopeError(res, e) }
+})
+
+// POST /api/audit/missions/:id/bsa-certificate/sign
+// Submit BSA 2023 Section 63 Part B declaration (signed by authorised officer).
+// Only DGCA_AUDITOR and INVESTIGATION_OFFICER roles can sign.
+router.post('/missions/:id/bsa-certificate/sign',
+  requireRole(['DGCA_AUDITOR', 'INVESTIGATION_OFFICER']),
+  async (req, res) => {
+  try {
+    const { role, entityCode, userId, name } = req.auth! as any
+    const { declarantDesignation, declarationText, conditionsSatisfied } = req.body
+
+    if (!declarantDesignation || !declarationText || conditionsSatisfied === undefined) {
+      res.status(400).json({ error: 'MISSING_FIELDS',
+        message: 'Required: declarantDesignation, declarationText, conditionsSatisfied' })
+      return
+    }
+
+    // Run forensic verification to get current invariant state
+    const verification = await verifier.verify(req.params.id)
+    const mission = await audit.getMissionById(role, entityCode ?? '', req.params.id) as Record<string, any>
+    const partA = bsaCertSvc.generatePartA(mission, verification)
+
+    const declaration = await (prisma as any).bsa2023PartBDeclaration.create({
+      data: {
+        missionId:            req.params.id,
+        certificateId:        partA.certificateId,
+        declarantName:        name ?? 'Unknown',
+        declarantDesignation,
+        declarantEntityCode:  entityCode ?? '',
+        declarantUserId:      userId ?? '',
+        declarationText,
+        allInvariantsHeld:    verification.allInvariantsHold,
+        conditionsSatisfied:  Boolean(conditionsSatisfied),
+        signatureMethod:      'DIGITAL_JWT',
+        ipAddress:            req.ip ?? null,
+        userAgent:            req.headers['user-agent'] ?? null,
+      }
+    })
+
+    res.status(201).json(serializeForJson(withMeta({ declaration, partACertificateId: partA.certificateId }, role)))
+  } catch (e) { handleScopeError(res, e) }
+})
+
+// GET /api/audit/missions/:id/bsa-certificate/declarations
+// List all Part B declarations for a mission.
+router.get('/missions/:id/bsa-certificate/declarations', async (req, res) => {
+  try {
+    const { role } = req.auth!
+    const declarations = await (prisma as any).bsa2023PartBDeclaration.findMany({
+      where: { missionId: req.params.id },
+      orderBy: { signedAtUtc: 'desc' },
+    })
+    res.json(serializeForJson(withMeta({ declarations }, role)))
   } catch (e) { handleScopeError(res, e) }
 })
 

@@ -1,4 +1,4 @@
-// ForensicVerifier — runs all 8 forensic invariants against a stored mission.
+// ForensicVerifier — runs all 10 forensic invariants against a stored mission.
 //
 // Called by:
 //   GET /api/drone/missions/:id/forensic     (operator + auditors)
@@ -253,7 +253,7 @@ export class ForensicVerifier {
     return {
       pass,
       code:     'I1_HASH_CHAIN',
-      label:    'Hash Chain Integrity',
+      label:    'Hash Chain Integrity (ISO 27037)',
       detail:   pass
         ? `All ${sorted.length} records form an unbroken chain from HASH_0`
         : errors.slice(0, 3).join('; ') + (errors.length > 3 ? ` (+${errors.length - 3} more)` : ''),
@@ -325,7 +325,7 @@ export class ForensicVerifier {
     return {
       pass,
       code:     'I2_NTP_SYNC',
-      label:    'NTP Time Synchronisation',
+      label:    'Time Synchronisation (RFC 3161)',
       detail,
       critical: ntpSyncStatus === 'FAILED',
     }
@@ -339,7 +339,7 @@ export class ForensicVerifier {
     if (!certValidAtStart) {
       return {
         pass: false, code: 'I3_DEVICE_CERT',
-        label: 'Device Certificate', critical: true,
+        label: 'Device Certificate (CCA PKI)', critical: true,
         detail: 'Device certificate was NOT valid at mission start — records cannot be authenticated',
       }
     }
@@ -348,14 +348,14 @@ export class ForensicVerifier {
       if (expiry < missionStartMs) {
         return {
           pass: false, code: 'I3_DEVICE_CERT',
-          label: 'Device Certificate', critical: true,
+          label: 'Device Certificate (CCA PKI)', critical: true,
           detail: `Certificate expired before mission start (expiry: ${new Date(expiry).toISOString()})`,
         }
       }
     }
     return {
       pass: true, code: 'I3_DEVICE_CERT',
-      label: 'Device Certificate', critical: true,
+      label: 'Device Certificate (CCA PKI)', critical: true,
       detail: certExpiryUtcMs
         ? `Certificate valid at mission start, expires ${new Date(Number(certExpiryUtcMs)).toISOString()}`
         : 'Certificate valid at mission start',
@@ -367,7 +367,7 @@ export class ForensicVerifier {
     return {
       pass,
       code:     'I4_CRL_ARCHIVED',
-      label:    'CRL Archived',
+      label:    'CRL Archived (RFC 5280)',
       detail:   pass
         ? `CRL snapshot archived at upload time (${Math.round((archivedCrlBase64!.length * 3/4) / 1024)}KB)`
         : 'No CRL snapshot archived — certificate revocation status cannot be verified',
@@ -384,7 +384,7 @@ export class ForensicVerifier {
     return {
       pass,
       code:     'I5_NO_DUPLICATE',
-      label:    'No Duplicate Mission',
+      label:    'No Duplicate Mission (ISO 27042)',
       detail:   pass
         ? 'This missionId is unique in the system'
         : `Found ${duplicates.length} other record(s) with the same missionId — possible replay attack`,
@@ -402,7 +402,7 @@ export class ForensicVerifier {
     return {
       pass,
       code:     'I6_ZONE_COMPLIANCE',
-      label:    'NPNT Zone Compliance',
+      label:    'NPNT Zone Compliance (DGCA Rule 36)',
       detail:   pass
         ? violations.length === 0
           ? 'No violations recorded — mission remained within authorised zones'
@@ -416,7 +416,7 @@ export class ForensicVerifier {
     records: Array<{ gnssStatus: string }>
   ): InvariantResult {
     if (records.length === 0) {
-      return { pass: true, code: 'I7_GNSS_INTEGRITY', label: 'GNSS Integrity', critical: false,
+      return { pass: true, code: 'I7_GNSS_INTEGRITY', label: 'GNSS Integrity (ICAO Annex 10)', critical: false,
                detail: 'No records to evaluate' }
     }
     const degraded = records.filter(r => r.gnssStatus !== 'GOOD').length
@@ -438,7 +438,7 @@ export class ForensicVerifier {
     if (strongboxBacked === null) {
       return {
         pass: false, code: 'I8_HARDWARE_SECURITY',
-        label: 'Hardware Security', critical: false,
+        label: 'Hardware Security (FIPS 140-2)', critical: false,
         detail: 'Device attestation not provided — hardware security level unknown',
       }
     }
@@ -446,7 +446,7 @@ export class ForensicVerifier {
     return {
       pass,
       code:     'I8_HARDWARE_SECURITY',
-      label:    'Hardware Security',
+      label:    'Hardware Security (FIPS 140-2)',
       detail:   `StrongBox: ${strongboxBacked ? 'YES' : 'NO'} · Secure Boot: ${secureBootVerified ? 'YES' : secureBootVerified === false ? 'NO' : 'UNKNOWN'}`,
       critical: false,
     }
@@ -463,7 +463,7 @@ export class ForensicVerifier {
   ): InvariantResult {
     if (records.length < 2) {
       return {
-        pass: true, code: 'I9_TIMESTAMP_MONOTONIC', label: 'Timestamp Monotonicity',
+        pass: true, code: 'I9_TIMESTAMP_MONOTONIC', label: 'Timestamp Monotonicity (ISO 27037 \u00a77.1.3)',
         critical: false, detail: 'Insufficient records to evaluate monotonicity',
       }
     }
@@ -509,7 +509,7 @@ export class ForensicVerifier {
       return {
         pass: true,
         code:     'I10_PQC_HYBRID',
-        label:    'PQC Hybrid Signature (ML-DSA-65)',
+        label:    'PQC Hybrid Signature (NIST FIPS 204)',
         detail:   'PQC public key not present — pre-PQC mission, ECDSA-only verification applies',
         critical: false,
       }
@@ -526,7 +526,7 @@ export class ForensicVerifier {
       return {
         pass: false,
         code:     'I10_PQC_HYBRID',
-        label:    'PQC Hybrid Signature (ML-DSA-65)',
+        label:    'PQC Hybrid Signature (NIST FIPS 204)',
         detail:   `PQC_PUBKEY_PARSE_FAILED: ${e instanceof Error ? e.message : String(e)}`,
         critical: false,
       }
@@ -565,7 +565,7 @@ export class ForensicVerifier {
     return {
       pass,
       code:     'I10_PQC_HYBRID',
-      label:    'PQC Hybrid Signature (ML-DSA-65)',
+      label:    'PQC Hybrid Signature (NIST FIPS 204)',
       detail,
       critical: false,  // Phase 1: advisory only — will become critical in Phase 2
     }

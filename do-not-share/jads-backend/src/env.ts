@@ -50,4 +50,12 @@ export const env = {
   // Must be set to a strong random value in production.
   // AFMLU/FIR systems include this in X-JADS-Adapter-Key header.
   ADAPTER_INBOUND_KEY: requireEnv('ADAPTER_INBOUND_KEY'),
+
+  // RFC 3161 Trusted Timestamping Authority (optional — for forensic-grade temporal proof)
+  // Use CDAC (http://tsa.cdac.in) or eMudhra (https://tsa.emudhra.com) for Indian CCA compliance.
+  RFC3161_TSA_URL:          optionalEnv('RFC3161_TSA_URL', ''),
+  RFC3161_TSA_USERNAME:     optionalEnv('RFC3161_TSA_USERNAME', ''),
+  RFC3161_TSA_PASSWORD:     optionalEnv('RFC3161_TSA_PASSWORD', ''),
+  RFC3161_TSA_TIMEOUT_MS:   parseInt(optionalEnv('RFC3161_TSA_TIMEOUT_MS', '15000')),
+  RFC3161_TOKEN_STORE_PATH: optionalEnv('RFC3161_TOKEN_STORE_PATH', ''),
 } as const

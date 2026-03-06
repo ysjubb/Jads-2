@@ -47,6 +47,8 @@ class DjiLogIngestionService(
     private val privateKeyBytes: ByteArray,
     private val context:         Context,
     private val onMissionIngested: suspend (missionDbId: Long) -> Unit,
+    // Keystore signing function — when provided, used instead of EcdsaSigner.sign()
+    private val signFunction:    ((ByteArray) -> ByteArray)? = null,
 ) {
     companion object {
         private const val TAG = "DjiIngestion"
@@ -149,9 +151,10 @@ class DjiLogIngestionService(
             )
             val canonical96 = CanonicalSerializer.serialize(fields)
 
-            // Sign
+            // Sign — Keystore (StrongBox/TEE) when available, Bouncy Castle fallback
             val hash32       = EcdsaSigner.sha256(canonical96)
-            val signatureDer = EcdsaSigner.sign(hash32, privateKeyBytes)
+            val signatureDer = signFunction?.invoke(hash32)
+                ?: EcdsaSigner.sign(hash32, privateKeyBytes)
 
             // Advance hash chain
             val newHash = HashChainEngine.computeHashN(canonical96, currentHash)

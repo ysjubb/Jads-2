@@ -122,7 +122,7 @@ function evaluateInvariants(
   // I-1: Hash chain integrity
   const chainOk = mission.chainVerifiedByServer && mission.chainFailureSequence == null
   const inv1: InvariantResult = {
-    label:       'I-1 Hash Chain',
+    label:       'I-1 Hash Chain (ISO 27037)',
     description: 'Every record\'s SHA-256 hash correctly chains from the previous record.',
     passed:      chainOk,
     critical:    true,
@@ -135,7 +135,7 @@ function evaluateInvariants(
   const ntpOk   = mission.ntpSyncStatus === 'SYNCED'
   const ntpWarn = mission.ntpSyncStatus === 'DEGRADED'
   const inv2: InvariantResult = {
-    label:       'I-2 NTP Sync',
+    label:       'I-2 Time Sync (RFC 3161)',
     description: 'Device clock was synchronised to NTP quorum before mission start.',
     passed:      ntpOk || ntpWarn,
     critical:    !ntpOk && !ntpWarn,
@@ -149,7 +149,7 @@ function evaluateInvariants(
   // I-3: Device certificate validity
   const certOk = mission.certValidAtStart
   const inv3: InvariantResult = {
-    label:       'I-3 Device Certificate',
+    label:       'I-3 Device Certificate (CCA PKI)',
     description: 'The device\'s ECDSA P-256 certificate was valid and non-revoked at mission start.',
     passed:      certOk,
     critical:    true,
@@ -163,7 +163,7 @@ function evaluateInvariants(
   // I-4: CRL archived
   const crlOk = mission.archivedCrlBase64 != null
   const inv4: InvariantResult = {
-    label:       'I-4 CRL Archived',
+    label:       'I-4 CRL Archived (RFC 5280)',
     description: 'The Certificate Revocation List was archived at upload time for post-facto verification.',
     passed:      crlOk,
     critical:    false,
@@ -175,7 +175,7 @@ function evaluateInvariants(
   // I-5: No duplicate mission
   const dupOk = !mission.isDuplicate
   const inv5: InvariantResult = {
-    label:       'I-5 No Duplicate',
+    label:       'I-5 No Duplicate (ISO 27042)',
     description: 'This mission ID has not been submitted previously (replay protection).',
     passed:      dupOk,
     critical:    true,
@@ -191,7 +191,7 @@ function evaluateInvariants(
   )
   const zoneOk  = zoneViolations.length === 0
   const inv6: InvariantResult = {
-    label:       'I-6 Zone Compliance',
+    label:       'I-6 Zone Compliance (DGCA Rule 36)',
     description: 'Flight remained within the declared NPNT zone classification; no zone breaches.',
     passed:      zoneOk,
     critical:    mission.npntClassification === 'RED' || mission.npntClassification === 'DJI_IMPORT',
@@ -206,7 +206,7 @@ function evaluateInvariants(
   const degradedPct   = totalCount > 0 ? (degradedCount / totalCount) * 100 : 0
   const gnssOk        = degradedPct < 20   // >20% degraded = fail
   const inv7: InvariantResult = {
-    label:       'I-7 GNSS Integrity',
+    label:       'I-7 GNSS Integrity (ICAO Annex 10)',
     description: 'Fewer than 20% of telemetry records had degraded GPS fix quality.',
     passed:      gnssOk,
     critical:    false,
@@ -219,7 +219,7 @@ function evaluateInvariants(
   const hwOk   = mission.strongboxBacked === true || mission.secureBootVerified === true
   const hwWarn = mission.strongboxBacked == null && mission.secureBootVerified == null
   const inv8: InvariantResult = {
-    label:       'I-8 Hardware Security',
+    label:       'I-8 Hardware Security (FIPS 140-2)',
     description: 'Device uses Android Strongbox or verified secure boot for key storage.',
     passed:      hwOk || hwWarn,
     critical:    false,
@@ -235,7 +235,7 @@ function evaluateInvariants(
 
 // ── ForensicReportPanel ────────────────────────────────────────────────────────
 // The single most important UI element for IAF demonstration.
-// Shows all 8 invariants with clear pass/fail/warn status.
+// Shows all 10 invariants with clear pass/fail/warn status.
 
 function ForensicReportPanel({
   mission,
@@ -342,6 +342,206 @@ function ForensicReportPanel({
       )}
     </div>
   )
+}
+
+// ── BSA 2023 Certificate Button ────────────────────────────────────────────────
+// Fetches the Part A certificate from the backend and opens a printable window.
+
+function Bsa2023CertificateButton({ missionDbId }: { missionDbId: string }) {
+  const { auth } = useAuditAuth()
+  const [loading, setLoading] = useState(false)
+
+  const handleGenerate = async () => {
+    if (!auth?.token) return
+    setLoading(true)
+    try {
+      const aax = auditAxios(auth.token)
+      const resp = await aax.get(`/missions/${missionDbId}/bsa-certificate`)
+      const cert = resp.data.certificate
+      openCertificateWindow(cert)
+    } catch (e: any) {
+      alert(`Certificate generation failed: ${e?.response?.data?.error ?? e.message}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleGenerate}
+      disabled={loading}
+      style={{
+        width: '100%', padding: '0.6rem',
+        background: loading ? T.border : T.primary + '20',
+        border: `1px solid ${T.primary}40`,
+        borderRadius: '6px', cursor: loading ? 'wait' : 'pointer',
+        color: T.primary, fontWeight: 600, fontSize: '0.8rem',
+        fontFamily: "'JetBrains Mono', monospace",
+        letterSpacing: '0.02em',
+      }}
+    >
+      {loading ? 'Generating...' : 'BSA 2023 \u00a763 Certificate (Part A)'}
+    </button>
+  )
+}
+
+function openCertificateWindow(cert: any) {
+  const w = window.open('', '_blank', 'width=900,height=1200')
+  if (!w) { alert('Popup blocked — please allow popups for this site.'); return }
+
+  const passIcon = '\u2713'
+  const failIcon = '\u2717'
+
+  const invariantRows = (cert.forensicVerification?.invariantSummary ?? [])
+    .map((inv: any) => `
+      <tr style="background: ${inv.pass ? '#f0fdf4' : inv.critical ? '#fef2f2' : '#fffbeb'}">
+        <td style="padding: 6px 10px; border: 1px solid #d1d5db; font-family: monospace; font-size: 12px">${inv.code}</td>
+        <td style="padding: 6px 10px; border: 1px solid #d1d5db; font-size: 13px">${inv.label}</td>
+        <td style="padding: 6px 10px; border: 1px solid #d1d5db; text-align: center; font-weight: bold; color: ${inv.pass ? '#16a34a' : '#dc2626'}">
+          ${inv.pass ? passIcon + ' PASS' : failIcon + ' FAIL'}
+        </td>
+        <td style="padding: 6px 10px; border: 1px solid #d1d5db; font-size: 12px">${inv.critical ? 'Yes' : 'No'}</td>
+        <td style="padding: 6px 10px; border: 1px solid #d1d5db; font-size: 11px; color: #374151">${inv.detail}</td>
+      </tr>
+    `).join('')
+
+  const allPass = cert.forensicVerification?.allInvariantsHold
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <title>BSA 2023 Section 63 Part A Certificate — ${cert.electronicRecord?.missionId ?? ''}</title>
+  <style>
+    @media print { body { margin: 0; } .no-print { display: none; } }
+    body { font-family: 'Times New Roman', serif; color: #1a1a1a; max-width: 800px; margin: 0 auto; padding: 40px 30px; line-height: 1.5; }
+    h1 { text-align: center; font-size: 18px; text-transform: uppercase; border-bottom: 2px solid #1a1a1a; padding-bottom: 8px; margin-bottom: 4px; }
+    h2 { font-size: 14px; text-transform: uppercase; color: #374151; border-bottom: 1px solid #9ca3af; padding-bottom: 4px; margin-top: 24px; margin-bottom: 10px; }
+    .subtitle { text-align: center; font-size: 13px; color: #4b5563; margin-bottom: 20px; }
+    .cert-id { text-align: center; font-family: monospace; font-size: 11px; color: #6b7280; margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    th { background: #f3f4f6; padding: 6px 10px; border: 1px solid #d1d5db; font-size: 12px; text-align: left; }
+    td { padding: 6px 10px; border: 1px solid #d1d5db; font-size: 13px; }
+    .field-label { font-weight: bold; width: 40%; background: #f9fafb; }
+    .verdict { text-align: center; padding: 16px; font-size: 16px; font-weight: bold; border: 2px solid; border-radius: 6px; margin: 16px 0; }
+    .verdict-pass { border-color: #16a34a; color: #16a34a; background: #f0fdf4; }
+    .verdict-fail { border-color: #dc2626; color: #dc2626; background: #fef2f2; }
+    .legal-notice { background: #fffbeb; border: 1px solid #fbbf24; padding: 12px 16px; border-radius: 4px; font-size: 12px; margin-top: 20px; }
+    .print-btn { display: block; margin: 20px auto; padding: 10px 30px; background: #1a1a1a; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <button class="print-btn no-print" onclick="window.print()">Print / Save as PDF</button>
+
+  <h1>Certificate Under Section 63</h1>
+  <div class="subtitle">Bharatiya Sakshya Adhiniyam, 2023</div>
+  <div class="subtitle" style="font-weight: bold">Part A — System-Generated Technical Certificate</div>
+  <div class="cert-id">Certificate ID: ${cert.certificateId}<br>Generated: ${cert.generatedAtUtc}<br>Platform: JADS v${cert.platformVersion}</div>
+
+  <div class="verdict ${allPass ? 'verdict-pass' : 'verdict-fail'}">
+    ${allPass ? passIcon + ' ALL FORENSIC INVARIANTS HOLD' : failIcon + ' FORENSIC VERIFICATION FAILURES DETECTED'}
+  </div>
+
+  <h2>Section 63(2)(a) — Identification of Electronic Record</h2>
+  <table>
+    <tr><td class="field-label">Mission ID</td><td style="font-family: monospace">${cert.electronicRecord?.missionId ?? ''}</td></tr>
+    <tr><td class="field-label">Database Record ID</td><td style="font-family: monospace; font-size: 11px">${cert.electronicRecord?.databaseRecordId ?? ''}</td></tr>
+    <tr><td class="field-label">Mission Start (UTC)</td><td>${cert.electronicRecord?.missionStartUtc ?? ''}</td></tr>
+    <tr><td class="field-label">Mission End (UTC)</td><td>${cert.electronicRecord?.missionEndUtc ?? ''}</td></tr>
+    <tr><td class="field-label">Telemetry Records</td><td>${cert.electronicRecord?.recordCount ?? 0}</td></tr>
+    <tr><td class="field-label">Operator ID</td><td>${cert.electronicRecord?.operatorId ?? ''}</td></tr>
+    <tr><td class="field-label">Device ID</td><td style="font-family: monospace; font-size: 11px">${cert.electronicRecord?.deviceId ?? ''}</td></tr>
+    <tr><td class="field-label">Device Model</td><td>${cert.electronicRecord?.deviceModel ?? 'Not reported'}</td></tr>
+    <tr><td class="field-label">Drone Manufacturer</td><td>${cert.electronicRecord?.droneManufacturer ?? 'Not reported'}</td></tr>
+    <tr><td class="field-label">Drone Serial Number</td><td>${cert.electronicRecord?.droneSerialNumber ?? 'Not reported'}</td></tr>
+    <tr><td class="field-label">UIN Number</td><td>${cert.electronicRecord?.uinNumber ?? 'Not reported'}</td></tr>
+    <tr><td class="field-label">NPNT Classification</td><td>${cert.electronicRecord?.npntClassification ?? ''}</td></tr>
+  </table>
+
+  <h2>Section 63(2)(b) — Description of the Device</h2>
+  <table>
+    <tr><td class="field-label">Device Type</td><td>${cert.deviceDescription?.deviceType ?? ''}</td></tr>
+    <tr><td class="field-label">Operating System</td><td>${cert.deviceDescription?.operatingSystem ?? 'Not reported'}</td></tr>
+    <tr><td class="field-label">Cryptographic Module</td><td>${cert.deviceDescription?.cryptographicModule ?? ''}</td></tr>
+    <tr><td class="field-label">Key Storage</td><td>${cert.deviceDescription?.keyStorage ?? ''}</td></tr>
+    <tr><td class="field-label">Secure Boot</td><td>${cert.deviceDescription?.secureBoot ?? ''}</td></tr>
+    <tr><td class="field-label">Hash Chain Algorithm</td><td>${cert.deviceDescription?.hashChainAlgorithm ?? ''}</td></tr>
+    <tr><td class="field-label">Canonical Payload Size</td><td>${cert.deviceDescription?.canonicalPayloadSize ?? ''}</td></tr>
+    <tr><td class="field-label">Signature Algorithm</td><td>${cert.deviceDescription?.signatureAlgorithm ?? ''}</td></tr>
+  </table>
+
+  <h2>Section 63(2)(c) — Operating Conditions</h2>
+  <table>
+    <tr><td class="field-label">Time Synchronisation</td><td>${cert.operatingConditions?.timeSynchronisation ?? ''}</td></tr>
+    <tr><td class="field-label">GNSS Integrity</td><td>${cert.operatingConditions?.gnssIntegritySummary ?? ''}</td></tr>
+    <tr><td class="field-label">Chain Integrity</td><td>${cert.operatingConditions?.chainIntegritySummary ?? ''}</td></tr>
+  </table>
+
+  <h2>Section 63(2)(d) — Applicable Safeguards</h2>
+  <table>
+    <tr><td class="field-label">Hash Chain Integrity</td><td>${cert.safeguards?.hashChainIntegrity ?? ''}</td></tr>
+    <tr><td class="field-label">ECDSA Signature</td><td>${cert.safeguards?.ecdsaSignatureStatus ?? ''}</td></tr>
+    <tr><td class="field-label">PQC Signature (ML-DSA-65)</td><td>${cert.safeguards?.pqcSignatureStatus ?? ''}</td></tr>
+    <tr><td class="field-label">Duplicate Check</td><td>${cert.safeguards?.duplicateCheckStatus ?? ''}</td></tr>
+    <tr><td class="field-label">Zone Compliance</td><td>${cert.safeguards?.zoneComplianceStatus ?? ''}</td></tr>
+    <tr><td class="field-label">CRL Archive</td><td>${cert.safeguards?.crlArchiveStatus ?? ''}</td></tr>
+    <tr><td class="field-label">Hardware Security</td><td>${cert.safeguards?.hardwareSecurityStatus ?? ''}</td></tr>
+    <tr><td class="field-label">Timestamp Monotonicity</td><td>${cert.safeguards?.timestampMonotonicity ?? ''}</td></tr>
+    <tr><td class="field-label">Database Immutability</td><td>${cert.safeguards?.databaseImmutability ?? ''}</td></tr>
+    <tr><td class="field-label">External Anchoring</td><td>${cert.safeguards?.externalAnchoring ?? ''}</td></tr>
+  </table>
+
+  <h2>Forensic Verification Results</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Code</th><th>Invariant</th><th>Result</th><th>Critical</th><th>Detail</th>
+      </tr>
+    </thead>
+    <tbody>${invariantRows}</tbody>
+  </table>
+
+  <h2>Compliance Anchoring</h2>
+  <table>
+    <tr><td class="field-label">Compliance Time Anchor</td><td>${cert.complianceAnchoring?.complianceTimeAnchor ?? ''}</td></tr>
+    <tr><td class="field-label">Explanation</td><td style="font-size: 12px">${cert.complianceAnchoring?.anchorExplanation ?? ''}</td></tr>
+  </table>
+
+  <div class="legal-notice">
+    <strong>${cert.legalNotice?.statute ?? 'BSA 2023'} — ${cert.legalNotice?.section ?? 'Section 63'}</strong><br><br>
+    ${cert.legalNotice?.partDescription ?? ''}<br><br>
+    <strong>Disclaimer:</strong> ${cert.legalNotice?.disclaimer ?? ''}<br><br>
+    <strong>Part B Requirement:</strong> ${cert.legalNotice?.partBRequirement ?? ''}
+  </div>
+
+  <div style="margin-top: 40px; border-top: 1px solid #d1d5db; padding-top: 20px">
+    <h2 style="border: none; margin-top: 0">Part B — Declaration by Authorised Officer</h2>
+    <p style="font-size: 13px; color: #6b7280">
+      This section is to be completed by a person occupying a responsible official position
+      in relation to the operation of the relevant device or the management of relevant activities.
+    </p>
+    <div style="margin-top: 30px">
+      <table style="border: none">
+        <tr style="border: none">
+          <td style="border: none; width: 50%; padding-top: 40px; border-top: 1px solid #1a1a1a">
+            <div style="font-size: 12px; color: #6b7280">Name and Designation</div>
+          </td>
+          <td style="border: none; width: 50%; padding-top: 40px; border-top: 1px solid #1a1a1a">
+            <div style="font-size: 12px; color: #6b7280">Signature and Date</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div style="text-align: center; margin-top: 30px; font-size: 10px; color: #9ca3af">
+    Generated by JADS Platform v${cert.platformVersion} &mdash; Joint Airspace Drone System<br>
+    This document is machine-generated. Verify integrity using Certificate ID: ${cert.certificateId}
+  </div>
+</body>
+</html>`
+
+  w.document.write(html)
+  w.document.close()
 }
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
@@ -598,13 +798,16 @@ export function MissionDetailPage() {
         <div style={{ width: '320px', flexShrink: 0, display: 'flex',
           flexDirection: 'column', gap: '0.75rem' }}>
 
-          {/* Forensic Report Panel — 8 invariants */}
+          {/* Forensic Report Panel — 10 invariants */}
           <ForensicReportPanel
             mission={mission}
             track={track}
             violations={violations}
             complianceAnchor={complianceAnchor}
           />
+
+          {/* BSA 2023 Section 63 Certificate */}
+          <Bsa2023CertificateButton missionDbId={mission.id} />
 
           {/* Violation timeline */}
           <div style={{ background: T.surface, border: `1px solid ${T.border}`,

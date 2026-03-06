@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.env.*
+*.log
+evidence_anchor_signed.log
+sbom.json
+.git
