@@ -1,0 +1,93 @@
+# JADS Platform v4.0 — Production Docker Compose
+#
+# Usage:
+#   docker-compose -f docker-compose.prod.yml up -d     → start all services
+#   docker-compose -f docker-compose.prod.yml down       → stop
+#   docker-compose -f docker-compose.prod.yml logs -f    → follow logs
+#
+# Prerequisites:
+#   1. Build backend image:  cd jads-backend && docker build -t jads-backend:4.0 .
+#   2. Create .env.prod with all required environment variables
+#
+# NIC Cloud deployment:
+#   This compose file is designed for NIC Cloud VM deployment.
+#   For Kubernetes (EKS/GKE), convert to Helm charts.
+#
+# Security notes:
+#   - All services run as non-root users
+#   - Database credentials in environment variables (use secrets manager in production)
+#   - Internal network isolation — only backend exposes ports
+#   - PostgreSQL data persisted in named volume
+#   - Health checks on all services
+
+version: '3.9'
+
+services:
+  # ── PostgreSQL 16 ──────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: jads_postgres_prod
+    restart: always
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-jads}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.prod}
+      POSTGRES_DB:       ${POSTGRES_DB:-jads_prod}
+    volumes:
+      - jads_pgdata_prod:/var/lib/postgresql/data
+    networks:
+      - jads_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jads} -d ${POSTGRES_DB:-jads_prod}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # No port exposure — only accessible via internal network
+    # For DB admin access, use: docker exec -it jads_postgres_prod psql -U jads -d jads_prod
+
+  # ── JADS Backend API ───────────────────────────────────────────────────────
+  backend:
+    image: jads-backend:4.0
+    container_name: jads_backend_prod
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - jads-backend/.env.prod
+    environment:
+      NODE_ENV:     production
+      PORT:         8080
+      DATABASE_URL: postgresql://${POSTGRES_USER:-jads}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-jads_prod}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    networks:
+      - jads_internal
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── JADS Agent: NOTAM Interpreter ──────────────────────────────────────────
+  # Uncomment when agents are containerised.
+  # notam-interpreter:
+  #   image: jads-agent-notam:4.0
+  #   container_name: jads_notam_prod
+  #   restart: always
+  #   ports:
+  #     - "3101:3101"
+  #   networks:
+  #     - jads_internal
+  #   healthcheck:
+  #     test: ["CMD", "wget", "-qO-", "http://localhost:3101/health"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 3
+
+networks:
+  jads_internal:
+    driver: bridge
+
+volumes:
+  jads_pgdata_prod:
+    driver: local

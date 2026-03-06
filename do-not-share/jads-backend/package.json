@@ -11,7 +11,9 @@
     "start": "node dist/server.js",
     "test": "jest",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts --max-warnings 0"
+    "lint": "eslint src --ext .ts --max-warnings 0",
+    "sbom": "npx @cyclonedx/cyclonedx-npm --output-file sbom.json --output-format JSON",
+    "audit:ci": "npm audit --audit-level=high --omit=dev"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",
