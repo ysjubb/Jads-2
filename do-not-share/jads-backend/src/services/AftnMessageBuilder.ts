@@ -15,6 +15,12 @@ import { getTransitionData, getCruiseLevelString } from './indiaAIP'
 
 const log = createServiceLogger('AftnMessageBuilder')
 
+function parseFeetFromLevel(level: string): number {
+  if (level.startsWith('F')) return parseInt(level.slice(1)) * 100
+  if (level.startsWith('A')) return parseInt(level.slice(1)) * 100
+  return 9000
+}
+
 export interface AftnFplInput {
   callsign:       string
   flightRules:    string
@@ -59,6 +65,19 @@ export interface AftnFplInput {
 export class AftnMessageBuilder {
 
   build(input: AftnFplInput): string {
+    // ── INPUT VALIDATION: ICAO Doc 4444 field constraints ───────────────────
+    if (!/^[A-Z0-9]{2,7}$/.test(input.callsign))
+      throw new Error(`AFTN_INVALID_CALLSIGN: '${input.callsign}' — must be 2-7 alphanumeric`)
+
+    if (!['I','V','Y','Z'].includes(input.flightRules))
+      throw new Error(`AFTN_INVALID_FLIGHT_RULES: '${input.flightRules}' — must be I/V/Y/Z`)
+
+    if (!['S','N','G','M','X'].includes(input.flightType))
+      throw new Error(`AFTN_INVALID_FLIGHT_TYPE: '${input.flightType}' — must be S/N/G/M/X`)
+
+    if (!['H','M','L','J'].includes(input.wakeTurbulence))
+      throw new Error(`AFTN_INVALID_WAKE: '${input.wakeTurbulence}' — must be H/M/L/J`)
+
     // ── PRE-PROCESSING: DOF auto-generation ─────────────────────────────────
     // DOF/ is mandatory in Item 18 per ICAO Doc 4444 §15.2.1 and Indian AIP.
     // If the operator did not supply it, derive it from the EOBT DDHHmm.
@@ -74,8 +93,12 @@ export class AftnMessageBuilder {
 
     // ── Item 15: Speed/Level/Route ──────────────────────────────────────────
     // Indian AIP transition altitude — sourced from indiaAIP.ts
+    // getCruiseLevelString() determines F (flight level) vs A (altitude) prefix
+    // based on whether requested altitude is above or below the aerodrome's TA.
     const depTransition = getTransitionData(input.departureIcao)
-    const levelStr      = input.level === 'VFR' ? 'VFR' : input.level
+    const levelStr      = input.level === 'VFR'
+      ? 'VFR'
+      : getCruiseLevelString(input.departureIcao, parseFeetFromLevel(input.level))
     const routeField    = `${input.speed}${levelStr} ${input.route.trim()}`
 
     // ── Item 16: Destination/EET/Alternates ────────────────────────────────
@@ -174,14 +197,17 @@ export class AftnMessageBuilder {
     }
 
     // Derive from EOBT (DDHHmm) + server UTC clock
-    const eobtDay = parseInt(eobt.substring(0, 2) ?? '0')
-    const now     = new Date()
-    let   year    = now.getUTCFullYear()
-    let   month   = now.getUTCMonth() + 1   // 1-indexed
-    const today   = now.getUTCDate()
+    const eobtDay  = parseInt(eobt.substring(0, 2) ?? '0')
+    const eobtHour = parseInt(eobt.substring(2, 4) ?? '0')
+    const now      = new Date()
+    let   year     = now.getUTCFullYear()
+    let   month    = now.getUTCMonth() + 1   // 1-indexed
+    const today    = now.getUTCDate()
+    const nowHour  = now.getUTCHours()
 
-    if (eobtDay < today) {
-      // Flight day is in the future — roll forward one month
+    // Roll forward if: (a) day already passed, or (b) same day but EOBT hour
+    // already passed — handles late-night filings (23:50 UTC for 00:10 flight)
+    if (eobtDay < today || (eobtDay === today && eobtHour < nowHour - 1)) {
       month++
       if (month > 12) { month = 1; year++ }
     }
