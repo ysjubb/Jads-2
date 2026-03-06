@@ -15,7 +15,7 @@ const routeService = new RoutePlanningService()
 const log          = createServiceLogger('FlightPlanRoutes')
 
 // Roles authorised for manned flight plan filing and lifecycle operations
-const FPL_ROLES = ['PILOT', 'PILOT_AND_DRONE', 'GOVT_PILOT', 'PLATFORM_SUPER_ADMIN']
+const FPL_ROLES = ['PILOT', 'GOVT_PILOT', 'PLATFORM_SUPER_ADMIN']
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/flight-plans/route-plan

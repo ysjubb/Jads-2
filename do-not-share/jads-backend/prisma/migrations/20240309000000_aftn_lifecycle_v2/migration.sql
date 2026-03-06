@@ -61,17 +61,19 @@ ALTER TABLE "AirspaceZone" ALTER COLUMN "npntClassification" TYPE "NpntClass" US
 DROP TYPE "NpntClass_old";
 
 -- ═══════════════════════════════════════════════
--- 6. ManufacturerPushSource — rename IZI to IDEAFORGE
+-- 6. ManufacturerPushSource — remove IZI, add IDEAFORGE
 -- ═══════════════════════════════════════════════
--- Only needed if ManufacturerPushSource enum exists in database.
--- If it doesn't exist yet (no prior migration), this will be handled
--- by the next prisma migrate deploy which creates it fresh.
+-- PostgreSQL cannot remove enum values without recreating the type.
+-- Recreate the enum without IZI. Any rows with IZI are migrated to IDEAFORGE.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ManufacturerPushSource') THEN
-    -- Rename IZI to IDEAFORGE
-    ALTER TYPE "ManufacturerPushSource" ADD VALUE IF NOT EXISTS 'IDEAFORGE';
-    -- Note: PostgreSQL cannot remove enum values without recreating the type.
-    -- IZI remains in the enum but is unused. Any rows with IZI should be updated.
+    -- Migrate any IZI rows to IDEAFORGE before dropping the old enum
+    UPDATE "ManufacturerVendor" SET "vendorCode" = 'IDEAFORGE' WHERE "vendorCode" = 'IZI';
+
+    ALTER TYPE "ManufacturerPushSource" RENAME TO "ManufacturerPushSource_old";
+    CREATE TYPE "ManufacturerPushSource" AS ENUM ('DJI', 'AUTEL', 'PARROT', 'SKYDIO', 'IDEAFORGE', 'ASTERIA', 'THROTTLE', 'GENERIC');
+    ALTER TABLE "ManufacturerVendor" ALTER COLUMN "vendorCode" TYPE "ManufacturerPushSource" USING "vendorCode"::text::"ManufacturerPushSource";
+    DROP TYPE "ManufacturerPushSource_old";
   END IF;
 END $$;
