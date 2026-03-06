@@ -1,11 +1,12 @@
 # JADS Known Limitations
 
-## 1. RFC 3161 Timestamping (Phase 1 — Months 1–3)
-EvidenceLedgerService.requestTsaToken() is a stub.
-All rfc3161TimestampToken fields in EvidenceLedger are populated
-with STUB_TSA_TOKEN. Forensic timestamps are not externally verifiable
-until a real TSA endpoint is integrated.
-Production fix: HTTP POST to eMudhra or CDAC TSA per RFC 3161.
+## 1. RFC 3161 Timestamping
+EvidenceLedgerService uses freetsa.org for development timestamping.
+freetsa.org is a free public TSA — suitable for development and testing.
+Production requirement: replace with eMudhra or CDAC TSA.
+  - eMudhra TSA: https://www.emudhra.com/tsa
+  - CDAC TSA:    https://www.cdac.in
+Both are CCA India licensed and acceptable for Indian legal proceedings.
 
 ## 2. DGCA PKI Verification (Phase 2 — Months 3–6)
 NpntVerificationService.verifyDgcaSignature() is a stub returning true.
