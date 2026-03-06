@@ -19,6 +19,11 @@ export interface FilingResult {
   atsRef:              string | null
   rejectionReason:     string | null
   transmittedAtUtc:    string
+  // Extended fields — populated by stub for demo visibility, optional for live
+  stubMode?:           boolean
+  builtMessage?:       string
+  simulatedAck?:       string
+  aftnAddress?:        string
 }
 
 export interface IAftnGateway {
@@ -27,3 +32,7 @@ export interface IAftnGateway {
   modifyFpl(atsRef: string, changes: Partial<AftnMessage>): Promise<FilingResult>
   ping(): Promise<{ connected: boolean; latencyMs: number }>
 }
+
+// Future: LiveAftnGateway will implement X.400 P1 envelope when AAI AMHS
+// credentials are available. Create at src/adapters/live/AftnGatewayLive.ts
+// implementing IAftnGateway. See AftnGatewayStub.ts for integration path.
