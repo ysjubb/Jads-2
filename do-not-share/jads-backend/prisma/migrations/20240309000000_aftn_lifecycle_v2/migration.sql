@@ -32,6 +32,11 @@ ALTER TABLE "MannedFlightPlan" ADD COLUMN IF NOT EXISTS "dlaAftnMessage" TEXT;
 ALTER TABLE "MannedFlightPlan" ADD COLUMN IF NOT EXISTS "dlaFiledAt" TIMESTAMP(3);
 
 -- ═══════════════════════════════════════════════
+-- 3b. MannedFlightPlan — original EOBT preservation for DLA
+-- ═══════════════════════════════════════════════
+ALTER TABLE "MannedFlightPlan" ADD COLUMN IF NOT EXISTS "originalEobt" TIMESTAMP(3);
+
+-- ═══════════════════════════════════════════════
 -- 4. EvidenceLedger — RFC 3161 TSA fields
 -- ═══════════════════════════════════════════════
 ALTER TABLE "EvidenceLedger" ADD COLUMN IF NOT EXISTS "rfc3161TimestampToken" TEXT;

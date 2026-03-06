@@ -739,26 +739,28 @@ describe('AftnDlaBuilder — DLA messages', () => {
 describe('AftnArrBuilder — ARR messages', () => {
   const builder = new AftnArrBuilder()
 
-  test('ARR-01: Basic ARR format starts with (ARR- and ends with )', () => {
+  test('ARR-01: Basic ARR format — (ARR-CALLSIGN-ADEPEOBT-ADES-ATA)', () => {
     const msg = builder.build({
-      callsign: 'VT-ABC', arrivalAerodrome: 'VABB', arrivalTime: '1045',
+      callsign: 'VT-ABC', departureIcao: 'VIDP', eobt: '021045',
+      arrivalAerodrome: 'VABB', arrivalTime: '1230',
     })
-    expect(msg).toBe('(ARR-VT-ABC-VABB-1045)')
+    expect(msg).toBe('(ARR-VT-ABC-VIDP021045-VABB-1230)')
     expect(msg.startsWith('(ARR-')).toBe(true)
     expect(msg.endsWith(')')).toBe(true)
   })
 
-  test('ARR-02: ARR with ADEP and DOF', () => {
+  test('ARR-02: ARR with DOF', () => {
     const msg = builder.build({
-      callsign: 'VT-ABC', arrivalAerodrome: 'VABB', arrivalTime: '1045',
-      departureIcao: 'VIDP', dof: '260307',
+      callsign: 'VT-ABC', departureIcao: 'VIDP', eobt: '021045',
+      arrivalAerodrome: 'VABB', arrivalTime: '1230', dof: '260307',
     })
-    expect(msg).toBe('(ARR-VT-ABC-VABB-1045-VIDP-DOF/260307)')
+    expect(msg).toBe('(ARR-VT-ABC-VIDP021045-VABB-1230-DOF/260307)')
   })
 
-  test('ARR-03: Missing arrivalTime throws ARR_BUILD_FAILED', () => {
+  test('ARR-03: Missing eobt throws ARR_BUILD_FAILED', () => {
     expect(() => builder.build({
-      callsign: 'VT-ABC', arrivalAerodrome: 'VABB', arrivalTime: '',
+      callsign: 'VT-ABC', departureIcao: 'VIDP', eobt: '',
+      arrivalAerodrome: 'VABB', arrivalTime: '1230',
     })).toThrow('ARR_BUILD_FAILED')
   })
 })

@@ -92,7 +92,7 @@ export class AftnGatewayStub implements IAftnGateway {
     }
   }
 
-  async cancelFpl(atsRef: string, callsign: string): Promise<FilingResult> {
+  async cancelFpl(atsRef: string, callsign: string, _depAerodrome: string, _depTime: string): Promise<FilingResult> {
     try {
       const now = new Date().toISOString()
       log.info('stub_cancel_fpl', {
@@ -120,7 +120,7 @@ export class AftnGatewayStub implements IAftnGateway {
     }
   }
 
-  async modifyFpl(atsRef: string): Promise<FilingResult> {
+  async modifyFpl(atsRef: string, _changes: Partial<AftnMessage>): Promise<FilingResult> {
     try {
       const now = new Date().toISOString()
       log.info('stub_modify_fpl', {

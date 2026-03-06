@@ -23,6 +23,7 @@ import { AftnGatewayStub }          from '../adapters/stubs/AftnGatewayStub'
 import { AirspaceVersioningService } from './AirspaceVersioningService'
 import type { IAftnGateway }        from '../adapters/interfaces/IAftnGateway'
 import { serializeForJson }         from '../utils/bigintSerializer'
+import { getCruiseLevelString }      from './indiaAIP'
 import { createServiceLogger }      from '../logger'
 
 const log = createServiceLogger('FlightPlanService')
@@ -128,7 +129,10 @@ export class FlightPlanService {
     const speedStr = `${input.speedIndicator}${input.speedValue}`
     const levelStr = input.levelIndicator === 'VFR'
       ? 'VFR'
-      : `${input.levelIndicator}${input.levelValue}`
+      : getCruiseLevelString(
+          input.departureIcao,
+          parseInt(input.levelValue) * 100
+        )
 
     const aftnMessage = this.msgBuilder.build({
       callsign:           input.callsign,
@@ -304,14 +308,17 @@ export class FlightPlanService {
     flightPlanId: string,
     userId:       string,
     userType:     'CIVILIAN' | 'SPECIAL',
-    reason:       string
+    reason:       string,
+    role?:        string
   ): Promise<{ success: boolean; status: string; cnlMessage?: string }> {
     const plan = await this.prisma.mannedFlightPlan.findUnique({
       where: { id: flightPlanId }
     })
 
     if (!plan) throw new Error('FLIGHT_PLAN_NOT_FOUND')
-    if (plan.filedBy !== userId) throw new Error('NOT_YOUR_FLIGHT_PLAN')
+    if (plan.filedBy !== userId && role !== 'PLATFORM_SUPER_ADMIN') {
+      throw new Error('NOT_YOUR_FLIGHT_PLAN')
+    }
 
     const cancellableStatuses = ['FILED', 'ACKNOWLEDGED', 'VALIDATED', 'DELAYED']
     if (!cancellableStatuses.includes(plan.status)) {
@@ -388,7 +395,7 @@ export class FlightPlanService {
     const newEobtDate    = this.parseEobt(newEobt)
     const delayMinutes   = (newEobtDate.getTime() - originalEobtMs) / 60000
     if (delayMinutes < 30) {
-      throw new Error('DELAY_TOO_SHORT: DLA requires at least 30 minutes delay per ICAO Doc 4444')
+      throw new Error(`DELAY_TOO_SHORT: ${Math.round(delayMinutes)} min delay — ICAO Doc 4444 §11.4.2.4 requires ≥ 30 min`)
     }
 
     // Build AFTN DLA message
@@ -416,6 +423,7 @@ export class FlightPlanService {
       where: { id: flightPlanId },
       data: {
         status:                  'DELAYED' as any,
+        originalEobt:            (plan as any).originalEobt ?? plan.eobt,
         delayedNewEobt:          newEobtDate,
         delayReason:             reason,
         eobt:                    newEobtDate,
@@ -444,14 +452,17 @@ export class FlightPlanService {
     userId:       string,
     userType:     'CIVILIAN' | 'SPECIAL',
     arrivalTime:  string,   // HHmm UTC
-    arrivalIcao?: string    // Override ADES for diversion
+    arrivalIcao?: string,   // Override ADES for diversion
+    role?:        string
   ): Promise<{ success: boolean; status: string; arrMessage?: string }> {
     const plan = await this.prisma.mannedFlightPlan.findUnique({
       where: { id: flightPlanId }
     })
 
     if (!plan) throw new Error('FLIGHT_PLAN_NOT_FOUND')
-    if (plan.filedBy !== userId) throw new Error('NOT_YOUR_FLIGHT_PLAN')
+    if (plan.filedBy !== userId && role !== 'PLATFORM_SUPER_ADMIN') {
+      throw new Error('NOT_YOUR_FLIGHT_PLAN')
+    }
 
     const arrivableStatuses = ['FILED', 'ACKNOWLEDGED', 'ACTIVATED', 'DELAYED', 'FULLY_CLEARED']
     if (!arrivableStatuses.includes(plan.status)) {
@@ -462,9 +473,10 @@ export class FlightPlanService {
     const actualArrivalAerodrome = arrivalIcao ?? plan.ades
     const arrMessage = this.arrBuilder.build({
       callsign:          plan.aircraftId,
+      departureIcao:     plan.adep,
+      eobt:              this.formatEobt(plan.eobt),
       arrivalAerodrome:  actualArrivalAerodrome,
       arrivalTime,
-      departureIcao:     plan.adep,
     })
 
     // Transmit via AFTN gateway

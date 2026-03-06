@@ -1,11 +1,12 @@
 // AFTN ARR (Arrival) Message Builder — ICAO Doc 4444 §11.4.2.3
 //
 // Produces a valid AFTN ARR message to report aircraft arrival.
-// Format:  (ARR-CALLSIGN-ADES-ARRIVALTIME[-ADEP[-DOF/YYMMDD]])
+// Format:  (ARR-CALLSIGN-ADEPEOBT-ADES-ATA[-DOF/YYMMDD])
 //
 // Mandatory invariants (enforced with hard throws):
 //   - Message MUST start with (ARR-
 //   - Message MUST end with )
+//   - ADEP and EOBT are mandatory for flight plan identification
 //   - Arrival time is ATA in HHmm UTC
 
 import { createServiceLogger } from '../logger'
@@ -14,25 +15,22 @@ const log = createServiceLogger('AftnArrBuilder')
 
 export interface ArrInput {
   callsign:          string   // Aircraft ID (e.g., VT-ABC)
-  arrivalAerodrome:  string   // ADES — 4-char ICAO (where it landed)
+  departureIcao:     string   // ADEP — 4-char ICAO (mandatory per ICAO Doc 4444)
+  eobt:              string   // Original EOBT DDHHmm — mandatory for identification
+  arrivalAerodrome:  string   // ADES or diversion aerodrome — 4-char ICAO
   arrivalTime:       string   // ATA — HHmm UTC
-  departureIcao?:    string   // ADEP — optional, for disambiguation
   dof?:              string   // Date of flight — YYMMDD (for Item 18 DOF/)
 }
 
 export class AftnArrBuilder {
 
   build(input: ArrInput): string {
-    if (!input.callsign || !input.arrivalAerodrome || !input.arrivalTime) {
-      throw new Error('ARR_BUILD_FAILED: callsign, arrivalAerodrome, and arrivalTime are required')
+    if (!input.callsign || !input.departureIcao || !input.eobt || !input.arrivalAerodrome || !input.arrivalTime) {
+      throw new Error('ARR_BUILD_FAILED: callsign, departureIcao, eobt, arrivalAerodrome, and arrivalTime are required')
     }
 
-    // ICAO Doc 4444 ARR format: (ARR-CALLSIGN-ADES-ARRIVALTIME[-ADEP[-DOF/YYMMDD]])
-    let message = `(ARR-${input.callsign}-${input.arrivalAerodrome}-${input.arrivalTime}`
-
-    if (input.departureIcao) {
-      message += `-${input.departureIcao}`
-    }
+    // ICAO Doc 4444 ARR format: (ARR-CALLSIGN-ADEPEOBT-ADES-ATA[-DOF/YYMMDD])
+    let message = `(ARR-${input.callsign}-${input.departureIcao}${input.eobt}-${input.arrivalAerodrome}-${input.arrivalTime}`
 
     if (input.dof) {
       message += `-DOF/${input.dof}`
