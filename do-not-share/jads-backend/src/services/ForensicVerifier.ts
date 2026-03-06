@@ -446,7 +446,7 @@ export class ForensicVerifier {
     return {
       pass,
       code:     'I8_HARDWARE_SECURITY',
-      label:    'Hardware Security',
+      label:    'Hardware Security (FIPS 140-2)',
       detail:   `StrongBox: ${strongboxBacked ? 'YES' : 'NO'} · Secure Boot: ${secureBootVerified ? 'YES' : secureBootVerified === false ? 'NO' : 'UNKNOWN'}`,
       critical: false,
     }

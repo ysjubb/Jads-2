@@ -58,6 +58,14 @@ class MissionController(
     private val store:          SqlCipherMissionStore,
     private val clock:          MonotonicClock,
     private val privateKeyBytes: ByteArray,
+    // Production signing via Android Keystore (StrongBox/TEE).
+    // When provided, this is used INSTEAD of EcdsaSigner.sign(hash, privateKeyBytes).
+    // Null = fall back to Bouncy Castle signing with raw key bytes (dev/emulator).
+    private val signFunction:   ((ByteArray) -> ByteArray)? = null,
+    // Hardware security status — injected from AppContainer at construction time.
+    // These values are sent to the backend with every mission for forensic scoring.
+    private val strongboxBacked:  Boolean = false,
+    private val hardwareBacked:   Boolean = false,
     private val onMissionFinalized: suspend (missionDbId: Long) -> Unit,
     // Phase 1 PQC: ML-DSA-65 keys for hybrid dual-signing.
     // Null = PQC signing disabled (backward compatible).
@@ -89,8 +97,9 @@ class MissionController(
         permissionToken:  String?,
         idempotencyKey:   String,
         deviceCertHash:   String,
-        // Device attestation — provided by Android KeyStore attestation flow
-        strongboxBacked:  Boolean = false,
+        // Device attestation — auto-detected from KeyStoreSigningProvider.
+        // Callers may override, but defaults come from constructor injection.
+        strongboxBacked:  Boolean = this.strongboxBacked,
         secureBootVerified: Boolean = false,
         androidVersion:   Int = 0,
         // ── Drone category fields (DGCA UAS Rules 2021) ──
@@ -226,8 +235,10 @@ class MissionController(
         val canonical96 = CanonicalSerializer.serialize(fields)
 
         // Step 6: Sign (classical ECDSA P-256)
+        // Keystore signing (StrongBox/TEE) when available; Bouncy Castle fallback.
         val hash32       = EcdsaSigner.sha256(canonical96)
-        val signatureDer = EcdsaSigner.sign(hash32, privateKeyBytes)
+        val signatureDer = signFunction?.invoke(hash32)
+            ?: EcdsaSigner.sign(hash32, privateKeyBytes)
 
         // Step 6b: PQC hybrid sign (ML-DSA-65, FIPS 204)
         // ML-DSA signs the canonical payload directly — no pre-hashing needed.

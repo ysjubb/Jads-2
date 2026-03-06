@@ -3,6 +3,7 @@ package com.jads
 import android.content.Context
 import com.jads.dji.DjiFlightLogWatcher
 import com.jads.dji.DjiLogIngestionService
+import com.jads.crypto.KeyStoreSigningProvider
 import com.jads.crypto.MlDsaSigner
 import com.jads.drone.*
 import com.jads.network.JadsApiClient
@@ -53,10 +54,14 @@ class AppContainer(context: Context) {
     val ntpAuthority  = NtpQuorumAuthority()
     val clock         = MonotonicClock()
 
-    // Private key bytes — STUB for demo.
-    // Production: key lives in Android Keystore. EcdsaSigner.sign() uses a
-    // KeyStore.PrivateKey reference, not raw bytes.
+    // ── ECDSA signing — Keystore + StrongBox preferred, stub fallback ──────
+    // Production: key lives in Android Keystore (StrongBox when available).
+    // KeyStoreSigningProvider.sign() handles the JCA signing internally.
+    // Fallback: raw byte stub for emulator / unit tests where Keystore is unavailable.
+    val keyStoreProvider: KeyStoreSigningProvider? = KeyStoreSigningProvider.create()
     private val stubPrivateKeyBytes = ByteArray(32) { it.toByte() }
+    val isStrongBoxBacked: Boolean get() = keyStoreProvider?.isStrongBoxBacked == true
+    val isHardwareBacked:  Boolean get() = keyStoreProvider != null
 
     // ── PQC key pair (ML-DSA-65, FIPS 204) — Phase 1 hybrid signing ─────
     // Generated once at app startup. Software-only (not hardware-backed yet).
@@ -82,12 +87,23 @@ class AppContainer(context: Context) {
     val npntGate by lazy { NpntComplianceGate(digitalSkyAdapter, proximityChecker) }
 
     val missionController by lazy {
+        // Signing strategy: use Keystore when available (hardware-backed),
+        // fall back to Bouncy Castle stub for emulator/test environments.
+        val signFn: (ByteArray) -> ByteArray = if (keyStoreProvider != null) {
+            { hash32 -> keyStoreProvider.sign(hash32) }
+        } else {
+            { hash32 -> com.jads.crypto.EcdsaSigner.sign(hash32, stubPrivateKeyBytes) }
+        }
+
         MissionController(
             npntGate         = npntGate,
             ntpAuthority     = ntpAuthority,
             store            = store,
             clock            = clock,
             privateKeyBytes  = stubPrivateKeyBytes,
+            signFunction     = signFn,
+            strongboxBacked  = isStrongBoxBacked,
+            hardwareBacked   = isHardwareBacked,
             onMissionFinalized = { missionDbId ->
                 // Upload triggered by WorkManager after finalization
                 com.jads.upload.MissionUploadWorker.enqueue(context, missionDbId)
@@ -105,6 +121,9 @@ class AppContainer(context: Context) {
     private val ingestionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     val djiIngestionService by lazy {
+        val signFn: ((ByteArray) -> ByteArray)? = keyStoreProvider?.let { ksp ->
+            { hash32: ByteArray -> ksp.sign(hash32) }
+        }
         DjiLogIngestionService(
             store            = store,
             clock            = clock,
@@ -112,7 +131,8 @@ class AppContainer(context: Context) {
             context          = context,
             onMissionIngested = { missionDbId ->
                 com.jads.upload.MissionUploadWorker.enqueue(context, missionDbId)
-            }
+            },
+            signFunction     = signFn
         )
     }
 

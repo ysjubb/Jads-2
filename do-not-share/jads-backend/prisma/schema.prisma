@@ -764,3 +764,41 @@ model ManufacturerPushFlight {
   @@index([flightStartUtcMs])
   @@unique([batchId, vendorFlightId])
 }
+
+// ═══════════════════════════════════════════════
+// BSA 2023 Section 63 Part B Declarations
+// ═══════════════════════════════════════════════
+// Stores the signed declaration by an authorised officer
+// confirming that conditions of BSA Section 63 are satisfied.
+// Each declaration is linked to a specific Part A certificate.
+
+model Bsa2023PartBDeclaration {
+  id                   String   @id @default(cuid())
+  missionId            String   // FK to DroneMission.id
+  certificateId        String   // Part A certificate reference (e.g. BSA63-xxx-yyy)
+
+  // Declarant identity
+  declarantName        String   // Full name of the authorised officer
+  declarantDesignation String   // e.g. "Deputy Director, DGCA"
+  declarantEntityCode  String   // e.g. "DGCA", "IAF", "ARMY"
+  declarantUserId      String   // FK to SpecialUser.id who signed
+
+  // Declaration content
+  declarationText      String   // The full declaration statement
+  allInvariantsHeld    Boolean  // Whether all invariants held at time of declaration
+  conditionsSatisfied  Boolean  // Officer's affirmation that BSA §63 conditions are met
+
+  // Signature
+  signedAtUtc          DateTime @default(now())
+  signatureMethod      String   @default("DIGITAL_JWT") // DIGITAL_JWT | DIGITAL_DSC | WET_INK_SCANNED
+
+  // Audit trail
+  ipAddress            String?
+  userAgent            String?
+
+  createdAt            DateTime @default(now())
+
+  @@index([missionId])
+  @@index([certificateId])
+  @@index([declarantUserId])
+}
