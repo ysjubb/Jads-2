@@ -169,6 +169,7 @@ router.post('/:id/delay', requireAuth, async (req, res) => {
       : msg.includes('NOT_YOUR') ? 403
       : msg.includes('CANNOT_DELAY') ? 409
       : msg.includes('must differ') ? 422
+      : msg.includes('DELAY_TOO_SHORT') ? 422
       : 500
     log.error('flight_plan_delay_error', { data: { error: msg } })
     res.status(status).json({ error: msg })
@@ -181,9 +182,13 @@ router.post('/:id/delay', requireAuth, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/:id/arrive', requireAuth, async (req, res) => {
   try {
-    const { arrivalTime } = req.body
+    const { arrivalTime, arrivalIcao } = req.body
     if (!arrivalTime || !/^\d{4}$/.test(arrivalTime)) {
       res.status(400).json({ error: 'VALID_ARRIVAL_TIME_REQUIRED', detail: 'Must be HHmm UTC format' })
+      return
+    }
+    if (arrivalIcao && !/^[A-Z]{4}$/.test(arrivalIcao)) {
+      res.status(400).json({ error: 'INVALID_ARRIVAL_ICAO', detail: 'Must be 4-char ICAO code' })
       return
     }
 
@@ -191,7 +196,8 @@ router.post('/:id/arrive', requireAuth, async (req, res) => {
       req.params.id,
       req.auth!.userId,
       req.auth!.userType as 'CIVILIAN' | 'SPECIAL',
-      arrivalTime
+      arrivalTime,
+      arrivalIcao
     )
 
     res.json({ ...result })
