@@ -19,6 +19,7 @@ import fs     from 'fs'
 import path   from 'path'
 import https  from 'https'
 import { createServiceLogger } from '../logger'
+import { Rfc3161AnchorBackend } from './Rfc3161AnchorBackend'
 
 const log = createServiceLogger('ExternalAnchorService')
 
@@ -308,6 +309,18 @@ export function createExternalAnchorService(): ExternalAnchorService {
   const webhookSecret = process.env.ANCHOR_WEBHOOK_SECRET
   if (webhookUrl && webhookSecret) {
     service.addBackend(new WebhookAnchorBackend(webhookUrl, webhookSecret))
+  }
+
+  // Backend 3: RFC 3161 Trusted Timestamping Authority (CDAC/eMudhra)
+  const tsaUrl = process.env.RFC3161_TSA_URL
+  if (tsaUrl) {
+    service.addBackend(new Rfc3161AnchorBackend({
+      tsaUrl,
+      tsaUsername:    process.env.RFC3161_TSA_USERNAME,
+      tsaPassword:    process.env.RFC3161_TSA_PASSWORD,
+      timeoutMs:      parseInt(process.env.RFC3161_TSA_TIMEOUT_MS ?? '15000'),
+      tokenStorePath: process.env.RFC3161_TOKEN_STORE_PATH,
+    }))
   }
 
   if (service.getBackendCount() === 0) {

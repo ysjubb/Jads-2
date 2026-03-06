@@ -231,11 +231,11 @@ describe('PQC-DL-01–12: PQC degradation logging & silent fallback detection', 
     expect(checkPqc(null, makeRecords(5)).code).toBe('I10_PQC_HYBRID')
   })
 
-  // ── DL-12: Degradation label is always "PQC Hybrid Signature (ML-DSA-65)" ─
+  // ── DL-12: Degradation label is always "PQC Hybrid Signature (NIST FIPS 204)" ─
   test('PQC-DL-12: Label is consistent across all degradation states', () => {
     const pubHex = Buffer.from(testKeypair.publicKey).toString('hex')
 
-    const label = 'PQC Hybrid Signature (ML-DSA-65)'
+    const label = 'PQC Hybrid Signature (NIST FIPS 204)'
     expect(checkPqc(pubHex, makeRecords(5, { sign: true })).label).toBe(label)
     expect(checkPqc(pubHex, makeRecords(5)).label).toBe(label)
     expect(checkPqc(null, makeRecords(5)).label).toBe(label)

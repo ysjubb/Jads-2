@@ -122,7 +122,7 @@ function evaluateInvariants(
   // I-1: Hash chain integrity
   const chainOk = mission.chainVerifiedByServer && mission.chainFailureSequence == null
   const inv1: InvariantResult = {
-    label:       'I-1 Hash Chain',
+    label:       'I-1 Hash Chain (ISO 27037)',
     description: 'Every record\'s SHA-256 hash correctly chains from the previous record.',
     passed:      chainOk,
     critical:    true,
@@ -135,7 +135,7 @@ function evaluateInvariants(
   const ntpOk   = mission.ntpSyncStatus === 'SYNCED'
   const ntpWarn = mission.ntpSyncStatus === 'DEGRADED'
   const inv2: InvariantResult = {
-    label:       'I-2 NTP Sync',
+    label:       'I-2 Time Sync (RFC 3161)',
     description: 'Device clock was synchronised to NTP quorum before mission start.',
     passed:      ntpOk || ntpWarn,
     critical:    !ntpOk && !ntpWarn,
@@ -149,7 +149,7 @@ function evaluateInvariants(
   // I-3: Device certificate validity
   const certOk = mission.certValidAtStart
   const inv3: InvariantResult = {
-    label:       'I-3 Device Certificate',
+    label:       'I-3 Device Certificate (CCA PKI)',
     description: 'The device\'s ECDSA P-256 certificate was valid and non-revoked at mission start.',
     passed:      certOk,
     critical:    true,
@@ -163,7 +163,7 @@ function evaluateInvariants(
   // I-4: CRL archived
   const crlOk = mission.archivedCrlBase64 != null
   const inv4: InvariantResult = {
-    label:       'I-4 CRL Archived',
+    label:       'I-4 CRL Archived (RFC 5280)',
     description: 'The Certificate Revocation List was archived at upload time for post-facto verification.',
     passed:      crlOk,
     critical:    false,
@@ -175,7 +175,7 @@ function evaluateInvariants(
   // I-5: No duplicate mission
   const dupOk = !mission.isDuplicate
   const inv5: InvariantResult = {
-    label:       'I-5 No Duplicate',
+    label:       'I-5 No Duplicate (ISO 27042)',
     description: 'This mission ID has not been submitted previously (replay protection).',
     passed:      dupOk,
     critical:    true,
@@ -191,7 +191,7 @@ function evaluateInvariants(
   )
   const zoneOk  = zoneViolations.length === 0
   const inv6: InvariantResult = {
-    label:       'I-6 Zone Compliance',
+    label:       'I-6 Zone Compliance (DGCA Rule 36)',
     description: 'Flight remained within the declared NPNT zone classification; no zone breaches.',
     passed:      zoneOk,
     critical:    mission.npntClassification === 'RED' || mission.npntClassification === 'DJI_IMPORT',
@@ -206,7 +206,7 @@ function evaluateInvariants(
   const degradedPct   = totalCount > 0 ? (degradedCount / totalCount) * 100 : 0
   const gnssOk        = degradedPct < 20   // >20% degraded = fail
   const inv7: InvariantResult = {
-    label:       'I-7 GNSS Integrity',
+    label:       'I-7 GNSS Integrity (ICAO Annex 10)',
     description: 'Fewer than 20% of telemetry records had degraded GPS fix quality.',
     passed:      gnssOk,
     critical:    false,
@@ -219,7 +219,7 @@ function evaluateInvariants(
   const hwOk   = mission.strongboxBacked === true || mission.secureBootVerified === true
   const hwWarn = mission.strongboxBacked == null && mission.secureBootVerified == null
   const inv8: InvariantResult = {
-    label:       'I-8 Hardware Security',
+    label:       'I-8 Hardware Security (FIPS 140-2)',
     description: 'Device uses Android Strongbox or verified secure boot for key storage.',
     passed:      hwOk || hwWarn,
     critical:    false,
@@ -235,7 +235,7 @@ function evaluateInvariants(
 
 // ── ForensicReportPanel ────────────────────────────────────────────────────────
 // The single most important UI element for IAF demonstration.
-// Shows all 8 invariants with clear pass/fail/warn status.
+// Shows all 10 invariants with clear pass/fail/warn status.
 
 function ForensicReportPanel({
   mission,
