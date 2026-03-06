@@ -11,6 +11,7 @@
 
 import { createServiceLogger } from '../logger'
 import type { Item18Parsed }   from './Item18Parser'
+import { getTransitionData, getCruiseLevelString } from './indiaAIP'
 
 const log = createServiceLogger('AftnMessageBuilder')
 
@@ -72,8 +73,10 @@ export class AftnMessageBuilder {
     this.injectMissingPbnCodes(item18, input.equipment)
 
     // ── Item 15: Speed/Level/Route ──────────────────────────────────────────
-    const levelStr   = input.level === 'VFR' ? 'VFR' : input.level
-    const routeField = `${input.speed}${levelStr} ${input.route.trim()}`
+    // Indian AIP transition altitude — sourced from indiaAIP.ts
+    const depTransition = getTransitionData(input.departureIcao)
+    const levelStr      = input.level === 'VFR' ? 'VFR' : input.level
+    const routeField    = `${input.speed}${levelStr} ${input.route.trim()}`
 
     // ── Item 16: Destination/EET/Alternates ────────────────────────────────
     let item16 = `${input.destination}/${input.eet}`
@@ -109,11 +112,14 @@ export class AftnMessageBuilder {
     if (input.dinghies          && input.dinghies.trim())          item19Parts.push(`D/${input.dinghies.trim()}`)
 
     // ── Assemble AFTN FPL message ───────────────────────────────────────────
+    // Field 13: ICAO Doc 4444 requires AAAA + HHMM (4 digits only).
+    // The DD prefix in eobt (DDHHmm) is used for DOF/ derivation, not Field 13.
+    const eobtHhmm = input.eobt.length >= 6 ? input.eobt.substring(2) : input.eobt
     const lines: string[] = [
       `(FPL-${input.callsign}-${input.flightRules}${input.flightType}`,
       `-${input.aircraftType}/${input.wakeTurbulence}`,
       `-${input.equipment}/${input.surveillance}`,
-      `-${input.departureIcao}${input.eobt}`,
+      `-${input.departureIcao}${eobtHhmm}`,
       `-${routeField}`,
       `-${item16}`,
       `-${item18Str}`,
@@ -136,10 +142,12 @@ export class AftnMessageBuilder {
       throw new Error(`AFTN_BUILD_FAILED: Message does not end with ). Got: ...${message.slice(-30)}`)
     }
 
+    // Indian AIP transition altitude — sourced from indiaAIP.ts
     log.info('aftn_message_built', {
       data: {
         callsign: input.callsign, departure: input.departureIcao,
-        destination: input.destination, messageLength: message.length
+        destination: input.destination, messageLength: message.length,
+        ...(depTransition ? { departureTransitionAltFt: depTransition.transitionAltitude, departureTransitionLevel: depTransition.transitionLevel } : {}),
       }
     })
 
