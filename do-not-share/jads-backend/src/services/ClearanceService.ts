@@ -103,21 +103,39 @@ export class ClearanceService {
     })
     if (!plan) throw new Error(`Flight plan ${input.flightPlanId} not found`)
 
-    // Parse existing refs
+    // Parse existing ADC refs (safe parse handles legacy plain strings)
+    const existingAdcRefs: ClearanceRef[] = plan.adcNumber
+      ? (() => { try { const p = JSON.parse(plan.adcNumber); return Array.isArray(p) ? p : [] } catch { return [] } })()
+      : []
+
     // Idempotent: skip if same ADC number already recorded
-    if (plan.adcNumber === input.adcNumber) {
+    const alreadyIssued = existingAdcRefs.some(r => r.adcNumber === input.adcNumber)
+    if (alreadyIssued) {
       log.info('adc_issuance_duplicate', { data: { flightPlanId: input.flightPlanId, adcNumber: input.adcNumber } })
       return { status: plan.status as string }
     }
 
+    const newRef: ClearanceRef = {
+      afmluId:     input.afmluId,
+      adcNumber:   input.adcNumber,
+      adcType:     input.adcType,
+      issuedAt:    input.issuedAt,
+      officerName: input.afmluOfficerName,
+    }
+    existingAdcRefs.push(newRef)
+
+    const ficRefs: ClearanceRef[] = plan.ficNumber
+      ? (() => { try { const p = JSON.parse(plan.ficNumber); return Array.isArray(p) ? p : [] } catch { return [] } })()
+      : []
+    const newStatus = computeClearanceStatus(existingAdcRefs, ficRefs)
+
     await this.prisma.mannedFlightPlan.update({
       where: { id: input.flightPlanId },
-      data:  {
-        adcNumber: input.adcNumber,
-        status:    'ACKNOWLEDGED',
+      data: {
+        adcNumber: JSON.stringify(existingAdcRefs),
+        status:    newStatus as any,
       }
     })
-    const newStatus = 'ACKNOWLEDGED'
 
     await this.prisma.auditLog.create({
       data: {
@@ -143,7 +161,8 @@ export class ClearanceService {
       adcType:         input.adcType,
       afmluId:         input.afmluId,
       issuedAt:        input.issuedAt,
-      status: newStatus,
+      status:          newStatus,
+      allAdcRefs:      existingAdcRefs,
     })
 
     log.info('adc_issued', {
@@ -159,7 +178,10 @@ export class ClearanceService {
     })
     if (!plan) throw new Error(`Flight plan ${input.flightPlanId} not found`)
 
-    const ficRefs: ClearanceRef[] = plan.ficNumber ? JSON.parse(plan.ficNumber) : []
+    const ficRefs: ClearanceRef[] = (() => {
+      if (!plan.ficNumber) return []
+      try { const p = JSON.parse(plan.ficNumber); return Array.isArray(p) ? p : [] } catch { return [] }
+    })()
 
     // Idempotent: skip if this FIC already recorded
     const alreadyIssued = ficRefs.some(r => r.ficNumber === input.ficNumber && r.firCode === input.firCode)
@@ -177,7 +199,10 @@ export class ClearanceService {
     }
     ficRefs.push(newRef)
 
-    const adcRefs: ClearanceRef[] = plan.adcNumber ? JSON.parse(plan.adcNumber) : []
+    const adcRefs: ClearanceRef[] = (() => {
+      if (!plan.adcNumber) return []
+      try { const p = JSON.parse(plan.adcNumber); return Array.isArray(p) ? p : [] } catch { return [] }
+    })()
     const newStatus = computeClearanceStatus(adcRefs, ficRefs)
 
     await this.prisma.mannedFlightPlan.update({
@@ -256,8 +281,14 @@ export class ClearanceService {
     })
     return {
       status: plan.status,
-      adcRefs: plan.adcNumber ? JSON.parse(plan.adcNumber) : [],
-      ficRefs: plan.ficNumber ? JSON.parse(plan.ficNumber) : [],
+      adcRefs: (() => {
+        if (!plan.adcNumber) return []
+        try { const p = JSON.parse(plan.adcNumber); return Array.isArray(p) ? p : [] } catch { return [] }
+      })(),
+      ficRefs: (() => {
+        if (!plan.ficNumber) return []
+        try { const p = JSON.parse(plan.ficNumber); return Array.isArray(p) ? p : [] } catch { return [] }
+      })(),
     }
   }
 }

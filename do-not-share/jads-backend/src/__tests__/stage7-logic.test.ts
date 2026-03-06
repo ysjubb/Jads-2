@@ -297,6 +297,15 @@ describe('AltitudeComplianceEngine — semicircular rule', () => {
     })
     expect(r.warnings.find(w => w.code === 'LEVEL_ABOVE_FL450')).toBeDefined()
   })
+
+  test('AC-14: A-indicator level → semicircular rule skipped, no violation', () => {
+    const r = eng.checkCompliance({
+      flightRules: 'I', levelIndicator: 'A', levelValue: '045',
+      magneticTrackDeg: 90, equipment: 'S'
+    })
+    expect(r.errors.find(e => e.code === 'SEMICIRCULAR_RULE_VIOLATION')).toBeUndefined()
+    expect(r.info.find(i => i.code === 'ALTITUDE_REF_SEMICIRCULAR_SKIPPED')).toBeDefined()
+  })
 })
 
 // ── FirGeometryEngine ─────────────────────────────────────────────────────────
