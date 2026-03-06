@@ -168,6 +168,7 @@ enum FlightPlanStatus {
   ADC_ISSUED
   FIC_ISSUED
   FULLY_CLEARED
+  ARRIVED
 }
 
 // ═══════════════════════════════════════════════
@@ -410,6 +411,8 @@ model MannedFlightPlan {
   cancellationReason       String?
   delayedNewEobt           DateTime?
   delayReason              String?
+  arrivedAt                DateTime?
+  actualArrivalTime        String?       // HHmm UTC — ATA from pilot
 
   civilianFiler            CivilianUser?    @relation("FiledByCivilian", fields: [filedBy], references: [id], map: "MannedFlightPlan_civilianFiler_fkey")
   specialFiler             SpecialUser?     @relation("FiledBySpecial", fields: [filedBy], references: [id], map: "MannedFlightPlan_specialFiler_fkey")

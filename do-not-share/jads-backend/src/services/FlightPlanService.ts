@@ -16,6 +16,7 @@ import { FirGeometryEngine }        from './FirGeometryEngine'
 import { AftnMessageBuilder }       from './AftnMessageBuilder'
 import { AftnCnlBuilder }          from '../aftn/AftnCnlBuilder'
 import { AftnDlaBuilder }          from '../aftn/AftnDlaBuilder'
+import { AftnArrBuilder }          from '../aftn/AftnArrBuilder'
 import { AftnAddresseeService }     from './AftnAddresseeService'
 import { FlightPlanNotificationService } from './FlightPlanNotificationService'
 import { AftnGatewayStub }          from '../adapters/stubs/AftnGatewayStub'
@@ -34,6 +35,7 @@ export class FlightPlanService {
   private msgBuilder   = new AftnMessageBuilder()
   private cnlBuilder   = new AftnCnlBuilder()
   private dlaBuilder   = new AftnDlaBuilder()
+  private arrBuilder   = new AftnArrBuilder()
   private addresseeSvc = new AftnAddresseeService()
   private notifySvc:    FlightPlanNotificationService
 
@@ -418,6 +420,64 @@ export class FlightPlanService {
     })
 
     return { success: true, status: 'DELAYED', dlaMessage }
+  }
+
+  // ── Report arrival of a flight plan (AFTN ARR) ─────────────────────────────
+  async arrivePlan(
+    flightPlanId: string,
+    userId:       string,
+    userType:     'CIVILIAN' | 'SPECIAL',
+    arrivalTime:  string    // HHmm UTC
+  ): Promise<{ success: boolean; status: string; arrMessage?: string }> {
+    const plan = await this.prisma.mannedFlightPlan.findUnique({
+      where: { id: flightPlanId }
+    })
+
+    if (!plan) throw new Error('FLIGHT_PLAN_NOT_FOUND')
+    if (plan.filedBy !== userId) throw new Error('NOT_YOUR_FLIGHT_PLAN')
+
+    const arrivableStatuses = ['FILED', 'ACKNOWLEDGED', 'ACTIVATED', 'DELAYED', 'FULLY_CLEARED']
+    if (!arrivableStatuses.includes(plan.status)) {
+      throw new Error(`CANNOT_ARRIVE: Plan is ${plan.status}`)
+    }
+
+    // Build AFTN ARR message
+    const arrMessage = this.arrBuilder.build({
+      callsign:          plan.aircraftId,
+      arrivalAerodrome:  plan.ades,
+      arrivalTime,
+      departureIcao:     plan.adep,
+    })
+
+    // Transmit via AFTN gateway
+    const filingResult = await this.aftnGateway.fileFpl({
+      messageType:    'ARR',
+      priority:       'GG',
+      addressees:     this.msgBuilder.deriveAddressees(plan.adep, plan.ades),
+      originator:     'JADSZTZX',
+      filingTime:     arrivalTime,
+      messageContent: arrMessage,
+    })
+
+    // Update plan status to ARRIVED
+    await this.prisma.mannedFlightPlan.update({
+      where: { id: flightPlanId },
+      data: {
+        status:            'ARRIVED' as any,
+        arrivedAt:         new Date(),
+        actualArrivalTime: arrivalTime,
+      }
+    })
+
+    await this.writeAuditLog(userId, userType, 'flight_plan_arrived', flightPlanId, true, {
+      callsign: plan.aircraftId, arrivalTime, arrAccepted: filingResult.accepted,
+    })
+
+    log.info('flight_plan_arrived', {
+      data: { flightPlanId, callsign: plan.aircraftId, arrivalTime }
+    })
+
+    return { success: true, status: 'ARRIVED', arrMessage }
   }
 
   private formatEobt(eobt: Date): string {
