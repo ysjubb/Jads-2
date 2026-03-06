@@ -34,6 +34,7 @@ const STATUS_COLORS: Record<string, string> = {
   FILED:              T.text,
   CLEARANCE_REJECTED: T.red,
   CANCELLED:          T.muted,
+  ARRIVED:            T.primary,
 }
 
 export function FlightPlanListScreen({ onSelectPlan }: Props) {

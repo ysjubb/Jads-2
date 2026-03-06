@@ -8,6 +8,9 @@ import { AltitudeComplianceEngine } from '../services/AltitudeComplianceEngine'
 import { FirGeometryEngine }        from '../services/FirGeometryEngine'
 import { AftnMessageBuilder }       from '../services/AftnMessageBuilder'
 import { Item18Parser }             from '../services/Item18Parser'
+import { AftnCnlBuilder }          from '../aftn/AftnCnlBuilder'
+import { AftnDlaBuilder }          from '../aftn/AftnDlaBuilder'
+import { AftnArrBuilder }          from '../aftn/AftnArrBuilder'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -669,5 +672,93 @@ describe('AirspaceVersioningService — state invariants (real production code)'
     await svc.approveDroneZoneVersion('admin-B', 'draft-001')
     // Should have called update twice: once to supersede old, once to activate new
     expect(prisma.airspaceVersion.update).toHaveBeenCalledTimes(2)
+  })
+})
+
+// ── AftnCnlBuilder — CNL messages ──────────────────────────────────────────
+
+describe('AftnCnlBuilder — CNL messages', () => {
+  const builder = new AftnCnlBuilder()
+
+  test('CNL-01: Basic CNL format starts with (CNL- and ends with )', () => {
+    const msg = builder.build({
+      callsign: 'VT-ABC', departureIcao: 'VIDP', eobt: '011000', destination: 'VABB',
+    })
+    expect(msg).toBe('(CNL-VT-ABC-VIDP011000-VABB)')
+    expect(msg.startsWith('(CNL-')).toBe(true)
+    expect(msg.endsWith(')')).toBe(true)
+  })
+
+  test('CNL-02: CNL with DOF appended', () => {
+    const msg = builder.build({
+      callsign: 'VT-ABC', departureIcao: 'VIDP', eobt: '011000', destination: 'VABB', dof: '260307',
+    })
+    expect(msg).toBe('(CNL-VT-ABC-VIDP011000-VABB-DOF/260307)')
+  })
+
+  test('CNL-03: Missing callsign throws CNL_BUILD_FAILED', () => {
+    expect(() => builder.build({
+      callsign: '', departureIcao: 'VIDP', eobt: '011000', destination: 'VABB',
+    })).toThrow('CNL_BUILD_FAILED')
+  })
+})
+
+// ── AftnDlaBuilder — DLA messages ──────────────────────────────────────────
+
+describe('AftnDlaBuilder — DLA messages', () => {
+  const builder = new AftnDlaBuilder()
+
+  test('DLA-01: Basic DLA format starts with (DLA- and ends with )', () => {
+    const msg = builder.build({
+      callsign: 'VT-ABC', departureIcao: 'VIDP', originalEobt: '011000',
+      newEobt: '011200', destination: 'VABB',
+    })
+    expect(msg).toBe('(DLA-VT-ABC-VIDP011000-VABB-011200)')
+    expect(msg.startsWith('(DLA-')).toBe(true)
+    expect(msg.endsWith(')')).toBe(true)
+  })
+
+  test('DLA-02: Same EOBT throws DLA_BUILD_FAILED', () => {
+    expect(() => builder.build({
+      callsign: 'VT-ABC', departureIcao: 'VIDP', originalEobt: '011000',
+      newEobt: '011000', destination: 'VABB',
+    })).toThrow('DLA_BUILD_FAILED')
+  })
+
+  test('DLA-03: DLA with DOF appended', () => {
+    const msg = builder.build({
+      callsign: 'VT-ABC', departureIcao: 'VIDP', originalEobt: '011000',
+      newEobt: '011200', destination: 'VABB', dof: '260307',
+    })
+    expect(msg).toBe('(DLA-VT-ABC-VIDP011000-VABB-011200-DOF/260307)')
+  })
+})
+
+// ── AftnArrBuilder — ARR messages ──────────────────────────────────────────
+
+describe('AftnArrBuilder — ARR messages', () => {
+  const builder = new AftnArrBuilder()
+
+  test('ARR-01: Basic ARR format starts with (ARR- and ends with )', () => {
+    const msg = builder.build({
+      callsign: 'VT-ABC', arrivalAerodrome: 'VABB', arrivalTime: '1045',
+    })
+    expect(msg).toBe('(ARR-VT-ABC-VABB-1045)')
+    expect(msg.startsWith('(ARR-')).toBe(true)
+    expect(msg.endsWith(')')).toBe(true)
+  })
+
+  test('ARR-02: ARR with ADEP and DOF', () => {
+    const msg = builder.build({
+      callsign: 'VT-ABC', arrivalAerodrome: 'VABB', arrivalTime: '1045',
+      departureIcao: 'VIDP', dof: '260307',
+    })
+    expect(msg).toBe('(ARR-VT-ABC-VABB-1045-VIDP-DOF/260307)')
+  })
+
+  test('ARR-03: Missing arrivalTime throws ARR_BUILD_FAILED', () => {
+    expect(() => builder.build({
+      callsign: 'VT-ABC', arrivalAerodrome: 'VABB', arrivalTime: '',
+    })).toThrow('ARR_BUILD_FAILED')
   })
 })

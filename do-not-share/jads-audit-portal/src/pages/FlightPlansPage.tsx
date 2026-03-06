@@ -30,7 +30,7 @@ interface FlightPlan {
 
 const STATE_COLOUR: Record<string, string> = {
   FILED: '#FFB800', ACTIVE: '#00FF88', CLOSED: '#6A6040',
-  CANCELLED: '#FF3B3B', DELAYED: '#FFB800'
+  CANCELLED: '#FF3B3B', DELAYED: '#FFB800', ARRIVED: '#00FF88'
 }
 
 export function FlightPlansPage() {

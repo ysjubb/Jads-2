@@ -175,6 +175,37 @@ router.post('/:id/delay', requireAuth, async (req, res) => {
   }
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/flight-plans/:id/arrive
+// Report arrival of a flight. Builds and transmits AFTN ARR message.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/arrive', requireAuth, async (req, res) => {
+  try {
+    const { arrivalTime } = req.body
+    if (!arrivalTime || !/^\d{4}$/.test(arrivalTime)) {
+      res.status(400).json({ error: 'VALID_ARRIVAL_TIME_REQUIRED', detail: 'Must be HHmm UTC format' })
+      return
+    }
+
+    const result = await fplService.arrivePlan(
+      req.params.id,
+      req.auth!.userId,
+      req.auth!.userType as 'CIVILIAN' | 'SPECIAL',
+      arrivalTime
+    )
+
+    res.json({ ...result })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    const status = msg.includes('NOT_FOUND') ? 404
+      : msg.includes('NOT_YOUR') ? 403
+      : msg.includes('CANNOT_ARRIVE') ? 409
+      : 500
+    log.error('flight_plan_arrive_error', { data: { error: msg } })
+    res.status(status).json({ error: msg })
+  }
+})
+
 // GET /api/flight-plans/:id — full plan with ADC/FIC refs
 router.get('/:id', requireAuth, async (req, res) => {
   try {
