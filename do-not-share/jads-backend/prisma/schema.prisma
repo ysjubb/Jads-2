@@ -392,6 +392,7 @@ model MannedFlightPlan {
   altn1                    String?
   altn2                    String?
   eobt                     DateTime
+  originalEobt             DateTime?     // Preserved on first DLA — never overwritten after initial set
   eet                      String
   totalEet                 String?
   endurance                String?

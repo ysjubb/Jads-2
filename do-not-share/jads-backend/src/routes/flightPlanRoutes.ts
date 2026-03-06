@@ -1,6 +1,6 @@
 import express           from 'express'
 import { PrismaClient }  from '@prisma/client'
-import { requireAuth }   from '../middleware/authMiddleware'
+import { requireAuth, requireRole } from '../middleware/authMiddleware'
 import { serializeForJson } from '../utils/bigintSerializer'
 import { ClearanceService, registerSseClient, unregisterSseClient } from '../services/ClearanceService'
 import { FlightPlanService }   from '../services/FlightPlanService'
@@ -14,13 +14,16 @@ const fplService   = new FlightPlanService(prisma)
 const routeService = new RoutePlanningService()
 const log          = createServiceLogger('FlightPlanRoutes')
 
+// Roles authorised for manned flight plan filing and lifecycle operations
+const FPL_ROLES = ['PILOT', 'PILOT_AND_DRONE', 'GOVT_PILOT', 'PLATFORM_SUPER_ADMIN']
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/flight-plans/route-plan
 // Route planning with segment-by-segment semicircular rule validation.
 // Called from the user app route planning tab BEFORE filing.
 // Returns: route analysis (bearings, FL parity requirements), AFTN route string.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/route-plan', requireAuth, async (req, res) => {
+router.post('/route-plan', requireAuth, requireRole(FPL_ROLES), async (req, res) => {
   try {
     const {
       adep,
@@ -60,7 +63,7 @@ router.post('/route-plan', requireAuth, async (req, res) => {
 // File a manned aircraft flight plan. Validates, builds AFTN message,
 // generates AFTN addressees, transmits via AFTN stub, sends confirmation.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, requireRole(FPL_ROLES), async (req, res) => {
   try {
     const result = await fplService.createAndFilePlan(
       {
@@ -111,7 +114,7 @@ router.get('/', requireAuth, async (req, res) => {
 // POST /api/flight-plans/:id/cancel
 // Cancel a filed flight plan. Builds and transmits AFTN CNL message.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/:id/cancel', requireAuth, async (req, res) => {
+router.post('/:id/cancel', requireAuth, requireRole(FPL_ROLES), async (req, res) => {
   try {
     const { reason } = req.body
     if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
@@ -123,7 +126,8 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
       req.params.id,
       req.auth!.userId,
       req.auth!.userType as 'CIVILIAN' | 'SPECIAL',
-      reason.trim()
+      reason.trim(),
+      req.auth!.role
     )
 
     res.json({ ...result })
@@ -142,7 +146,7 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
 // POST /api/flight-plans/:id/delay
 // Delay a filed flight plan. Builds and transmits AFTN DLA message.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/:id/delay', requireAuth, async (req, res) => {
+router.post('/:id/delay', requireAuth, requireRole(FPL_ROLES), async (req, res) => {
   try {
     const { newEobt, reason } = req.body
     if (!newEobt || !/^\d{6}$/.test(newEobt)) {
@@ -180,7 +184,7 @@ router.post('/:id/delay', requireAuth, async (req, res) => {
 // POST /api/flight-plans/:id/arrive
 // Report arrival of a flight. Builds and transmits AFTN ARR message.
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/:id/arrive', requireAuth, async (req, res) => {
+router.post('/:id/arrive', requireAuth, requireRole(FPL_ROLES), async (req, res) => {
   try {
     const { arrivalTime, arrivalIcao } = req.body
     if (!arrivalTime || !/^\d{4}$/.test(arrivalTime)) {
@@ -197,7 +201,8 @@ router.post('/:id/arrive', requireAuth, async (req, res) => {
       req.auth!.userId,
       req.auth!.userType as 'CIVILIAN' | 'SPECIAL',
       arrivalTime,
-      arrivalIcao
+      arrivalIcao,
+      req.auth!.role
     )
 
     res.json({ ...result })

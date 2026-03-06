@@ -61,6 +61,16 @@ export class AltitudeComplianceEngine {
       return { errors, warnings, info, flightLevelFt }
     }
 
+    // A-indicator: altitude-referenced (QNH) — semicircular rule applies to flight levels only
+    if (input.levelIndicator === 'A') {
+      info.push({
+        code: 'ALTITUDE_REF_SEMICIRCULAR_SKIPPED',
+        message: `Level A${input.levelValue} is altitude-referenced (QNH). ` +
+                 `Semicircular rule applies to flight levels only. Verify level with ATC.`
+      })
+      return { errors, warnings, info, flightLevelFt }
+    }
+
     // IFR (I, Y, Z): semicircular rule
     if (['I', 'Y', 'Z'].includes(input.flightRules) && fl !== null) {
       if (input.magneticTrackDeg === null) {
@@ -136,7 +146,7 @@ export class AltitudeComplianceEngine {
     if (isNaN(num)) return null
     switch (indicator) {
       case 'F': return num                               // F330 → 330
-      case 'A': return Math.round(num * 100 / 100)      // A045 → ~45
+      case 'A': return Math.round(num)                    // A045 → 45 (treated as approximate FL equivalent)
       case 'S': return Math.round(num * 3.28084 / 100)  // S0900 metric → rough FL
       default:  return num
     }
