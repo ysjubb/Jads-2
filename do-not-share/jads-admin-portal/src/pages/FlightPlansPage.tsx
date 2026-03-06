@@ -57,6 +57,7 @@ const STATUS_COLOUR: Record<string, string> = {
   OVERDUE:            T.red,
   REJECTED_BY_ATC:    T.red,
   CLEARANCE_REJECTED: T.red,
+  ARRIVED:            T.primary,
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -74,6 +75,7 @@ const STATUS_LABELS: Record<string, string> = {
   OVERDUE:            'Overdue',
   REJECTED_BY_ATC:    'Rejected by ATC',
   CLEARANCE_REJECTED: 'Clearance Rejected',
+  ARRIVED:            'Arrived',
 }
 
 const FTYPE_LABELS: Record<string, string> = {
