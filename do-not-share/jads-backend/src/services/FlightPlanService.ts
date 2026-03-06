@@ -200,6 +200,7 @@ export class FlightPlanService {
         totalEet:            String(Math.round(step2.totalEet)),
         filedBy:              userId,
         filedByType:          userType,
+        originalEobt:         this.parseEobt(input.estimatedOffBlock),
       }
     })
 
@@ -397,7 +398,7 @@ export class FlightPlanService {
     const newEobtDate    = this.parseEobt(newEobt)
     const delayMinutes   = (newEobtDate.getTime() - originalEobtMs) / 60000
     if (delayMinutes < 30) {
-      throw new Error(`DELAY_TOO_SHORT: ${Math.round(delayMinutes)} min delay — ICAO Doc 4444 §11.4.2.4 requires ≥ 30 min`)
+      throw new Error(`DELAY_TOO_SHORT: ${Math.round(delayMinutes)} min delay provided — ICAO Doc 4444 §11.4.2.4 requires ≥ 30 min`)
     }
 
     // Build AFTN DLA message
@@ -425,7 +426,6 @@ export class FlightPlanService {
       where: { id: flightPlanId },
       data: {
         status:                  'DELAYED' as any,
-        originalEobt:            (plan as any).originalEobt ?? plan.eobt,
         delayedNewEobt:          newEobtDate,
         delayReason:             reason,
         eobt:                    newEobtDate,

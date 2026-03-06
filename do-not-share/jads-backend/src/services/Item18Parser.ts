@@ -58,15 +58,7 @@ export class Item18Parser {
 
     // Split by known ICAO Item 18 keyword pattern: WORD/ ... next WORD/
     // We tokenize by finding keyword/value pairs
-    const KEYWORDS = ['DOF', 'REG', 'PBN', 'OPR', 'STS', 'DEP', 'DEST', 'SEL', 'RMK',
-                      'EET', 'DLE', 'TBE', 'SOURCE', 'CODE', 'DAT', 'NAV', 'COM', 'DAT',
-                      'RIF', 'PER', 'ALTRV', 'ORGN', 'TYPE', 'ACTYPE', 'PCIS']
-
-    const keywordPattern = new RegExp(
-      `(${KEYWORDS.join('|')})\\/([^\\s${KEYWORDS.map(k => k[0]).join('')}]*)`, 'g'
-    )
-
-    // More robust: split by keyword/ boundaries
+    // Split by keyword/ boundaries
     const pairs = this.splitIntoPairs(raw)
 
     for (const { key, value } of pairs) {
