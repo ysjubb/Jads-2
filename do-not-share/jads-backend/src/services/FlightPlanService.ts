@@ -319,8 +319,9 @@ export class FlightPlanService {
     })
 
     if (!plan) throw new Error('FLIGHT_PLAN_NOT_FOUND')
-    if (plan.filedBy !== userId && role !== 'PLATFORM_SUPER_ADMIN') {
-      throw new Error('NOT_YOUR_FLIGHT_PLAN')
+    const isAdmin = ['PLATFORM_SUPER_ADMIN', 'DGCA_AUDITOR'].includes(role ?? '')
+    if (!isAdmin && plan.filedBy !== userId) {
+      throw new Error('FORBIDDEN: You did not file this plan')
     }
 
     const cancellableStatuses = ['FILED', 'ACKNOWLEDGED', 'VALIDATED', 'DELAYED']
@@ -379,14 +380,18 @@ export class FlightPlanService {
     userId:       string,
     userType:     'CIVILIAN' | 'SPECIAL',
     newEobt:      string,    // DDHHmm format
-    reason:       string
+    reason:       string,
+    role?:        string
   ): Promise<{ success: boolean; status: string; dlaMessage?: string }> {
     const plan = await this.prisma.mannedFlightPlan.findUnique({
       where: { id: flightPlanId }
     })
 
     if (!plan) throw new Error('FLIGHT_PLAN_NOT_FOUND')
-    if (plan.filedBy !== userId) throw new Error('NOT_YOUR_FLIGHT_PLAN')
+    const isAdmin = ['PLATFORM_SUPER_ADMIN', 'DGCA_AUDITOR'].includes(role ?? '')
+    if (!isAdmin && plan.filedBy !== userId) {
+      throw new Error('FORBIDDEN: You did not file this plan')
+    }
 
     const delayableStatuses = ['FILED', 'ACKNOWLEDGED', 'DELAYED']
     if (!delayableStatuses.includes(plan.status)) {
@@ -462,8 +467,9 @@ export class FlightPlanService {
     })
 
     if (!plan) throw new Error('FLIGHT_PLAN_NOT_FOUND')
-    if (plan.filedBy !== userId && role !== 'PLATFORM_SUPER_ADMIN') {
-      throw new Error('NOT_YOUR_FLIGHT_PLAN')
+    const isAdmin = ['PLATFORM_SUPER_ADMIN', 'DGCA_AUDITOR'].includes(role ?? '')
+    if (!isAdmin && plan.filedBy !== userId) {
+      throw new Error('FORBIDDEN: You did not file this plan')
     }
 
     const arrivableStatuses = ['FILED', 'ACKNOWLEDGED', 'ACTIVATED', 'DELAYED', 'FULLY_CLEARED']

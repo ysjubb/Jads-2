@@ -42,6 +42,7 @@ class KeyStoreSigningProvider private constructor(
     companion object {
         private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
         private const val KEY_ALIAS = "jads_ecdsa_p256_mission"
+        private var generatedWithStrongBox = false
 
         /**
          * Initialise the signing provider.
@@ -81,7 +82,7 @@ class KeyStoreSigningProvider private constructor(
                 // Determine actual StrongBox backing by checking if the key was
                 // generated with StrongBox. On devices where StrongBox generation
                 // failed and fell back, we mark it as TEE-backed.
-                val actualStrongBox = strongBoxAvailable && isKeyStrongBoxBacked(chain)
+                val actualStrongBox = generatedWithStrongBox
 
                 KeyStoreSigningProvider(
                     isStrongBoxBacked = actualStrongBox,
@@ -101,6 +102,10 @@ class KeyStoreSigningProvider private constructor(
 
                 .setDigests(KeyProperties.DIGEST_SHA256)
                 .setKeySize(256)
+                // KNOWN LIMITATION: static challenge defeats replay protection.
+                // Production fix: replace with server-issued nonce unique per
+                // device registration. Backend must verify the nonce matches
+                // what it issued before trusting the attestation chain.
                 .setAttestationChallenge("jads-attestation".toByteArray())
                 .setUserAuthenticationRequired(false)   // mission must proceed without biometric
 
@@ -114,6 +119,7 @@ class KeyStoreSigningProvider private constructor(
                 )
                 kpg.initialize(specBuilder.build())
                 kpg.generateKeyPair()
+                generatedWithStrongBox = tryStrongBox
             } catch (e: Exception) {
                 // StrongBox generation failed — retry without StrongBox (TEE fallback)
                 if (tryStrongBox) {
@@ -133,30 +139,10 @@ class KeyStoreSigningProvider private constructor(
                     )
                     kpg.initialize(fallbackSpec)
                     kpg.generateKeyPair()
+                    generatedWithStrongBox = false
                 } else {
                     throw e
                 }
-            }
-        }
-
-        /**
-         * Heuristic: if the attestation chain has ≥3 certificates and the
-         * leaf certificate's extension data mentions StrongBox security level,
-         * the key is StrongBox-backed. This is a simplified check — production
-         * should parse the ASN.1 KeyDescription extension (OID 1.3.6.1.4.1.11129.2.1.17).
-         */
-        private fun isKeyStrongBoxBacked(chain: List<Certificate>): Boolean {
-            if (chain.size < 3) return false
-            return try {
-                val leafDer = chain[0].encoded
-                // StrongBox attestation has securityLevel = 2 (StrongBox) in the
-                // KeyDescription ASN.1 extension. A full parser would decode the
-                // extension; here we use a conservative heuristic.
-                // If the key was generated with setIsStrongBoxBacked(true) and
-                // didn't fall back, the attestation confirms it.
-                true
-            } catch (_: Exception) {
-                false
             }
         }
 
