@@ -127,12 +127,14 @@ export class FlightPlanService {
 
     // ── Build AFTN message ─────────────────────────────────────────────────
     const speedStr = `${input.speedIndicator}${input.speedValue}`
+    const requestedFt = input.levelIndicator === 'F'
+      ? parseInt(input.levelValue) * 100
+      : input.levelIndicator === 'A'
+      ? parseInt(input.levelValue) * 100
+      : 9000
     const levelStr = input.levelIndicator === 'VFR'
       ? 'VFR'
-      : getCruiseLevelString(
-          input.departureIcao,
-          parseInt(input.levelValue) * 100
-        )
+      : getCruiseLevelString(input.departureIcao, requestedFt)
 
     const aftnMessage = this.msgBuilder.build({
       callsign:           input.callsign,
