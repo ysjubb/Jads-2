@@ -107,7 +107,7 @@ export const INDIA_AIP_AERODROMES: Record<string, AerodromeTransitionData> = {
   VOTR: { icao: 'VOTR', name: 'Tiruchirappalli International',                transitionAltitude:  9000, transitionLevel: 'FL100', elevation:  288 },
   VOTV: { icao: 'VOTV', name: 'Trivandrum International',                     transitionAltitude:  9000, transitionLevel: 'FL100', elevation:   15 },
   VOCB: { icao: 'VOCB', name: 'Coimbatore Airport (Peelamedu)',               transitionAltitude:  9000, transitionLevel: 'FL100', elevation: 1324 },
-  VOMF: { icao: 'VOMF', name: 'Chennai FIR Centre (Madurai)',                 transitionAltitude:  5000, transitionLevel: 'FL050', elevation:  459 },
+  VOMF: { icao: 'VOMF', name: 'Madurai FIR Control Area (Chennai FIR boundary)', transitionAltitude:  5000, transitionLevel: 'FL050', elevation:  459 },
   VOMD: { icao: 'VOMD', name: 'Madurai Airport',                              transitionAltitude:  5000, transitionLevel: 'FL050', elevation:  459 },
   VOML: { icao: 'VOML', name: 'Mangaluru International Airport',              transitionAltitude:  9000, transitionLevel: 'FL100', elevation:  337 },
   VOMY: { icao: 'VOMY', name: 'Mysuru Airport (Mandakalli)',                   transitionAltitude:  9000, transitionLevel: 'FL100', elevation: 2349 },

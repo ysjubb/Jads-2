@@ -122,7 +122,7 @@ export function categorizeByWeight(grams: number): DroneWeightCategory {
 
 // ── Manufacturer Push Sources ──────────────────────────────────────────────
 export const MANUFACTURER_PUSH_SOURCES = [
-  'DJI', 'AUTEL', 'PARROT', 'SKYDIO', 'IZI', 'ASTERIA', 'THROTTLE', 'GENERIC'
+  'DJI', 'AUTEL', 'PARROT', 'SKYDIO', 'IDEAFORGE', 'ASTERIA', 'THROTTLE', 'GENERIC'
 ] as const
 export type ManufacturerPushSource = typeof MANUFACTURER_PUSH_SOURCES[number]
 

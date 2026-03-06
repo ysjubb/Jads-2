@@ -67,10 +67,9 @@ enum AirspaceApprovalStatus {
 }
 
 enum NpntClass {
-  GREEN
-  YELLOW
-  RED
-  DJI_IMPORT
+  GREEN   // Unrestricted — fly without permission artefact
+  YELLOW  // Controlled — requires NPNT PA from Digital Sky
+  RED     // Prohibited — no civil drone operations
 }
 
 // DGCA UAS Rules 2021 weight categories
@@ -89,7 +88,7 @@ enum ManufacturerPushSource {
   AUTEL
   PARROT
   SKYDIO
-  IZI         // Indian manufacturer ideaForge
+  IDEAFORGE   // ideaForge Technology Ltd — ~50% of Indian govt drone market
   ASTERIA     // Asteria Aerospace
   THROTTLE    // Throttle Aerospace
   GENERIC     // Unknown or unlisted OEM
@@ -169,6 +168,9 @@ enum FlightPlanStatus {
   FIC_ISSUED
   FULLY_CLEARED
   ARRIVED
+  STUB_TRANSMITTED  // FPL built + logged — NOT transmitted to AAI AMHS (stub mode)
+  VOID              // Auto-cancelled — no DEP received within ICAO Doc 4444 §4.10 validity window
+  DEPARTED          // Aircraft departed — DEP message (Phase 2; not yet implemented)
 }
 
 // ═══════════════════════════════════════════════
@@ -404,6 +406,17 @@ model MannedFlightPlan {
   confirmationSmsStatus    String?
   createdAt                DateTime         @default(now())
   updatedAt                DateTime         @updatedAt
+
+  // AFTN gateway result fields
+  aftnTransmissionStatus   String?       // 'STUB' | 'LIVE' | 'FAILED'
+  aftnGatewayResultJson    String?       // full AftnGatewayResult JSON from gateway
+  aftnTransmittedAt        DateTime?     // when transmit() was called
+
+  // CNL/ARR/DLA message storage
+  cnlAftnMessage           String?       // built CNL AFTN string
+  arrAftnMessage           String?       // built ARR AFTN string
+  dlaAftnMessage           String?       // built DLA AFTN string
+  dlaFiledAt               DateTime?     // when DLA was filed
 
   // CNL/DLA tracking fields
   cancelledAt              DateTime?
@@ -662,6 +675,12 @@ model EvidenceLedger {
   prevAnchorHash    String
   computedAt        DateTime @default(now())
   jobRunId          String
+
+  // RFC 3161 TSA fields — external timestamp authority proof
+  rfc3161TimestampToken  String?    // Base64 DER-encoded RFC 3161 TimeStampToken
+  tsaName                String?    // 'CDAC' | 'eMudhra' — TSA that issued the token
+  tsaTimestamp           DateTime?  // confirmed time extracted from the TSA token
+  tsaRequestHash         String?    // hash submitted to TSA — must match anchorHash
 
   @@unique([anchorDate])
   @@index([anchorDate])
