@@ -51,14 +51,27 @@ ALTER TABLE "EvidenceLedger" ADD COLUMN IF NOT EXISTS "tsaRequestHash" TEXT;
 -- DJI_IMPORT was added in migration 20240305 but is no longer used.
 -- To safely remove: rename any rows using DJI_IMPORT to GREEN, then
 -- recreate the enum. This is a data-safe operation.
--- NOTE: If no rows use DJI_IMPORT, the UPDATE is a no-op.
-UPDATE "AirspaceZone" SET "npntClassification" = 'GREEN' WHERE "npntClassification" = 'DJI_IMPORT';
+-- NOTE: AirspaceZone may not exist yet — guard with existence check.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'NpntClass') THEN
+    -- Migrate any DJI_IMPORT rows to GREEN if the table exists
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'AirspaceZone') THEN
+      UPDATE "AirspaceZone" SET "npntClassification" = 'GREEN' WHERE "npntClassification" = 'DJI_IMPORT';
+    END IF;
 
--- Recreate enum without DJI_IMPORT
-ALTER TYPE "NpntClass" RENAME TO "NpntClass_old";
-CREATE TYPE "NpntClass" AS ENUM ('GREEN', 'YELLOW', 'RED');
-ALTER TABLE "AirspaceZone" ALTER COLUMN "npntClassification" TYPE "NpntClass" USING "npntClassification"::text::"NpntClass";
-DROP TYPE "NpntClass_old";
+    -- Recreate enum without DJI_IMPORT
+    ALTER TYPE "NpntClass" RENAME TO "NpntClass_old";
+    CREATE TYPE "NpntClass" AS ENUM ('GREEN', 'YELLOW', 'RED');
+
+    -- Re-type the column only if the table exists
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'AirspaceZone') THEN
+      ALTER TABLE "AirspaceZone" ALTER COLUMN "npntClassification" TYPE "NpntClass" USING "npntClassification"::text::"NpntClass";
+    END IF;
+
+    DROP TYPE "NpntClass_old";
+  END IF;
+END $$;
 
 -- ═══════════════════════════════════════════════
 -- 6. ManufacturerPushSource — remove IZI, add IDEAFORGE
