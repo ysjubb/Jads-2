@@ -51,22 +51,23 @@ ALTER TABLE "EvidenceLedger" ADD COLUMN IF NOT EXISTS "tsaRequestHash" TEXT;
 -- DJI_IMPORT was added in migration 20240305 but is no longer used.
 -- To safely remove: rename any rows using DJI_IMPORT to GREEN, then
 -- recreate the enum. This is a data-safe operation.
--- NOTE: AirspaceZone may not exist yet — guard with existence check.
+-- NOTE: NpntClass is used by DroneMission, not AirspaceZone.
+-- Remove DJI_IMPORT from enum by recreating it.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'NpntClass') THEN
-    -- Migrate any DJI_IMPORT rows to GREEN if the table exists
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'AirspaceZone') THEN
-      UPDATE "AirspaceZone" SET "npntClassification" = 'GREEN' WHERE "npntClassification" = 'DJI_IMPORT';
+    -- Migrate any DJI_IMPORT rows to GREEN in DroneMission
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'DroneMission') THEN
+      UPDATE "DroneMission" SET "npntClassification" = 'GREEN' WHERE "npntClassification" = 'DJI_IMPORT';
     END IF;
 
     -- Recreate enum without DJI_IMPORT
     ALTER TYPE "NpntClass" RENAME TO "NpntClass_old";
     CREATE TYPE "NpntClass" AS ENUM ('GREEN', 'YELLOW', 'RED');
 
-    -- Re-type the column only if the table exists
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'AirspaceZone') THEN
-      ALTER TABLE "AirspaceZone" ALTER COLUMN "npntClassification" TYPE "NpntClass" USING "npntClassification"::text::"NpntClass";
+    -- Re-type the column in DroneMission
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'DroneMission') THEN
+      ALTER TABLE "DroneMission" ALTER COLUMN "npntClassification" TYPE "NpntClass" USING "npntClassification"::text::"NpntClass";
     END IF;
 
     DROP TYPE "NpntClass_old";
@@ -82,11 +83,17 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ManufacturerPushSource') THEN
     -- Migrate any IZI rows to IDEAFORGE before dropping the old enum
-    UPDATE "ManufacturerVendor" SET "vendorCode" = 'IDEAFORGE' WHERE "vendorCode" = 'IZI';
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'ManufacturerVendor') THEN
+      UPDATE "ManufacturerVendor" SET "vendorCode" = 'IDEAFORGE' WHERE "vendorCode" = 'IZI';
+    END IF;
 
     ALTER TYPE "ManufacturerPushSource" RENAME TO "ManufacturerPushSource_old";
     CREATE TYPE "ManufacturerPushSource" AS ENUM ('DJI', 'AUTEL', 'PARROT', 'SKYDIO', 'IDEAFORGE', 'ASTERIA', 'THROTTLE', 'GENERIC');
-    ALTER TABLE "ManufacturerVendor" ALTER COLUMN "vendorCode" TYPE "ManufacturerPushSource" USING "vendorCode"::text::"ManufacturerPushSource";
+
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'ManufacturerVendor') THEN
+      ALTER TABLE "ManufacturerVendor" ALTER COLUMN "vendorCode" TYPE "ManufacturerPushSource" USING "vendorCode"::text::"ManufacturerPushSource";
+    END IF;
+
     DROP TYPE "ManufacturerPushSource_old";
   END IF;
 END $$;
