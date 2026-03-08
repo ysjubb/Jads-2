@@ -151,6 +151,7 @@ router.get('/violations', async (req, res) => {
     const result = await audit.getViolations(role, entityCode, {
       violationType: req.query.violationType as string,
       severity:      req.query.severity      as string,
+      missionId:     req.query.missionId     as string,
       page:  parseInt((req.query.page  as string) ?? '1'),
       limit: parseInt((req.query.limit as string) ?? '50'),
     })
@@ -172,6 +173,53 @@ router.get('/flight-plans', async (req, res) => {
     })
     res.json(serializeForJson(withMeta(result, role, result.scopeApplied)))
   } catch (e) { handleScopeError(res, e) }
+})
+
+// GET /api/audit/flight-plans/:id — single flight plan detail
+router.get('/flight-plans/:id', async (req, res) => {
+  try {
+    const plan = await prisma.mannedFlightPlan.findUnique({ where: { id: req.params.id } })
+    if (!plan) { res.status(404).json({ error: 'FLIGHT_PLAN_NOT_FOUND' }); return }
+    res.json(serializeForJson({ success: true, plan }))
+  } catch {
+    res.status(500).json({ error: 'FLIGHT_PLAN_FETCH_FAILED' })
+  }
+})
+
+// GET /api/audit/flight-plans/:id/route-geometry — waypoint coordinates for map
+router.get('/flight-plans/:id/route-geometry', async (req, res) => {
+  try {
+    const plan = await prisma.mannedFlightPlan.findUnique({
+      where: { id: req.params.id },
+      select: { adep: true, ades: true, route: true, validationResultJson: true }
+    })
+    if (!plan) { res.status(404).json({ error: 'FLIGHT_PLAN_NOT_FOUND' }); return }
+
+    let points: { identifier: string; type: string; latDeg: number; lonDeg: number }[] = []
+    try {
+      const vr = JSON.parse(plan.validationResultJson ?? '{}')
+      if (vr.routeLegs && vr.routeLegs.length > 0) {
+        const seen = new Set<string>()
+        for (const leg of vr.routeLegs) {
+          if (!seen.has(leg.from.identifier)) { seen.add(leg.from.identifier); points.push(leg.from) }
+          if (!seen.has(leg.to.identifier))   { seen.add(leg.to.identifier);   points.push(leg.to) }
+        }
+      }
+    } catch { /* routeLegs may not exist */ }
+
+    if (points.length === 0) {
+      const [dep, dest] = await Promise.all([
+        prisma.aerodromeRecord.findFirst({ where: { OR: [{ icao: plan.adep }, { icaoCode: plan.adep }] } }),
+        prisma.aerodromeRecord.findFirst({ where: { OR: [{ icao: plan.ades }, { icaoCode: plan.ades }] } }),
+      ])
+      if (dep)  points.push({ identifier: plan.adep, type: 'AERODROME', latDeg: dep.latDeg ?? dep.latitudeDeg ?? 0,  lonDeg: dep.lonDeg ?? dep.longitudeDeg ?? 0 })
+      if (dest) points.push({ identifier: plan.ades, type: 'AERODROME', latDeg: dest.latDeg ?? dest.latitudeDeg ?? 0, lonDeg: dest.lonDeg ?? dest.longitudeDeg ?? 0 })
+    }
+
+    res.json({ success: true, adep: plan.adep, ades: plan.ades, route: plan.route, points })
+  } catch {
+    res.status(500).json({ error: 'ROUTE_GEOMETRY_FAILED' })
+  }
 })
 
 // GET /api/audit/audit-log — PLATFORM_SUPER_ADMIN only

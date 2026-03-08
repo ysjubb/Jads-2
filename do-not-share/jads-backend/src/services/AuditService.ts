@@ -96,13 +96,14 @@ export class AuditService {
   async getViolations(
     role: string,
     entityCode: string | undefined,
-    filters: { violationType?: string; severity?: string; page?: number; limit?: number }
+    filters: { violationType?: string; severity?: string; missionId?: string; page?: number; limit?: number }
   ): Promise<{ violations: unknown[]; total: number; scopeApplied: string }> {
     this.assertDroneMissionAccess(role)
 
     const where: Record<string, unknown> = {}
     if (filters.violationType) where.violationType = filters.violationType
     if (filters.severity)      where.severity      = filters.severity
+    if (filters.missionId)     where.missionId      = filters.missionId
 
     const skip = ((filters.page ?? 1) - 1) * (filters.limit ?? 50)
     const [violations, total] = await Promise.all([

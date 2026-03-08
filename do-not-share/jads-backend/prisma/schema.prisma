@@ -428,6 +428,16 @@ model MannedFlightPlan {
   arrivedAt                DateTime?
   actualArrivalTime        String?       // HHmm UTC — ATA from pilot
 
+  // Amendment tracking (edit-before-clearance)
+  amendmentCount           Int              @default(0)
+  lastAmendmentAt          DateTime?
+  additionalEmails         String[]         @default([])
+
+  // Clearance notification tracking
+  adcNotificationSentAt    DateTime?
+  ficNotificationSentAt    DateTime?
+  fullyClearedNotifSentAt  DateTime?
+
   civilianFiler            CivilianUser?    @relation("FiledByCivilian", fields: [filedBy], references: [id], map: "MannedFlightPlan_civilianFiler_fkey")
   specialFiler             SpecialUser?     @relation("FiledBySpecial", fields: [filedBy], references: [id], map: "MannedFlightPlan_specialFiler_fkey")
   adcRecords               AdcRecord[]
@@ -491,6 +501,42 @@ model DroneMission {
   @@index([uploadedAt])
   @@index([droneWeightCategory])
   @@index([droneManufacturer])
+}
+
+// ── Drone Operation Plans ────────────────────────────────────────────────────
+// Pre-flight operation area planning for drone missions.
+// Users define a geographic boundary (polygon or circle) + altitude limits.
+model DroneOperationPlan {
+  id                String   @id @default(cuid())
+  planId            String   @unique                // human-readable ID e.g. DOP-2026-00042
+  operatorId        String                          // → CivilianUser who filed
+  droneSerialNumber String                          // registered drone serial
+  uinNumber         String?                         // UIN if available
+  areaType          String                          // 'POLYGON' | 'CIRCLE'
+  areaGeoJson       String?                         // GeoJSON Polygon (for POLYGON type)
+  centerLatDeg      Float?                          // center lat (for CIRCLE type)
+  centerLonDeg      Float?                          // center lon (for CIRCLE type)
+  radiusM           Float?                          // radius in meters (for CIRCLE type)
+  maxAltitudeAglM   Float                           // ceiling in meters AGL
+  minAltitudeAglM   Float    @default(0)            // floor in meters AGL
+  plannedStartUtc   DateTime
+  plannedEndUtc     DateTime
+  purpose           String                          // e.g. SURVEY, PHOTOGRAPHY, INSPECTION, DELIVERY
+  remarks           String?
+  status            String   @default("DRAFT")      // DRAFT | SUBMITTED | APPROVED | REJECTED | CANCELLED
+  rejectionReason   String?
+  notifyEmail       String?
+  notifyMobile      String?
+  additionalEmails  String[] @default([])
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  submittedAt       DateTime?
+  approvedAt        DateTime?
+  approvedBy        String?
+
+  @@index([operatorId])
+  @@index([status])
+  @@index([plannedStartUtc, plannedEndUtc])
 }
 
 model DroneTelemetryRecord {

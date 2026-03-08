@@ -16,6 +16,7 @@ import adapterWebhookRoutes from './routes/adapterWebhookRoutes'
 import systemRoutes      from './routes/systemRoutes'
 import agentRoutes       from './routes/agentRoutes'
 import manufacturerRoutes from './routes/manufacturerRoutes'
+import droneOperationPlanRoutes from './routes/droneOperationPlanRoutes'
 
 const app = express()
 
@@ -55,6 +56,7 @@ api.use('/admin',        adminRoutes)
 api.use('/system',       systemRoutes)
 api.use('/agents',       agentRoutes)
 api.use('/manufacturer', manufacturerRoutes)
+api.use('/drone-plans', droneOperationPlanRoutes)
 app.use('/api', api)
 
 app.use((_req, res) => {

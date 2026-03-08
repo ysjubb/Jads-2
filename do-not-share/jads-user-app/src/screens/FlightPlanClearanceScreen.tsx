@@ -27,6 +27,7 @@ import {
   RefreshControl,
 } from 'react-native'
 import { T } from '../theme/theme'
+import { RouteMapWebView } from '../components/RouteMapWebView'
 import {
   fetchClearanceStatus,
   type ClearanceStatus,
@@ -176,6 +177,14 @@ export function FlightPlanClearanceScreen({
           </View>
         )}
       </View>
+
+      {/* Route Map */}
+      <RouteMapWebView
+        flightPlanId={flightPlanId}
+        adep={adep}
+        ades={ades}
+        height={220}
+      />
 
       {/* Rejection Banner */}
       {status === 'CLEARANCE_REJECTED' && rejectionReason && (

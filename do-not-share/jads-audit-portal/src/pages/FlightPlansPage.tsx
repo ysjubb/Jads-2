@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuditAuth, auditAxios } from '../hooks/useAuditAuth'
 
 const T = {
@@ -15,25 +16,29 @@ const T = {
 
 interface FlightPlan {
   id: string
-  arcid: string
-  fplState: string
+  aircraftId: string
+  aircraftType: string
+  status: string
   adep: string
   ades: string
   eobt: string
-  ttlHhMm: string
-  wtc: string
+  eet: string
+  wakeTurbulence: string
   equipment: string
-  rvsm: boolean
-  filedByUserId: string
-  createdAt: string
+  cruisingLevel: string
+  filedBy: string
+  filedAt: string
 }
 
 const STATE_COLOUR: Record<string, string> = {
-  FILED: '#FFB800', ACTIVE: '#00FF88', CLOSED: '#6A6040',
-  CANCELLED: '#FF3B3B', DELAYED: '#FFB800', ARRIVED: '#00FF88'
+  FILED: '#FFB800', FULLY_CLEARED: '#00FF88', ADC_ISSUED: '#00FF88',
+  FIC_ISSUED: '#00FF88', PENDING_CLEARANCE: '#FFB800', STUB_TRANSMITTED: '#6A6040',
+  CANCELLED: '#FF3B3B', VOID: '#FF3B3B', DELAYED: '#FFB800',
+  DEPARTED: '#00FF88', ARRIVED: '#00FF88', CLEARANCE_REJECTED: '#FF3B3B'
 }
 
 export function FlightPlansPage() {
+  const navigate                      = useNavigate()
   const { token, logout }            = useAuditAuth()
   const [plans, setPlans]            = useState<FlightPlan[]>([])
   const [total, setTotal]            = useState(0)
@@ -50,7 +55,7 @@ export function FlightPlansPage() {
       const { data } = await auditAxios(token).get('/flight-plans', {
         params: { page, limit: 25 }
       })
-      setPlans(data.flightPlans ?? data.flight_plans ?? [])
+      setPlans(data.plans ?? data.flightPlans ?? [])
       setTotal(data.total ?? 0)
       setScope(data.scope_applied ?? '')
       setRetrievedAt(data.retrieved_at_utc ?? '')
@@ -118,7 +123,7 @@ export function FlightPlansPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
             <thead>
               <tr style={{ background: T.bg, borderBottom: `2px solid ${T.border}` }}>
-                {['ARCID', 'State', 'ADEP', 'ADES', 'EOBT', 'ETT', 'WTC', 'RVSM', 'Filed'].map(h => (
+                {['Callsign', 'Type', 'Status', 'ADEP', 'ADES', 'EOBT', 'EET', 'Level', 'Filed'].map(h => (
                   <th key={h} style={{ padding: '0.6rem 0.75rem', textAlign: 'left', fontWeight: 600,
                     color: T.primary, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.78rem',
                     letterSpacing: '0.03em' }}>
@@ -129,17 +134,20 @@ export function FlightPlansPage() {
             </thead>
             <tbody>
               {plans.map(p => (
-                <tr key={p.id} style={{ borderBottom: `1px solid ${T.border}` }}
+                <tr key={p.id} style={{ borderBottom: `1px solid ${T.border}`, cursor: 'pointer' }}
+                  onClick={() => navigate(`/flight-plans/${p.id}`)}
                   onMouseEnter={e => (e.currentTarget.style.background = T.primary + '08')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                   <td style={{ padding: '0.5rem 0.75rem', fontFamily: "'JetBrains Mono', monospace",
                     fontWeight: 600, color: T.textBright }}>
-                    {p.arcid}
+                    {p.aircraftId}
                   </td>
+                  <td style={{ padding: '0.5rem 0.75rem', fontFamily: "'JetBrains Mono', monospace",
+                    color: T.text }}>{p.aircraftType}</td>
                   <td style={{ padding: '0.5rem 0.75rem' }}>
-                    <span style={{ color: STATE_COLOUR[p.fplState] ?? T.text, fontWeight: 500,
+                    <span style={{ color: STATE_COLOUR[p.status] ?? T.text, fontWeight: 500,
                       fontFamily: "'JetBrains Mono', monospace" }}>
-                      {p.fplState}
+                      {p.status}
                     </span>
                   </td>
                   <td style={{ padding: '0.5rem 0.75rem', fontFamily: "'JetBrains Mono', monospace",
@@ -151,16 +159,12 @@ export function FlightPlansPage() {
                     {new Date(p.eobt).toISOString().replace('T', ' ').slice(0, 16)}
                   </td>
                   <td style={{ padding: '0.5rem 0.75rem', color: T.text,
-                    fontFamily: "'JetBrains Mono', monospace" }}>{p.ttlHhMm}</td>
+                    fontFamily: "'JetBrains Mono', monospace" }}>{p.eet}</td>
                   <td style={{ padding: '0.5rem 0.75rem', color: T.text,
-                    fontFamily: "'JetBrains Mono', monospace" }}>{p.wtc}</td>
-                  <td style={{ padding: '0.5rem 0.75rem', textAlign: 'center',
-                    fontFamily: "'JetBrains Mono', monospace" }}>
-                    {p.rvsm ? <span style={{ color: T.green }}>PASS</span> : <span style={{ color: T.muted }}>—</span>}
-                  </td>
+                    fontFamily: "'JetBrains Mono', monospace" }}>{p.cruisingLevel}</td>
                   <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.8rem', color: T.muted,
                     fontFamily: "'JetBrains Mono', monospace" }}>
-                    {new Date(p.createdAt).toLocaleDateString()}
+                    {p.filedAt ? new Date(p.filedAt).toLocaleDateString() : '—'}
                   </td>
                 </tr>
               ))}

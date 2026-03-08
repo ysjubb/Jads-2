@@ -305,6 +305,84 @@ export class FlightPlanNotificationService {
     ].filter(l => l !== undefined).join('\n')
   }
 
+  // ── Clearance Event Notifications ──────────────────────────────────────────
+  // Called when ADC/FIC is issued, plan is fully cleared, or clearance is rejected.
+  async sendClearanceNotification(
+    plan: { id: string; aircraftId?: string; adep?: string; ades?: string; notifyEmail?: string | null; notifyMobile?: string | null; additionalEmails?: string[] },
+    eventType: 'ADC_ISSUED' | 'FIC_ISSUED' | 'FULLY_CLEARED' | 'CLEARANCE_REJECTED',
+    details: Record<string, unknown>,
+  ): Promise<void> {
+    const aircraft = (plan as any).aircraftId ?? 'N/A'
+    const route    = `${(plan as any).adep ?? '?'}→${(plan as any).ades ?? '?'}`
+    const now      = new Date().toISOString().replace('T', ' ').slice(0, 19) + 'Z'
+
+    // Build human-readable subject + body
+    const subjects: Record<string, string> = {
+      ADC_ISSUED:          `ADC Issued: ${aircraft} ${route}`,
+      FIC_ISSUED:          `FIC Issued: ${aircraft} ${route}`,
+      FULLY_CLEARED:       `FULLY CLEARED: ${aircraft} ${route} — You may depart`,
+      CLEARANCE_REJECTED:  `CLEARANCE REJECTED: ${aircraft} ${route}`,
+    }
+    const bodies: Record<string, string> = {
+      ADC_ISSUED:          `ADC #${details.adcNumber ?? 'N/A'} issued for ${aircraft} ${route}. ${details.newStatus === 'FULLY_CLEARED' ? 'Plan is now FULLY CLEARED.' : 'Awaiting FIC from FIR.'}`,
+      FIC_ISSUED:          `FIC #${details.ficNumber ?? 'N/A'} issued by FIR ${details.firCode ?? ''} for ${aircraft} ${route}. ${details.newStatus === 'FULLY_CLEARED' ? 'Plan is now FULLY CLEARED.' : 'Awaiting ADC from AFMLU.'}`,
+      FULLY_CLEARED:       `FULLY CLEARED — Both ADC and FIC received for ${aircraft} ${route}. You may depart as per your filed EOBT.`,
+      CLEARANCE_REJECTED:  `CLEARANCE REJECTED for ${aircraft} ${route}. Reason: ${details.reason ?? 'Not specified'}. Rejected by: ${details.rejectedBy ?? 'N/A'}.`,
+    }
+
+    const subject = subjects[eventType] ?? `Flight Plan Update: ${aircraft}`
+    const body    = bodies[eventType] ?? 'Flight plan status updated.'
+
+    // SMS — short version
+    const smsText = `JADS: ${eventType.replace(/_/g, ' ')}\n${aircraft} ${route}\n${body.slice(0, 120)}\n${now}`
+
+    // Send SMS to pilot
+    if (plan.notifyMobile) {
+      this.smsAdapter.send({ to: plan.notifyMobile, text: smsText })
+        .catch(e => log.warn('clearance_sms_failed', { data: { error: String(e), to: plan.notifyMobile } }))
+    }
+
+    // Send email to pilot + additional recipients + institutional contacts
+    const emailRecipients = new Set<string>()
+    if (plan.notifyEmail && this.isValidEmail(plan.notifyEmail)) emailRecipients.add(plan.notifyEmail)
+    if (plan.additionalEmails) {
+      for (const em of plan.additionalEmails) { if (this.isValidEmail(em)) emailRecipients.add(em) }
+    }
+    // Institutional recipients from env
+    const envKeys = ['DGCA_NOTIFY_EMAIL', 'AFMLU_NOTIFY_EMAIL', 'AAI_NOTIFY_EMAIL']
+    for (const key of envKeys) {
+      const val = process.env[key]
+      if (val && this.isValidEmail(val)) emailRecipients.add(val)
+    }
+
+    if (emailRecipients.size > 0) {
+      const html = `<div style="font-family:monospace;padding:1rem;background:#050A08;color:#b0c8b8;border:1px solid #1A3020;border-radius:6px">` +
+        `<h2 style="color:${eventType === 'CLEARANCE_REJECTED' ? '#FF3B3B' : eventType === 'FULLY_CLEARED' ? '#00FF88' : '#FFB800'};margin:0 0 0.5rem">${escapeHtml(subject)}</h2>` +
+        `<p>${escapeHtml(body)}</p>` +
+        `<p style="color:#4A6050;font-size:12px;margin-top:1rem">JADS Platform v4.0 | Ref: ${plan.id} | ${now}</p>` +
+        `</div>`
+      const recipients = Array.from(emailRecipients)
+      this.emailAdapter.send({
+        to: recipients[0], cc: recipients.slice(1),
+        subject, html, text: `${subject}\n\n${body}\n\nRef: ${plan.id}\n${now}`,
+      }).catch(e => log.warn('clearance_email_failed', { data: { error: String(e) } }))
+    }
+
+    // Update notification tracking on plan
+    const trackField: Record<string, string> = {
+      ADC_ISSUED: 'adcNotificationSentAt', FIC_ISSUED: 'ficNotificationSentAt',
+      FULLY_CLEARED: 'fullyClearedNotifSentAt', CLEARANCE_REJECTED: 'fullyClearedNotifSentAt',
+    }
+    const field = trackField[eventType]
+    if (field) {
+      this.prisma.mannedFlightPlan.update({
+        where: { id: plan.id }, data: { [field]: new Date() },
+      }).catch(() => {}) // non-blocking
+    }
+
+    log.info('clearance_notification_sent', { data: { eventType, planId: plan.id, recipients: Array.from(emailRecipients) } })
+  }
+
   private isValidEmail(email: string): boolean {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   }

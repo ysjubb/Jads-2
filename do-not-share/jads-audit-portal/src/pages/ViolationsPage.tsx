@@ -16,7 +16,7 @@ const T = {
 
 interface Violation {
   id: string
-  missionDbId: string
+  missionId: string
   sequence: string
   violationType: string
   severity: string
@@ -146,7 +146,7 @@ export function ViolationsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {violations.map(v => (
             <div key={v.id}
-              onClick={() => navigate(`/missions/${v.missionDbId}`)}
+              onClick={() => navigate(`/missions/${v.missionId}`)}
               style={{ background: SEVERITY_BG[v.severity] ?? T.surface,
                 border: `1px solid ${SEVERITY_COLOUR[v.severity] ?? T.border}40`,
                 borderLeft: `4px solid ${SEVERITY_COLOUR[v.severity] ?? T.border}`,
@@ -163,7 +163,7 @@ export function ViolationsPage() {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: '0.8rem', fontFamily: "'JetBrains Mono', monospace", color: T.text }}>
-                  Mission: {v.missionDbId}
+                  Mission: {v.missionId}
                 </div>
                 <div style={{ fontSize: '0.8rem', color: T.muted, marginTop: '0.2rem',
                   fontFamily: "'JetBrains Mono', monospace" }}>

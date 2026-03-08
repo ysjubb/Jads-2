@@ -9,6 +9,7 @@ import { createServiceLogger } from '../logger'
 import { BCRYPT_ROUNDS, ADMIN_SESSION_HOURS } from '../constants'
 import { SpecialUserAuthService } from '../services/SpecialUserAuthService'
 import { ClearanceService } from '../services/ClearanceService'
+import { decodeCanonical } from '../telemetry/telemetryDecoder'
 
 const router                = express.Router()
 const prisma                = new PrismaClient()
@@ -688,6 +689,118 @@ router.get('/users/suspended', async (req, res) => {
   } catch { res.status(500).json({ error: 'FETCH_FAILED' }) }
 })
 
+// ── DRONE MISSIONS (admin read-only view) ───────────────────────────────────
+
+// GET /api/admin/drone-missions — all drone missions
+router.get('/drone-missions', async (req, res) => {
+  try {
+    const { page = '1', limit = '30', status, search } = req.query
+    const skip = (parseInt(page as string) - 1) * parseInt(limit as string)
+
+    const where: Record<string, unknown> = {}
+    if (status) where.uploadStatus = status
+    if (search) {
+      where.OR = [
+        { missionId:    { contains: search as string, mode: 'insensitive' } },
+        { deviceId:     { contains: search as string, mode: 'insensitive' } },
+        { operatorId:   { contains: search as string, mode: 'insensitive' } },
+      ]
+    }
+
+    const [missions, total] = await Promise.all([
+      prisma.droneMission.findMany({
+        where, skip, take: parseInt(limit as string),
+        orderBy: { uploadedAt: 'desc' },
+        include: {
+          _count: { select: { telemetryRecords: true, violations: true } },
+        },
+      }),
+      prisma.droneMission.count({ where }),
+    ])
+
+    res.json(serializeForJson({
+      success: true,
+      missions: missions.map(m => ({
+        id:                   m.id,
+        missionId:            m.missionId,
+        operatorId:           m.operatorId,
+        operatorType:         m.operatorType,
+        deviceId:             m.deviceId,
+        deviceModel:          m.deviceModel,
+        npntClassification:   m.npntClassification,
+        uploadStatus:         m.uploadStatus,
+        missionStartUtcMs:    m.missionStartUtcMs,
+        missionEndUtcMs:      m.missionEndUtcMs,
+        ntpSyncStatus:        m.ntpSyncStatus,
+        chainVerifiedByServer: m.chainVerifiedByServer,
+        certValidAtStart:     m.certValidAtStart,
+        uploadedAt:           m.uploadedAt,
+        droneWeightCategory:  m.droneWeightCategory,
+        droneManufacturer:    m.droneManufacturer,
+        droneSerialNumber:    m.droneSerialNumber,
+        recordCount:          m._count.telemetryRecords,
+        violationCount:       m._count.violations,
+      })),
+      total,
+    }))
+  } catch {
+    res.status(500).json({ error: 'DRONE_MISSIONS_FETCH_FAILED' })
+  }
+})
+
+// GET /api/admin/drone-missions/:id — full drone mission detail
+router.get('/drone-missions/:id', async (req, res) => {
+  try {
+    const mission = await prisma.droneMission.findUnique({
+      where: { id: req.params.id },
+      include: {
+        violations: { orderBy: { timestampUtcMs: 'asc' } },
+        _count: { select: { telemetryRecords: true } },
+      },
+    })
+    if (!mission) { res.status(404).json({ error: 'MISSION_NOT_FOUND' }); return }
+    res.json(serializeForJson({ success: true, mission }))
+  } catch {
+    res.status(500).json({ error: 'MISSION_FETCH_FAILED' })
+  }
+})
+
+// GET /api/admin/drone-missions/:id/decoded-track — decoded GPS telemetry for map
+router.get('/drone-missions/:id/decoded-track', async (req, res) => {
+  try {
+    const records = await prisma.droneTelemetryRecord.findMany({
+      where:   { missionId: req.params.id },
+      orderBy: { sequence: 'asc' },
+      select:  {
+        sequence: true, canonicalPayloadHex: true, signatureHex: true,
+        chainHashHex: true, gnssStatus: true, sensorHealthFlags: true, recordedAtUtcMs: true,
+      }
+    })
+    if (records.length === 0) {
+      res.json(serializeForJson({ success: true, track: [], count: 0, bbox: null })); return
+    }
+    const track = records.map(r => {
+      try {
+        const decoded = decodeCanonical(r.canonicalPayloadHex)
+        return { sequence: r.sequence, gnssStatus: r.gnssStatus, sensorHealthFlags: r.sensorHealthFlags,
+          recordedAtUtcMs: r.recordedAtUtcMs, chainHashHex: r.chainHashHex, signatureHex: r.signatureHex, decoded }
+      } catch (e: unknown) {
+        return { sequence: r.sequence, gnssStatus: r.gnssStatus, decodeError: (e as Error).message }
+      }
+    })
+    const valid = track.filter((t: any) => t.decoded?.latitudeDeg != null)
+    const bbox = valid.length > 0 ? {
+      minLat: Math.min(...valid.map((t: any) => t.decoded.latitudeDeg as number)),
+      maxLat: Math.max(...valid.map((t: any) => t.decoded.latitudeDeg as number)),
+      minLon: Math.min(...valid.map((t: any) => t.decoded.longitudeDeg as number)),
+      maxLon: Math.max(...valid.map((t: any) => t.decoded.longitudeDeg as number)),
+    } : null
+    res.json(serializeForJson({ success: true, track, count: track.length, bbox }))
+  } catch {
+    res.status(500).json({ error: 'TRACK_DECODE_FAILED' })
+  }
+})
+
 // ── FLIGHT PLANS (admin read-only view) ─────────────────────────────────────
 
 // GET /api/admin/flight-plans — all manned flight plans, any status
@@ -753,6 +866,54 @@ router.get('/flight-plans', async (req, res) => {
     }))
   } catch {
     res.status(500).json({ error: 'FLIGHT_PLANS_FETCH_FAILED' })
+  }
+})
+
+// GET /api/admin/flight-plans/:id — full flight plan detail
+router.get('/flight-plans/:id', async (req, res) => {
+  try {
+    const plan = await prisma.mannedFlightPlan.findUnique({ where: { id: req.params.id } })
+    if (!plan) { res.status(404).json({ error: 'FLIGHT_PLAN_NOT_FOUND' }); return }
+    res.json(serializeForJson({ success: true, plan }))
+  } catch {
+    res.status(500).json({ error: 'FLIGHT_PLAN_FETCH_FAILED' })
+  }
+})
+
+// GET /api/admin/flight-plans/:id/route-geometry — waypoint coordinates for map
+router.get('/flight-plans/:id/route-geometry', async (req, res) => {
+  try {
+    const plan = await prisma.mannedFlightPlan.findUnique({
+      where: { id: req.params.id },
+      select: { adep: true, ades: true, route: true, validationResultJson: true }
+    })
+    if (!plan) { res.status(404).json({ error: 'FLIGHT_PLAN_NOT_FOUND' }); return }
+
+    let points: { identifier: string; type: string; latDeg: number; lonDeg: number }[] = []
+    try {
+      const vr = JSON.parse(plan.validationResultJson ?? '{}')
+      if (vr.routeLegs && vr.routeLegs.length > 0) {
+        const seen = new Set<string>()
+        for (const leg of vr.routeLegs) {
+          if (!seen.has(leg.from.identifier)) { seen.add(leg.from.identifier); points.push(leg.from) }
+          if (!seen.has(leg.to.identifier))   { seen.add(leg.to.identifier);   points.push(leg.to) }
+        }
+      }
+    } catch { /* validationResultJson may not have routeLegs */ }
+
+    // Fallback: look up ADEP/ADES from AerodromeRecord
+    if (points.length === 0) {
+      const [dep, dest] = await Promise.all([
+        prisma.aerodromeRecord.findFirst({ where: { OR: [{ icao: plan.adep }, { icaoCode: plan.adep }] } }),
+        prisma.aerodromeRecord.findFirst({ where: { OR: [{ icao: plan.ades }, { icaoCode: plan.ades }] } }),
+      ])
+      if (dep)  points.push({ identifier: plan.adep, type: 'AERODROME', latDeg: dep.latDeg ?? dep.latitudeDeg ?? 0,  lonDeg: dep.lonDeg ?? dep.longitudeDeg ?? 0 })
+      if (dest) points.push({ identifier: plan.ades, type: 'AERODROME', latDeg: dest.latDeg ?? dest.latitudeDeg ?? 0, lonDeg: dest.lonDeg ?? dest.longitudeDeg ?? 0 })
+    }
+
+    res.json({ success: true, adep: plan.adep, ades: plan.ades, route: plan.route, points })
+  } catch {
+    res.status(500).json({ error: 'ROUTE_GEOMETRY_FAILED' })
   }
 })
 
@@ -855,6 +1016,106 @@ router.get('/system/adapter-status', async (req, res) => {
     },
     retrievedAt: new Date().toISOString()
   })
+})
+
+// ── DRONE OPERATION PLANS (admin review) ────────────────────────────────────
+
+// GET /api/admin/drone-plans — List all submitted drone operation plans
+router.get('/drone-plans', requireAdminAuth, async (_req, res) => {
+  try {
+    const plans = await prisma.droneOperationPlan.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    })
+    res.json(serializeForJson({ success: true, plans }))
+  } catch {
+    res.status(500).json({ error: 'DRONE_PLAN_LIST_FAILED' })
+  }
+})
+
+// GET /api/admin/drone-plans/:id — Detail with map data
+router.get('/drone-plans/:id', requireAdminAuth, async (req, res) => {
+  try {
+    const plan = await prisma.droneOperationPlan.findUnique({ where: { id: req.params.id } })
+    if (!plan) { res.status(404).json({ error: 'DRONE_PLAN_NOT_FOUND' }); return }
+    res.json(serializeForJson({ success: true, plan }))
+  } catch {
+    res.status(500).json({ error: 'DRONE_PLAN_FETCH_FAILED' })
+  }
+})
+
+// POST /api/admin/drone-plans/:id/approve — Approve a submitted plan
+router.post('/drone-plans/:id/approve', requireAdminAuth, async (req, res) => {
+  try {
+    const plan = await prisma.droneOperationPlan.findUnique({ where: { id: req.params.id } })
+    if (!plan) { res.status(404).json({ error: 'DRONE_PLAN_NOT_FOUND' }); return }
+    if (plan.status !== 'SUBMITTED') {
+      res.status(409).json({ error: 'CANNOT_APPROVE', detail: `Plan is ${plan.status}, not SUBMITTED` }); return
+    }
+
+    const updated = await prisma.droneOperationPlan.update({
+      where: { id: req.params.id },
+      data: {
+        status:     'APPROVED',
+        approvedAt: new Date(),
+        approvedBy: req.adminAuth!.adminUserId,
+      },
+    })
+
+    await prisma.auditLog.create({
+      data: {
+        actorType: 'ADMIN', actorId: req.adminAuth!.adminUserId, actorRole: req.adminAuth!.adminRole,
+        action: 'DRONE_PLAN_APPROVED', resourceType: 'drone_operation_plan', resourceId: plan.id,
+        detailJson: JSON.stringify({ planId: plan.planId }),
+      }
+    })
+
+    log.info('drone_plan_approved', { data: { planId: plan.planId, approvedBy: req.adminAuth!.adminUserId } })
+    res.json(serializeForJson({ success: true, plan: updated }))
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('drone_plan_approve_error', { data: { error: msg } })
+    res.status(500).json({ error: 'DRONE_PLAN_APPROVE_FAILED' })
+  }
+})
+
+// POST /api/admin/drone-plans/:id/reject — Reject a submitted plan
+router.post('/drone-plans/:id/reject', requireAdminAuth, async (req, res) => {
+  try {
+    const { reason } = req.body
+    if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+      res.status(400).json({ error: 'REASON_REQUIRED' }); return
+    }
+
+    const plan = await prisma.droneOperationPlan.findUnique({ where: { id: req.params.id } })
+    if (!plan) { res.status(404).json({ error: 'DRONE_PLAN_NOT_FOUND' }); return }
+    if (plan.status !== 'SUBMITTED') {
+      res.status(409).json({ error: 'CANNOT_REJECT', detail: `Plan is ${plan.status}, not SUBMITTED` }); return
+    }
+
+    const updated = await prisma.droneOperationPlan.update({
+      where: { id: req.params.id },
+      data: {
+        status:          'REJECTED',
+        rejectionReason: reason.trim(),
+      },
+    })
+
+    await prisma.auditLog.create({
+      data: {
+        actorType: 'ADMIN', actorId: req.adminAuth!.adminUserId, actorRole: req.adminAuth!.adminRole,
+        action: 'DRONE_PLAN_REJECTED', resourceType: 'drone_operation_plan', resourceId: plan.id,
+        detailJson: JSON.stringify({ planId: plan.planId, reason: reason.trim() }),
+      }
+    })
+
+    log.warn('drone_plan_rejected', { data: { planId: plan.planId, reason: reason.trim() } })
+    res.json(serializeForJson({ success: true, plan: updated }))
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('drone_plan_reject_error', { data: { error: msg } })
+    res.status(500).json({ error: 'DRONE_PLAN_REJECT_FAILED' })
+  }
 })
 
 export default router

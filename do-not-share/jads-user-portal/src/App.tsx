@@ -1,31 +1,35 @@
 import React, { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom'
-import { LoginPage }        from './pages/LoginPage'
-import { DashboardPage }    from './pages/DashboardPage'
-import { UsersPage }        from './pages/UsersPage'
-import { SpecialUsersPage } from './pages/SpecialUsersPage'
-import { AirspacePage }     from './pages/AirspacePage'
-import { FlightPlansPage }  from './pages/FlightPlansPage'
-import { DroneZonesPage }    from './pages/DroneZonesPage'
-import { DroneMissionsPage } from './pages/DroneMissionsPage'
-import { DroneOperationPlansPage } from './pages/DroneOperationPlansPage'
-import { useAdminAuth }     from './hooks/useAdminAuth'
-import { T }                from './theme'
-export { T }                from './theme'
+import { LoginPage }             from './pages/LoginPage'
+import { DashboardPage }         from './pages/DashboardPage'
+import { FileFlightPlanPage }    from './pages/FileFlightPlanPage'
+import { FileDronePlanPage }     from './pages/FileDronePlanPage'
+import { FlightPlanDetailPage }  from './pages/FlightPlanDetailPage'
+import { EditFlightPlanPage }    from './pages/EditFlightPlanPage'
+import { DronePlanDetailPage }   from './pages/DronePlanDetailPage'
+import { useAuth }               from './hooks/useAuth'
+
+// ── Theme Constants (blue-tinted variant for user portal) ─────────────────────
+export const T = {
+  bg:         '#050A08',
+  surface:    '#0A0E12',
+  border:     '#1A2030',
+  primary:    '#00AAFF',
+  amber:      '#FFB800',
+  red:        '#FF3B3B',
+  muted:      '#4A6A7A',
+  text:       '#b0c8d8',
+  textBright: '#d0e8f8',
+}
 
 const NAV_ITEMS = [
-  { to: '/',              label: 'DASHBOARD',     icon: '///' },
-  { to: '/users',         label: 'USERS',         icon: 'USR' },
-  { to: '/special-users', label: 'SPECIAL USERS', icon: 'GOV' },
-  { to: '/airspace',      label: 'AIRSPACE',      icon: 'AIR' },
-  { to: '/drone-zones',    label: 'DRONE ZONES',    icon: 'DRN' },
-  { to: '/drone-missions', label: 'DRONE MISSIONS', icon: 'MSN' },
-  { to: '/flight-plans',  label: 'FLIGHT PLANS',   icon: 'FPL' },
-  { to: '/drone-plans',   label: 'DRONE PLANS',    icon: 'DOP' },
+  { to: '/',                 label: 'DASHBOARD',  icon: '///' },
+  { to: '/file-flight-plan', label: 'FILE FPL',   icon: 'FPL' },
+  { to: '/file-drone-plan',  label: 'FILE DRONE', icon: 'DOP' },
 ]
 
 function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  const { logout } = useAdminAuth()
+  const { logout } = useAuth()
   const w = collapsed ? '52px' : '200px'
 
   return (
@@ -45,7 +49,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
         <span style={{ color: T.primary, fontWeight: 700, fontSize: '1rem' }}>
           {collapsed ? 'J' : 'JADS'}
         </span>
-        {!collapsed && <span style={{ fontSize: '0.65rem', color: T.muted }}>ADMIN v4.0</span>}
+        {!collapsed && <span style={{ fontSize: '0.6rem', color: T.muted }}>USER PORTAL v4.0</span>}
       </div>
 
       <div style={{ flex: 1, padding: '0.5rem 0' }}>
@@ -82,7 +86,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
 }
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
-  const { token } = useAdminAuth()
+  const { token } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   if (!token) return <Navigate to="/login" replace />
   return (
@@ -98,14 +102,12 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/"              element={<ProtectedLayout><DashboardPage /></ProtectedLayout>} />
-        <Route path="/users"         element={<ProtectedLayout><UsersPage /></ProtectedLayout>} />
-        <Route path="/special-users" element={<ProtectedLayout><SpecialUsersPage /></ProtectedLayout>} />
-        <Route path="/airspace"      element={<ProtectedLayout><AirspacePage /></ProtectedLayout>} />
-        <Route path="/drone-zones"    element={<ProtectedLayout><DroneZonesPage /></ProtectedLayout>} />
-        <Route path="/drone-missions" element={<ProtectedLayout><DroneMissionsPage /></ProtectedLayout>} />
-        <Route path="/flight-plans"  element={<ProtectedLayout><FlightPlansPage /></ProtectedLayout>} />
-        <Route path="/drone-plans"  element={<ProtectedLayout><DroneOperationPlansPage /></ProtectedLayout>} />
+        <Route path="/"                    element={<ProtectedLayout><DashboardPage /></ProtectedLayout>} />
+        <Route path="/file-flight-plan"    element={<ProtectedLayout><FileFlightPlanPage /></ProtectedLayout>} />
+        <Route path="/file-drone-plan"     element={<ProtectedLayout><FileDronePlanPage /></ProtectedLayout>} />
+        <Route path="/flight-plan/:id"     element={<ProtectedLayout><FlightPlanDetailPage /></ProtectedLayout>} />
+        <Route path="/edit-flight-plan/:id" element={<ProtectedLayout><EditFlightPlanPage /></ProtectedLayout>} />
+        <Route path="/drone-plan/:id"      element={<ProtectedLayout><DronePlanDetailPage /></ProtectedLayout>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

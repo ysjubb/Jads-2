@@ -195,6 +195,11 @@ export class FlightPlanService {
           magneticTrackDeg:  step2.magneticTrackDeg,
           totalEet:   step2.totalEet,
           cruiseTasKts:      step2.cruiseTasKts,
+          routeLegs: step2.legs.map((leg: any) => ({
+            from: { identifier: leg.from.identifier, type: leg.from.type, latDeg: leg.from.latDeg, lonDeg: leg.from.lonDeg },
+            to:   { identifier: leg.to.identifier,   type: leg.to.type,   latDeg: leg.to.latDeg,   lonDeg: leg.to.lonDeg },
+            distanceNm: leg.distanceNm,
+          })),
         }),
         status:                     'VALIDATED' as any,
         totalEet:            String(Math.round(step2.totalEet)),

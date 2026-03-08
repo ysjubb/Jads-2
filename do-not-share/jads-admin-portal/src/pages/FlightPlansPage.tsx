@@ -1,5 +1,7 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAdminAuth, adminAxios } from '../hooks/useAdminAuth'
+
+declare const L: any
 
 const T = {
   bg:       '#050A08',
@@ -651,6 +653,269 @@ function ClearancePanel({ plan, token, onDone }: {
   )
 }
 
+// ── Flight Plan Detail Panel ──────────────────────────────────────────────────
+
+interface FullPlan {
+  id: string; aircraftId: string; aircraftType: string; status: string
+  flightRules: string; flightType: string; wakeTurbulence: string
+  equipment: string; surveillance: string | null; survivalEquipment: string | null
+  adep: string; ades: string; altn1: string | null; altn2: string | null
+  eobt: string; originalEobt: string | null; eet: string; totalEet: string | null
+  endurance: string | null; personsOnBoard: number | null
+  route: string; cruisingLevel: string; cruisingSpeed: string
+  filedBy: string; filedByType: string; filedAt: string | null
+  clearedAt: string | null; adcNumber: string | null; ficNumber: string | null
+  atsRef: string | null; notifyEmail: string | null; notifyMobile: string | null
+  item18: string | null; item19: string | null
+  aftnMessage: string | null; aftnTransmissionStatus: string | null
+  aftnTransmittedAt: string | null
+  cnlAftnMessage: string | null; arrAftnMessage: string | null; dlaAftnMessage: string | null
+  createdAt: string; updatedAt: string
+}
+
+function fmtDate(d: string | null | undefined): string {
+  if (!d) return '—'
+  try { return new Date(d).toISOString().replace('T', ' ').slice(0, 19) + ' UTC' }
+  catch { return d }
+}
+
+interface RoutePoint { identifier: string; type: string; latDeg: number; lonDeg: number }
+
+function DetailPanel({ planId, token, onClose }: {
+  planId: string; token: string; onClose: () => void
+}) {
+  const [plan, setPlan]       = useState<FullPlan | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState<string | null>(null)
+  const [routePoints, setRoutePoints] = useState<RoutePoint[]>([])
+  const [routeAdep, setRouteAdep] = useState('')
+  const [routeAdes, setRouteAdes] = useState('')
+  const routeMapRef = useRef<HTMLDivElement | null>(null)
+  const routeLeafletRef = useRef<any>(null)
+
+  useEffect(() => {
+    const ax = adminAxios(token)
+    Promise.all([
+      ax.get(`/flight-plans/${planId}`),
+      ax.get(`/flight-plans/${planId}/route-geometry`),
+    ])
+      .then(([pRes, rRes]) => {
+        setPlan(pRes.data.plan ?? pRes.data)
+        setRoutePoints(rRes.data.points ?? [])
+        setRouteAdep(rRes.data.adep ?? '')
+        setRouteAdes(rRes.data.ades ?? '')
+      })
+      .catch(e => setError(e.response?.data?.error ?? 'FETCH_FAILED'))
+      .finally(() => setLoading(false))
+  }, [planId, token])
+
+  // ── Build route map ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!routeMapRef.current || routePoints.length === 0) return
+    if (typeof L === 'undefined') return
+
+    if (routeLeafletRef.current) { routeLeafletRef.current.remove(); routeLeafletRef.current = null }
+
+    const map = L.map(routeMapRef.current)
+    routeLeafletRef.current = map
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
+    }).addTo(map)
+
+    const latlngs = routePoints.map(p => [p.latDeg, p.lonDeg])
+
+    // Route polyline — blue
+    L.polyline(latlngs, { color: '#4488FF', weight: 3, opacity: 0.85 }).addTo(map)
+
+    // ADEP marker — green
+    const depPt = routePoints[0]
+    L.circleMarker([depPt.latDeg, depPt.lonDeg], {
+      radius: 10, fillColor: T.primary, color: T.bg, fillOpacity: 1, weight: 2,
+    }).bindTooltip(`ADEP: ${routeAdep}`, { permanent: true, direction: 'top', offset: [0, -10] }).addTo(map)
+
+    // ADES marker — purple
+    const arrPt = routePoints[routePoints.length - 1]
+    L.circleMarker([arrPt.latDeg, arrPt.lonDeg], {
+      radius: 10, fillColor: '#B060FF', color: T.bg, fillOpacity: 1, weight: 2,
+    }).bindTooltip(`ADES: ${routeAdes}`, { permanent: true, direction: 'top', offset: [0, -10] }).addTo(map)
+
+    // Intermediate waypoints — amber dots
+    routePoints.slice(1, -1).forEach(pt => {
+      L.circleMarker([pt.latDeg, pt.lonDeg], {
+        radius: 6, fillColor: T.amber, color: T.bg, fillOpacity: 0.9, weight: 1,
+      }).bindTooltip(pt.identifier, { direction: 'top', offset: [0, -6] }).addTo(map)
+    })
+
+    map.fitBounds(latlngs as any, { padding: [30, 30] })
+
+    return () => { if (routeLeafletRef.current) { routeLeafletRef.current.remove(); routeLeafletRef.current = null } }
+  }, [routePoints, routeAdep, routeAdes])
+
+  const row = (label: string, value: string | null | undefined, colour?: string) => (
+    <div style={{ display: 'flex', padding: '0.35rem 0', borderBottom: `1px solid ${T.border}` }}>
+      <span style={{ width: '160px', flexShrink: 0, color: T.muted, fontSize: '0.78rem' }}>{label}</span>
+      <span style={{ color: colour ?? T.textBright, fontSize: '0.82rem', fontFamily: 'monospace',
+        wordBreak: 'break-all' }}>{value || '—'}</span>
+    </div>
+  )
+
+  const section = (title: string, children: React.ReactNode) => (
+    <div style={{ marginBottom: '1rem' }}>
+      <div style={{ fontWeight: 600, fontSize: '0.8rem', color: T.primary, marginBottom: '0.4rem',
+        borderBottom: `1px solid ${T.border}`, paddingBottom: '0.3rem', letterSpacing: '0.04em' }}>
+        {title}
+      </div>
+      {children}
+    </div>
+  )
+
+  const statusColour = plan ? (STATUS_COLOUR[plan.status] ?? T.muted) : T.muted
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: T.surface, borderRadius: '8px', width: '900px', maxWidth: '95vw',
+        maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+        boxShadow: `0 8px 32px rgba(0,255,136,0.1)`, border: `1px solid ${T.border}`,
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '1rem 1.25rem', borderBottom: `1px solid ${T.border}`,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span style={{ fontWeight: 700, fontSize: '1rem', color: T.textBright }}>
+              {plan?.aircraftId ?? 'Flight Plan'}
+            </span>
+            {plan && (
+              <span style={{ color: statusColour, fontWeight: 600, fontSize: '0.8rem',
+                padding: '0.15rem 0.5rem', background: statusColour + '18',
+                borderRadius: '3px' }}>
+                {STATUS_LABELS[plan.status] ?? plan.status}
+              </span>
+            )}
+          </div>
+          <button onClick={onClose}
+            style={{ border: 'none', background: 'none', fontSize: '1.25rem',
+              cursor: 'pointer', color: T.muted, lineHeight: 1 }}>×</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '1.25rem' }}>
+          {loading && <div style={{ color: T.muted, padding: '2rem', textAlign: 'center' }}>Loading…</div>}
+          {error && <div style={{ color: T.red, padding: '1rem', background: T.red + '15',
+            border: `1px solid ${T.red}40`, borderRadius: '4px' }}>{error}</div>}
+
+          {plan && (<>
+            {/* Route Map */}
+            {routePoints.length > 0 && (
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ fontWeight: 600, fontSize: '0.8rem', color: T.primary, marginBottom: '0.4rem',
+                  borderBottom: `1px solid ${T.border}`, paddingBottom: '0.3rem', letterSpacing: '0.04em' }}>
+                  ROUTE MAP — {routeAdep} → {routeAdes}
+                </div>
+                <div ref={routeMapRef} style={{
+                  height: '280px', borderRadius: '6px', border: `1px solid ${T.border}`,
+                  background: T.bg,
+                }} />
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '1.25rem' }}>
+              {/* Left column */}
+              <div style={{ flex: 2 }}>
+                {section('FLIGHT IDENTIFICATION', <>
+                  {row('Callsign (Item 7)', plan.aircraftId)}
+                  {row('Aircraft Type', plan.aircraftType)}
+                  {row('Wake Turbulence', plan.wakeTurbulence)}
+                  {row('Flight Rules', plan.flightRules)}
+                  {row('Flight Type', FTYPE_LABELS[plan.flightType] ?? plan.flightType)}
+                  {row('Equipment', plan.equipment)}
+                  {row('Surveillance', plan.surveillance)}
+                  {row('Survival Equipment', plan.survivalEquipment)}
+                  {row('Persons on Board', plan.personsOnBoard?.toString())}
+                </>)}
+
+                {section('ROUTE', <>
+                  {row('ADEP', plan.adep, T.primary)}
+                  {row('ADES', plan.ades, '#B060FF')}
+                  {row('Alternate 1', plan.altn1)}
+                  {row('Alternate 2', plan.altn2)}
+                  {row('EOBT', fmtDate(plan.eobt))}
+                  {plan.originalEobt && row('Original EOBT', fmtDate(plan.originalEobt), T.muted)}
+                  {row('EET', plan.eet)}
+                  {row('Total EET', plan.totalEet)}
+                  {row('Endurance', plan.endurance)}
+                  {row('Cruising Level', plan.cruisingLevel)}
+                  {row('Cruising Speed', plan.cruisingSpeed)}
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <div style={{ color: T.muted, fontSize: '0.72rem', marginBottom: '0.2rem' }}>Route String</div>
+                    <pre style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: '4px',
+                      padding: '0.5rem', fontSize: '0.78rem', color: T.textBright, whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all', fontFamily: 'monospace', margin: 0 }}>
+                      {plan.route || '—'}
+                    </pre>
+                  </div>
+                </>)}
+
+                {(plan.item18 || plan.item19) && section('OTHER INFORMATION', <>
+                  {plan.item18 && row('Item 18', plan.item18)}
+                  {plan.item19 && row('Item 19', plan.item19)}
+                </>)}
+              </div>
+
+              {/* Right column */}
+              <div style={{ width: '280px', flexShrink: 0 }}>
+                {section('CLEARANCE', <>
+                  {row('ADC Number', plan.adcNumber, plan.adcNumber ? T.primary : undefined)}
+                  {row('FIC Number', plan.ficNumber, plan.ficNumber ? T.primary : undefined)}
+                  {row('ATS Reference', plan.atsRef)}
+                  {row('Cleared At', fmtDate(plan.clearedAt))}
+                </>)}
+
+                {section('FILING', <>
+                  {row('Filed By', plan.filedBy)}
+                  {row('Type', plan.filedByType)}
+                  {row('Filed At', fmtDate(plan.filedAt))}
+                  {row('Created', fmtDate(plan.createdAt))}
+                  {row('Updated', fmtDate(plan.updatedAt))}
+                </>)}
+
+                {section('NOTIFICATIONS', <>
+                  {row('Email', plan.notifyEmail)}
+                  {row('Mobile', plan.notifyMobile)}
+                </>)}
+
+                {plan.aftnTransmissionStatus && section('AFTN TRANSMISSION', <>
+                  {row('Status', plan.aftnTransmissionStatus)}
+                  {row('Transmitted', fmtDate(plan.aftnTransmittedAt))}
+                </>)}
+              </div>
+            </div>
+          </>)}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: '0.75rem 1.25rem', borderTop: `1px solid ${T.border}`,
+          display: 'flex', justifyContent: 'flex-end',
+        }}>
+          <button onClick={onClose}
+            style={{ padding: '0.4rem 1rem', borderRadius: '4px', cursor: 'pointer',
+              border: `1px solid ${T.border}`, background: 'transparent',
+              color: T.text, fontSize: '0.875rem' }}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export function FlightPlansPage() {
@@ -665,6 +930,7 @@ export function FlightPlansPage() {
   const [error, setError]         = useState<string | null>(null)
   const [selectedPlan, setSelected] = useState<FlightPlan | null>(null)
   const [clearancePlan, setClearancePlan] = useState<FlightPlan | null>(null)
+  const [detailPlanId, setDetailPlanId] = useState<string | null>(null)
 
   const fetchPlans = useCallback(async () => {
     if (!token) return
@@ -771,7 +1037,10 @@ export function FlightPlansPage() {
             </thead>
             <tbody>
               {plans.map(p => (
-                <tr key={p.id} style={{ borderBottom: `1px solid ${T.border}` }}>
+                <tr key={p.id} style={{ borderBottom: `1px solid ${T.border}`, cursor: 'pointer' }}
+                  onClick={() => setDetailPlanId(p.id)}
+                  onMouseEnter={e => (e.currentTarget.style.background = T.primary + '08')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                   <td style={{ padding:'0.5rem 0.75rem', fontFamily:'monospace',
                     fontWeight:600, fontSize:'0.8rem', color: T.textBright }}>
                     {p.aircraftId}
@@ -815,7 +1084,7 @@ export function FlightPlansPage() {
                   </td>
                   <td style={{ padding:'0.5rem 0.75rem' }}>
                     <button
-                      onClick={() => setSelected(p)}
+                      onClick={e => { e.stopPropagation(); setSelected(p) }}
                       style={{
                         padding:'0.2rem 0.5rem',
                         background: p.aftnMessage ? T.primary + '15' : 'transparent',
@@ -830,7 +1099,7 @@ export function FlightPlansPage() {
                   <td style={{ padding:'0.5rem 0.75rem' }}>
                     {canIssueClearance(p.status) ? (
                       <button
-                        onClick={() => setClearancePlan(p)}
+                        onClick={e => { e.stopPropagation(); setClearancePlan(p) }}
                         style={{
                           padding: '0.2rem 0.5rem',
                           background: T.amber + '20',
@@ -892,6 +1161,15 @@ export function FlightPlansPage() {
           plan={clearancePlan}
           token={token}
           onDone={() => { setClearancePlan(null); fetchPlans() }}
+        />
+      )}
+
+      {/* Flight Plan Detail Modal */}
+      {detailPlanId && token && (
+        <DetailPanel
+          planId={detailPlanId}
+          token={token}
+          onClose={() => setDetailPlanId(null)}
         />
       )}
     </div>

@@ -24,9 +24,9 @@ export function useAuditAuth() {
         { headers: { 'X-JADS-Version': '4.0' } }
       )
       localStorage.setItem(TOKEN_KEY, data.accessToken)
-      localStorage.setItem(ROLE_KEY,  data.role ?? 'AUDITOR')
+      localStorage.setItem(ROLE_KEY,  data.adminRole ?? data.role ?? 'AUDITOR')
       setToken(data.accessToken)
-      setRole(data.role ?? 'AUDITOR')
+      setRole(data.adminRole ?? data.role ?? 'AUDITOR')
       return true
     } catch (e: any) {
       setError(e.response?.data?.error ?? 'LOGIN_FAILED')

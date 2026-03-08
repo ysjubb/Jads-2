@@ -637,15 +637,46 @@ export function MissionDetailPage() {
       mk.addTo(map)
     })
 
-    // Violation markers — coloured by severity, larger radius
+    // Violation markers — labelled with type + timestamp directly on map
+    const VTYPE_ABBR: Record<string, string> = {
+      GEOFENCE_BREACH: 'GEO', ALTITUDE_VIOLATION: 'ALT', TIME_WINDOW_VIOLATION: 'TIME',
+      ZONE_INCURSION: 'ZONE', GNSS_REJECTED: 'GNSS', AGL_EXCEEDED: 'AGL',
+    }
     violations.forEach(v => {
       const pt = validPts.find(t => t.sequence === Number(v.sequence))
       if (!pt) return
-      L.circleMarker(
+      const ts = v.timestampUtcMs ? new Date(parseInt(v.timestampUtcMs)).toISOString().replace('T', ' ').slice(0, 19) + ' UTC' : '—'
+      const tsShort = v.timestampUtcMs ? new Date(parseInt(v.timestampUtcMs)).toISOString().slice(11, 16) : ''
+      const abbr = VTYPE_ABBR[v.violationType] ?? v.violationType.slice(0, 4).toUpperCase()
+      const col = SEVERITY_COLOURS[v.severity] ?? T.red
+      let detailExcerpt = ''
+      try { const d = JSON.parse(v.detailJson); detailExcerpt = JSON.stringify(d, null, 2).slice(0, 200) } catch { detailExcerpt = v.detailJson?.slice(0, 200) ?? '' }
+
+      // Labelled marker with severity-coloured icon + type abbreviation + time
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="display:flex;align-items:center;gap:3px;white-space:nowrap">` +
+          `<div style="width:16px;height:16px;border-radius:50%;background:${col};border:2px solid ${T.bg};box-shadow:0 0 4px ${col}80"></div>` +
+          `<span style="font-family:monospace;font-size:10px;font-weight:700;color:${col};text-shadow:0 0 3px #000,0 0 6px #000,1px 1px 2px #000;letter-spacing:0.03em">${abbr} ${tsShort}</span>` +
+          `</div>`,
+        iconSize: [100, 20],
+        iconAnchor: [8, 10],
+      })
+      L.marker(
         [pt.decoded.latitudeDeg, pt.decoded.longitudeDeg],
-        { radius: 11, fillColor: SEVERITY_COLOURS[v.severity] ?? T.red,
-          color: T.bg, fillOpacity: 0.9, weight: 2 }
-      ).bindTooltip(`${v.violationType} (${v.severity})`).addTo(map)
+        { icon, zIndexOffset: 1000 }
+      )
+        .bindTooltip(`${v.violationType} (${v.severity}) · ${ts}`)
+        .bindPopup(
+          `<div style="font-family:monospace;font-size:12px;max-width:300px">` +
+          `<b style="color:${col}">${v.severity} — ${v.violationType}</b><br/>` +
+          `<b>Seq:</b> ${v.sequence}<br/>` +
+          `<b>Time:</b> ${ts}<br/>` +
+          (detailExcerpt ? `<pre style="font-size:10px;max-height:120px;overflow:auto;margin:4px 0;background:#111;padding:4px;border-radius:3px;color:#b0c8b8">${detailExcerpt}</pre>` : '') +
+          `</div>`,
+          { maxWidth: 350 }
+        )
+        .addTo(map)
     })
 
     if (bbox) {

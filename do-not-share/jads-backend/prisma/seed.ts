@@ -564,6 +564,21 @@ async function main() {
       notifyEmail:   'pilot.demo@jads.dev',
       notifyMobile:  '9999000001',
       filedAt:       new Date(),
+      validationResultJson: JSON.stringify({
+        errors: [], warnings: [],
+        magneticTrackDeg: 112, totalEet: 105, cruiseTasKts: 450,
+        routeLegs: [
+          { from: { identifier: 'VIDP', type: 'AERODROME', latDeg: 28.5665, lonDeg: 77.1031 },
+            to:   { identifier: 'GANDO', type: 'WAYPOINT',  latDeg: 27.6000, lonDeg: 78.4000 },
+            distanceNm: 72 },
+          { from: { identifier: 'GANDO', type: 'WAYPOINT',  latDeg: 27.6000, lonDeg: 78.4000 },
+            to:   { identifier: 'PAKER', type: 'WAYPOINT',  latDeg: 26.5000, lonDeg: 80.0000 },
+            distanceNm: 95 },
+          { from: { identifier: 'PAKER', type: 'WAYPOINT',  latDeg: 26.5000, lonDeg: 80.0000 },
+            to:   { identifier: 'VIAL',  type: 'AERODROME', latDeg: 25.4401, lonDeg: 81.7340 },
+            distanceNm: 105 },
+        ],
+      }),
     },
   })
   console.log(`  ✓ Flight Plan 1 (FILED, IFR VT-ABC VIDP→VIAL F330 RVSM): ${fpl1.id}`)
@@ -594,6 +609,15 @@ async function main() {
       adcNumber:     'ADC/AFMLU/DEL/2024/1837',
       filedAt:       new Date(Date.now() - 8200000),
       clearedAt:     new Date(Date.now() - 7800000),
+      validationResultJson: JSON.stringify({
+        errors: [], warnings: [],
+        magneticTrackDeg: 25, totalEet: 55, cruiseTasKts: 250,
+        routeLegs: [
+          { from: { identifier: 'VIGG', type: 'AERODROME', latDeg: 26.2933, lonDeg: 78.2278 },
+            to:   { identifier: 'VIDP', type: 'AERODROME', latDeg: 28.5665, lonDeg: 77.1031 },
+            distanceNm: 155 },
+        ],
+      }),
     },
   })
   console.log(`  ✓ Flight Plan 2 (FULLY_CLEARED, VFR VT-DEF VIGG→VIDP F080 with ADC): ${fpl2.id}`)

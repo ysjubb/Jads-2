@@ -218,6 +218,146 @@ router.post('/:id/arrive', requireAuth, requireRole(FPL_ROLES), async (req, res)
   }
 })
 
+// ── Edit before clearance ────────────────────────────────────────────────────
+// PUT /api/flight-plans/:id — amend a filed plan before ADC/FIC clearance
+const EDITABLE_STATUSES = ['FILED', 'ACKNOWLEDGED', 'PENDING_CLEARANCE']
+const EDITABLE_FIELDS   = [
+  'eobt', 'route', 'cruisingLevel', 'cruisingSpeed',
+  'altn1', 'altn2', 'eet', 'endurance', 'personsOnBoard',
+  'notifyEmail', 'notifyMobile', 'additionalEmails', 'item18', 'remarks',
+]
+
+router.put('/:id', requireAuth, async (req, res) => {
+  try {
+    const plan = await prisma.mannedFlightPlan.findUnique({ where: { id: req.params.id } })
+    if (!plan)                                { res.status(404).json({ error: 'FLIGHT_PLAN_NOT_FOUND' });  return }
+    if (plan.filedBy !== req.auth!.userId)    { res.status(403).json({ error: 'NOT_YOUR_FLIGHT_PLAN' });   return }
+    if (!EDITABLE_STATUSES.includes(plan.status)) {
+      res.status(409).json({ error: 'CANNOT_EDIT_AFTER_CLEARANCE', status: plan.status }); return
+    }
+
+    // Build update payload from whitelisted fields only
+    const data: Record<string, unknown> = {}
+    for (const f of EDITABLE_FIELDS) {
+      if (req.body[f] !== undefined) {
+        if (f === 'eobt')           data.eobt = new Date(req.body.eobt)
+        else if (f === 'personsOnBoard') data.personsOnBoard = parseInt(req.body.personsOnBoard) || null
+        else if (f === 'additionalEmails') data.additionalEmails = Array.isArray(req.body.additionalEmails) ? req.body.additionalEmails : []
+        else                        data[f] = req.body[f]
+      }
+    }
+    if (Object.keys(data).length === 0) { res.status(400).json({ error: 'NO_EDITABLE_FIELDS' }); return }
+
+    // If route changed, re-validate via route planning service
+    if (data.route && data.route !== plan.route) {
+      try {
+        // planRoute expects (waypoints: AtsWaypoint[], routeTypes, groundspeedKts, flightLevel)
+        // For re-validation on edit, we parse existing validation to get waypoints
+        const existingVr = JSON.parse(plan.validationResultJson ?? '{}')
+        const wpList = existingVr.routeLegs?.length > 0
+          ? (() => {
+              const seen = new Set<string>()
+              const pts: any[] = []
+              for (const leg of existingVr.routeLegs) {
+                if (!seen.has(leg.from.identifier)) { seen.add(leg.from.identifier); pts.push({ identifier: leg.from.identifier, type: leg.from.type ?? 'FIX', lat: leg.from.latDeg, lon: leg.from.lonDeg }) }
+                if (!seen.has(leg.to.identifier))   { seen.add(leg.to.identifier);   pts.push({ identifier: leg.to.identifier,   type: leg.to.type ?? 'FIX',   lat: leg.to.latDeg,   lon: leg.to.lonDeg }) }
+              }
+              return pts
+            })()
+          : []
+
+        if (wpList.length >= 2) {
+          const flStr = (data.cruisingLevel as string) ?? plan.cruisingLevel
+          const fl = parseInt(String(flStr).replace(/\D/g, '')) || 350
+          const step2 = routeService.planRoute(
+            wpList,
+            wpList.slice(0, -1).map(() => ({ type: 'DIRECT' as const })),
+            480, fl
+          )
+          data.validationResultJson = JSON.stringify({
+            ...existingVr,
+            routeLegs: step2.segments?.map((seg: any) => ({
+              from: { identifier: seg.from.identifier, type: seg.from.type, latDeg: seg.from.lat, lonDeg: seg.from.lon },
+              to:   { identifier: seg.to.identifier,   type: seg.to.type,   latDeg: seg.to.lat,   lonDeg: seg.to.lon },
+              distanceNm: seg.distanceNm,
+            })) ?? [],
+            totalEet: step2.totalEet,
+          })
+          if (step2.totalEet) data.totalEet = String(step2.totalEet)
+        }
+      } catch (routeErr) {
+        log.warn('route_revalidation_failed', { data: { error: String(routeErr) } })
+        // Allow edit even if route validation fails — field values still updated
+      }
+    }
+
+    data.amendmentCount = (plan.amendmentCount ?? 0) + 1
+    data.lastAmendmentAt = new Date()
+    data.updatedAt = new Date()
+
+    const updated = await prisma.mannedFlightPlan.update({
+      where: { id: req.params.id },
+      data: data as any,
+    })
+
+    // Audit log
+    await prisma.auditLog.create({ data: {
+      actorType:    'USER',
+      actorId:      req.auth!.userId,
+      actorRole:    'PILOT',
+      action:       'FLIGHT_PLAN_AMENDED',
+      resourceType: 'manned_flight_plan',
+      resourceId:   plan.id,
+      detailJson:   JSON.stringify({ amendmentCount: data.amendmentCount, changedFields: Object.keys(data).filter(k => !['amendmentCount', 'lastAmendmentAt', 'updatedAt'].includes(k)) }),
+    }})
+
+    log.info('flight_plan_amended', { data: { planId: plan.id, amendment: data.amendmentCount } })
+    res.json({ success: true, plan: serializeForJson(updated) })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('flight_plan_edit_error', { data: { error: msg } })
+    res.status(500).json({ error: 'EDIT_FAILED' })
+  }
+})
+
+// GET /api/flight-plans/:id/route-geometry — waypoint coordinates for map
+router.get('/:id/route-geometry', requireAuth, async (req, res) => {
+  try {
+    const plan = await prisma.mannedFlightPlan.findUnique({
+      where: { id: req.params.id },
+      select: { adep: true, ades: true, route: true, validationResultJson: true, filedBy: true }
+    })
+    if (!plan) { res.status(404).json({ error: 'FLIGHT_PLAN_NOT_FOUND' }); return }
+    if (plan.filedBy !== req.auth!.userId) { res.status(403).json({ error: 'NOT_YOUR_FLIGHT_PLAN' }); return }
+
+    let points: { identifier: string; type: string; latDeg: number; lonDeg: number }[] = []
+    try {
+      const vr = JSON.parse(plan.validationResultJson ?? '{}')
+      if (vr.routeLegs && vr.routeLegs.length > 0) {
+        const seen = new Set<string>()
+        for (const leg of vr.routeLegs) {
+          if (!seen.has(leg.from.identifier)) { seen.add(leg.from.identifier); points.push(leg.from) }
+          if (!seen.has(leg.to.identifier))   { seen.add(leg.to.identifier);   points.push(leg.to) }
+        }
+      }
+    } catch { /* validationResultJson may not have routeLegs */ }
+
+    // Fallback: look up ADEP/ADES from AerodromeRecord
+    if (points.length === 0) {
+      const [dep, dest] = await Promise.all([
+        prisma.aerodromeRecord.findFirst({ where: { OR: [{ icao: plan.adep }, { icaoCode: plan.adep }] } }),
+        prisma.aerodromeRecord.findFirst({ where: { OR: [{ icao: plan.ades }, { icaoCode: plan.ades }] } }),
+      ])
+      if (dep)  points.push({ identifier: plan.adep, type: 'AERODROME', latDeg: dep.latDeg ?? dep.latitudeDeg ?? 0,  lonDeg: dep.lonDeg ?? dep.longitudeDeg ?? 0 })
+      if (dest) points.push({ identifier: plan.ades, type: 'AERODROME', latDeg: dest.latDeg ?? dest.latitudeDeg ?? 0, lonDeg: dest.lonDeg ?? dest.longitudeDeg ?? 0 })
+    }
+
+    res.json({ success: true, adep: plan.adep, ades: plan.ades, route: plan.route, points })
+  } catch {
+    res.status(500).json({ error: 'ROUTE_GEOMETRY_FAILED' })
+  }
+})
+
 // GET /api/flight-plans/:id — full plan with ADC/FIC refs
 router.get('/:id', requireAuth, async (req, res) => {
   try {

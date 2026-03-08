@@ -3,7 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react
 import { AuditLoginPage }    from './pages/AuditLoginPage'
 import { MissionsPage }      from './pages/MissionsPage'
 import { MissionDetailPage } from './pages/MissionDetailPage'
-import { FlightPlansPage }   from './pages/FlightPlansPage'
+import { FlightPlansPage }       from './pages/FlightPlansPage'
+import { FlightPlanDetailPage } from './pages/FlightPlanDetailPage'
 import { ViolationsPage }    from './pages/ViolationsPage'
 import { useAuditAuth }      from './hooks/useAuditAuth'
 
@@ -159,6 +160,9 @@ export default function App() {
         } />
         <Route path="/flight-plans" element={
           <Protected><Layout><FlightPlansPage /></Layout></Protected>
+        } />
+        <Route path="/flight-plans/:id" element={
+          <Protected><Layout><FlightPlanDetailPage /></Layout></Protected>
         } />
         <Route path="/violations" element={
           <Protected><Layout><ViolationsPage /></Layout></Protected>

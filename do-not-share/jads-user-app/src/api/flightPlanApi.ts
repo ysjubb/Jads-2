@@ -63,6 +63,28 @@ export async function fetchClearanceStatus(flightPlanId: string): Promise<Cleara
   return res.json()
 }
 
+export interface RoutePoint {
+  identifier: string
+  type:       string
+  latDeg:     number
+  lonDeg:     number
+}
+
+export interface RouteGeometry {
+  success: boolean
+  adep:    string
+  ades:    string
+  route:   string
+  points:  RoutePoint[]
+}
+
+export async function fetchRouteGeometry(flightPlanId: string): Promise<RouteGeometry> {
+  const headers = await getAuthHeaders()
+  const res = await fetch(`${API_BASE}/flight-plans/${flightPlanId}/route-geometry`, { headers })
+  if (!res.ok) throw new Error(`Failed to fetch route geometry: ${res.status}`)
+  return res.json()
+}
+
 /**
  * Returns the SSE event stream URL for a given flight plan.
  * The caller opens an EventSource connection to this URL.

@@ -8,9 +8,11 @@
 
 import { PrismaClient }        from '@prisma/client'
 import { createServiceLogger } from '../logger'
+import { FlightPlanNotificationService } from './FlightPlanNotificationService'
 import type { Response }       from 'express'
 
-const log = createServiceLogger('ClearanceService')
+const log    = createServiceLogger('ClearanceService')
+const notifS = new FlightPlanNotificationService(new PrismaClient())
 
 // ── SSE Connection Registry ────────────────────────────────────────────────
 // Maps flightPlanDbId → Set of active SSE response objects.
@@ -165,6 +167,12 @@ export class ClearanceService {
       allAdcRefs:      existingAdcRefs,
     })
 
+    // Send email/SMS notification to pilot
+    notifS.sendClearanceNotification(plan, 'ADC_ISSUED', {
+      adcNumber: input.adcNumber, adcType: input.adcType, afmluOfficerName: input.afmluOfficerName,
+      newStatus, isFullyCleared: newStatus === 'FULLY_CLEARED',
+    }).catch(e => log.warn('adc_notification_failed', { data: { error: String(e) } }))
+
     log.info('adc_issued', {
       data: { flightPlanId: input.flightPlanId, adcNumber: input.adcNumber, newStatus }
     })
@@ -241,6 +249,12 @@ export class ClearanceService {
       allFicRefs:      ficRefs,
     })
 
+    // Send email/SMS notification to pilot
+    notifS.sendClearanceNotification(plan, 'FIC_ISSUED', {
+      ficNumber: input.ficNumber, firCode: input.firCode, firOfficerName: input.firOfficerName,
+      newStatus, isFullyCleared: newStatus === 'FULLY_CLEARED',
+    }).catch(e => log.warn('fic_notification_failed', { data: { error: String(e) } }))
+
     log.info('fic_issued', {
       data: { flightPlanId: input.flightPlanId, ficNumber: input.ficNumber, newStatus }
     })
@@ -266,6 +280,14 @@ export class ClearanceService {
     })
 
     broadcastSseEvent(flightPlanId, 'clearance_rejected', { reason, rejectedBy })
+
+    // Send rejection notification to pilot
+    const plan = await this.prisma.mannedFlightPlan.findUnique({ where: { id: flightPlanId } })
+    if (plan) {
+      notifS.sendClearanceNotification(plan, 'CLEARANCE_REJECTED', {
+        reason, rejectedBy, newStatus: 'CLEARANCE_REJECTED', isFullyCleared: false,
+      }).catch(e => log.warn('rejection_notification_failed', { data: { error: String(e) } }))
+    }
 
     log.warn('clearance_rejected', { data: { flightPlanId, reason } })
   }
