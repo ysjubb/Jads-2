@@ -88,6 +88,23 @@ class JadsApiClient(
         }
     }
 
+    // ── Airspace zone check ─────────────────────────────────────────────────
+
+    fun checkAirspaceZone(
+        polygon: List<ZoneCheckLatLng>,
+        altitudeM: Int
+    ): ApiResult<ZoneClassificationResult> {
+        val body = gson.toJson(mapOf("polygon" to polygon, "altitudeM" to altitudeM))
+        return post("/api/drone-plans/zone-check", body, authenticated = true) { json ->
+            val reasons = json.getAsJsonArray("reasons")?.map { it.asString } ?: emptyList()
+            ZoneClassificationResult(
+                zone         = json.get("zone")?.asString ?: "GREEN",
+                reasons      = reasons,
+                atcAuthority = json.get("atcAuthority")?.asString
+            )
+        }
+    }
+
     // ── Generic helpers ─────────────────────────────────────────────────────
 
     private fun <T : Any> post(
@@ -122,4 +139,15 @@ data class UploadAck(
     val status:      String,       // ACCEPTED | DUPLICATE | CHAIN_INVALID
     val missionDbId: String?,
     val message:     String?
+)
+
+data class ZoneCheckLatLng(
+    val latitude:  Double,
+    val longitude: Double
+)
+
+data class ZoneClassificationResult(
+    val zone:         String,    // "GREEN" | "YELLOW" | "RED"
+    val reasons:      List<String>,
+    val atcAuthority: String?
 )

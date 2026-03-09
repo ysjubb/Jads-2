@@ -1,17 +1,20 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useAdminAuth, adminAxios } from '../hooks/useAdminAuth'
 import { useNavigate } from 'react-router-dom'
+import { T } from '../theme'
+import { ZoneConflictMonitor } from '../components/ZoneConflictMonitor'
 
-const T = {
-  bg:       '#050A08',
-  surface:  '#0A120E',
-  border:   '#1A3020',
-  primary:  '#00FF88',
-  amber:    '#FFB800',
-  red:      '#FF3B3B',
-  muted:    '#4A7A5A',
-  text:     '#b0c8b8',
-  textBright: '#d0e8d8',
+// ── Decode admin role from JWT (payload only — verification is server-side) ──
+function decodeAdminRole(token: string | null): string | null {
+  if (!token) return null
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+    const payload = JSON.parse(atob(parts[1]))
+    return payload.adminRole ?? null
+  } catch {
+    return null
+  }
 }
 
 interface DashboardStats {
@@ -47,6 +50,8 @@ export function DashboardPage() {
   const [stats, setStats]     = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
+  const adminRole = useMemo(() => decodeAdminRole(token), [token])
+  const isSuperAdmin = adminRole === 'PLATFORM_SUPER_ADMIN'
 
   useEffect(() => {
     if (!token) return
@@ -107,6 +112,11 @@ export function DashboardPage() {
         <strong>Platform invariants:</strong> No user deletions — only suspend.
         No airspace deletions — only deprecate or expire. All write actions logged to audit_log.
       </div>
+
+      {/* Zone Conflict Monitor — PLATFORM_SUPER_ADMIN only */}
+      {isSuperAdmin && token && (
+        <ZoneConflictMonitor token={token} />
+      )}
     </div>
   )
 }

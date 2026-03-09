@@ -1,0 +1,100 @@
+{
+  "_meta": {
+    "source": "MHA notified strategic installations (placeholder)",
+    "description": "Placeholder strategic installations for 2km buffer zone classification. Actual locations are classified under Official Secrets Act.",
+    "note": "In production, this data would come from MHA secure API. These are publicly known installation locations only.",
+    "lastUpdated": "2024-01-25"
+  },
+  "installations": [
+    {
+      "id": "SI-001",
+      "name": "Parliament House Complex",
+      "category": "GOVERNMENT",
+      "lat": 28.6175,
+      "lng": 77.2080,
+      "bufferRadiusKm": 2,
+      "authority": "MHA"
+    },
+    {
+      "id": "SI-002",
+      "name": "Rashtrapati Bhavan Complex",
+      "category": "GOVERNMENT",
+      "lat": 28.6143,
+      "lng": 77.1994,
+      "bufferRadiusKm": 2,
+      "authority": "MHA"
+    },
+    {
+      "id": "SI-003",
+      "name": "Supreme Court of India",
+      "category": "JUDICIARY",
+      "lat": 28.6227,
+      "lng": 77.2399,
+      "bufferRadiusKm": 2,
+      "authority": "MHA"
+    },
+    {
+      "id": "SI-004",
+      "name": "North Block (MHA / MoF)",
+      "category": "GOVERNMENT",
+      "lat": 28.6139,
+      "lng": 77.2088,
+      "bufferRadiusKm": 2,
+      "authority": "MHA"
+    },
+    {
+      "id": "SI-005",
+      "name": "BARC (Bhabha Atomic Research Centre)",
+      "category": "NUCLEAR",
+      "lat": 19.0048,
+      "lng": 72.9238,
+      "bufferRadiusKm": 2,
+      "authority": "MHA"
+    },
+    {
+      "id": "SI-006",
+      "name": "IGCAR (Indira Gandhi Centre for Atomic Research), Kalpakkam",
+      "category": "NUCLEAR",
+      "lat": 12.5592,
+      "lng": 80.1761,
+      "bufferRadiusKm": 2,
+      "authority": "MHA"
+    },
+    {
+      "id": "SI-007",
+      "name": "INS Kadamba Naval Base, Karwar",
+      "category": "NAVAL",
+      "lat": 14.8000,
+      "lng": 74.1190,
+      "bufferRadiusKm": 2,
+      "authority": "NAVY"
+    },
+    {
+      "id": "SI-008",
+      "name": "Indian Naval Dockyard, Mumbai",
+      "category": "NAVAL",
+      "lat": 18.9260,
+      "lng": 72.8390,
+      "bufferRadiusKm": 2,
+      "authority": "NAVY"
+    },
+    {
+      "id": "SI-009",
+      "name": "HAL Aerospace Complex, Bengaluru",
+      "category": "DEFENCE_PRODUCTION",
+      "lat": 12.9580,
+      "lng": 77.6690,
+      "bufferRadiusKm": 2,
+      "authority": "HAL"
+    },
+    {
+      "id": "SI-010",
+      "name": "DRDO Bhawan Complex, Delhi",
+      "category": "DEFENCE_RESEARCH",
+      "lat": 28.6100,
+      "lng": 77.2170,
+      "bufferRadiusKm": 2,
+      "authority": "MHA"
+    }
+  ]
+}

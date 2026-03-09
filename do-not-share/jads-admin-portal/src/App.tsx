@@ -9,6 +9,8 @@ import { FlightPlansPage }  from './pages/FlightPlansPage'
 import { DroneZonesPage }    from './pages/DroneZonesPage'
 import { DroneMissionsPage } from './pages/DroneMissionsPage'
 import { DroneOperationPlansPage } from './pages/DroneOperationPlansPage'
+import { ATCQueuePage }     from './pages/drone/ATCQueuePage'
+import { SystemPage }       from './pages/SystemPage'
 import { useAdminAuth }     from './hooks/useAdminAuth'
 import { T }                from './theme'
 export { T }                from './theme'
@@ -22,6 +24,8 @@ const NAV_ITEMS = [
   { to: '/drone-missions', label: 'DRONE MISSIONS', icon: 'MSN' },
   { to: '/flight-plans',  label: 'FLIGHT PLANS',   icon: 'FPL' },
   { to: '/drone-plans',   label: 'DRONE PLANS',    icon: 'DOP' },
+  { to: '/atc-queue',     label: 'ATC QUEUE',       icon: 'ATC' },
+  { to: '/system',        label: 'SYSTEM',          icon: 'SYS' },
 ]
 
 function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
@@ -106,6 +110,8 @@ export default function App() {
         <Route path="/drone-missions" element={<ProtectedLayout><DroneMissionsPage /></ProtectedLayout>} />
         <Route path="/flight-plans"  element={<ProtectedLayout><FlightPlansPage /></ProtectedLayout>} />
         <Route path="/drone-plans"  element={<ProtectedLayout><DroneOperationPlansPage /></ProtectedLayout>} />
+        <Route path="/atc-queue"   element={<ProtectedLayout><ATCQueuePage /></ProtectedLayout>} />
+        <Route path="/system"      element={<ProtectedLayout><SystemPage /></ProtectedLayout>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

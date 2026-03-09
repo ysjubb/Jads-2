@@ -44,6 +44,9 @@ export const env = {
   AFTN_GATEWAY_PORT:    parseInt(optionalEnv('AFTN_GATEWAY_PORT', '0')),
   METAR_BASE_URL:       optionalEnv('METAR_BASE_URL', ''),
   NOTAM_BASE_URL:       optionalEnv('NOTAM_BASE_URL', ''),
+  EGCA_API_BASE_URL:    optionalEnv('EGCA_API_BASE_URL', 'https://eservices.dgca.gov.in/egca/api'),
+  EGCA_API_EMAIL:       optionalEnv('EGCA_API_EMAIL', ''),
+  EGCA_API_PASSWORD:    optionalEnv('EGCA_API_PASSWORD', ''),
   USE_LIVE_ADAPTERS:    optionalEnv('USE_LIVE_ADAPTERS', 'false') === 'true',
 
   // Shared secret for inbound adapter push webhooks (AFMLU, FIR).

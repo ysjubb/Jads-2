@@ -14,6 +14,11 @@ import { requireAuth, requireRole, requireAuditAuth } from '../middleware/authMi
 import { missionUploadRateLimit } from '../middleware/rateLimiter'
 import { serializeForJson }    from '../utils/bigintSerializer'
 import { decodeCanonical }     from '../telemetry/telemetryDecoder'
+import { classifyPolygon, LatLng } from '../services/ZoneClassificationService'
+import {
+  YellowZoneRoutingService,
+  FlightPermissionPayload,
+} from '../services/YellowZoneRoutingService'
 import { createServiceLogger } from '../logger'
 
 const router   = express.Router()
@@ -300,6 +305,197 @@ router.get(
     }
   }
 )
+
+// ── POST /api/drone/zone-check ────────────────────────────────────────────────
+// Classify a geofence polygon against India's drone airspace zones.
+// Body: { polygon: Array<{ lat: number, lng: number }>, altitudeAGL: number }
+// Response 200: ZoneClassificationResult
+// No auth required — zone data is public per DGCA Digital Sky Platform.
+router.post('/zone-check', async (req, res) => {
+  try {
+    const { polygon, altitudeAGL } = req.body as {
+      polygon:     LatLng[]
+      altitudeAGL: number
+    }
+
+    // Input validation
+    if (!Array.isArray(polygon) || polygon.length < 3) {
+      res.status(400).json({
+        error: 'INVALID_POLYGON',
+        detail: 'polygon must be an array of at least 3 { lat, lng } points',
+      })
+      return
+    }
+
+    for (let i = 0; i < polygon.length; i++) {
+      const pt = polygon[i]
+      if (typeof pt.lat !== 'number' || typeof pt.lng !== 'number' ||
+          pt.lat < -90 || pt.lat > 90 || pt.lng < -180 || pt.lng > 180) {
+        res.status(400).json({
+          error: 'INVALID_COORDINATE',
+          detail: `polygon[${i}] has invalid lat/lng values`,
+        })
+        return
+      }
+    }
+
+    if (typeof altitudeAGL !== 'number' || altitudeAGL < 0) {
+      res.status(400).json({
+        error: 'INVALID_ALTITUDE',
+        detail: 'altitudeAGL must be a non-negative number (meters AGL)',
+      })
+      return
+    }
+
+    // Hard cap on polygon vertex count to prevent CPU abuse
+    const MAX_VERTICES = 500
+    if (polygon.length > MAX_VERTICES) {
+      res.status(400).json({
+        error: 'TOO_MANY_VERTICES',
+        detail: `polygon has ${polygon.length} vertices, maximum is ${MAX_VERTICES}`,
+      })
+      return
+    }
+
+    const result = await classifyPolygon(polygon, altitudeAGL)
+    res.json({ success: true, classification: result })
+  } catch (e: unknown) {
+    log.error('zone_check_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'ZONE_CHECK_FAILED' })
+  }
+})
+
+// ── POST /api/drone/yellow-zone-route ─────────────────────────────────────────
+// Determine ATC authority routing and expedited eligibility for a yellow-zone
+// drone flight permission application.
+// Body: FlightPermissionPayload (area, altitude, operator info, etc.)
+// Response 200: RoutingResult
+// Optionally links to a DroneOperationPlan if planId is provided.
+router.post('/yellow-zone-route', requireAuth, async (req, res) => {
+  try {
+    const body = req.body as FlightPermissionPayload & { planId?: string; zoneIcao?: string }
+
+    // Input validation
+    if (!body.areaType || !['POLYGON', 'CIRCLE'].includes(body.areaType)) {
+      res.status(400).json({ error: 'INVALID_AREA_TYPE', detail: 'areaType must be POLYGON or CIRCLE' })
+      return
+    }
+    if (body.areaType === 'POLYGON' && !body.areaGeoJson) {
+      res.status(400).json({ error: 'MISSING_GEOJSON', detail: 'areaGeoJson required for POLYGON type' })
+      return
+    }
+    if (body.areaType === 'CIRCLE') {
+      if (typeof body.centerLatDeg !== 'number' || typeof body.centerLonDeg !== 'number') {
+        res.status(400).json({ error: 'MISSING_CENTER', detail: 'centerLatDeg and centerLonDeg required for CIRCLE type' })
+        return
+      }
+      if (typeof body.radiusM !== 'number' || body.radiusM <= 0) {
+        res.status(400).json({ error: 'INVALID_RADIUS', detail: 'radiusM must be a positive number' })
+        return
+      }
+    }
+    if (typeof body.maxAltitudeAglM !== 'number' || body.maxAltitudeAglM <= 0) {
+      res.status(400).json({ error: 'INVALID_ALTITUDE', detail: 'maxAltitudeAglM must be a positive number' })
+      return
+    }
+    if (!body.plannedStartUtc || !body.plannedEndUtc) {
+      res.status(400).json({ error: 'MISSING_TIME_WINDOW', detail: 'plannedStartUtc and plannedEndUtc are required' })
+      return
+    }
+    if (new Date(body.plannedStartUtc) >= new Date(body.plannedEndUtc)) {
+      res.status(400).json({ error: 'INVALID_TIME_WINDOW', detail: 'plannedEndUtc must be after plannedStartUtc' })
+      return
+    }
+    if (!body.droneSerialNumber) {
+      res.status(400).json({ error: 'MISSING_DRONE_SERIAL', detail: 'droneSerialNumber is required' })
+      return
+    }
+
+    // Set operatorId from authenticated user if not provided
+    const payload: FlightPermissionPayload = {
+      ...body,
+      operatorId: body.operatorId ?? req.auth!.userId,
+    }
+
+    // Route the application
+    const result = await YellowZoneRoutingService.routeApplication(
+      payload,
+      body.zoneIcao ?? null,
+      prisma
+    )
+
+    // If a planId is provided, update the DroneOperationPlan with routing decision
+    if (body.planId) {
+      try {
+        const plan = await prisma.droneOperationPlan.findUnique({
+          where: { id: body.planId },
+        })
+        if (plan && plan.operatorId === req.auth!.userId) {
+          const routedAt = new Date()
+          const approvalDueBy = new Date(routedAt)
+          approvalDueBy.setDate(approvalDueBy.getDate() + result.expectedProcessingDays)
+
+          await prisma.droneOperationPlan.update({
+            where: { id: body.planId },
+            data: {
+              routingAuthority: result.authority.name,
+              expeditedFlag: result.expedited,
+              routedAt,
+              approvalDueBy,
+            },
+          })
+
+          // Audit log
+          await prisma.auditLog.create({
+            data: {
+              actorType: 'USER',
+              actorId: req.auth!.userId,
+              actorRole: req.auth!.role,
+              action: 'DRONE_PLAN_ROUTED',
+              resourceType: 'drone_operation_plan',
+              resourceId: body.planId,
+              detailJson: JSON.stringify({
+                planId: plan.planId,
+                authority: result.authority.name,
+                authorityType: result.authority.type,
+                expedited: result.expedited,
+                expectedProcessingDays: result.expectedProcessingDays,
+              }),
+            },
+          })
+
+          log.info('drone_plan_routing_saved', {
+            data: {
+              planId: plan.planId,
+              authority: result.authority.name,
+              expedited: result.expedited,
+            },
+          })
+        }
+      } catch (planErr) {
+        log.warn('drone_plan_routing_update_failed', {
+          data: { planId: body.planId, error: planErr instanceof Error ? planErr.message : String(planErr) },
+        })
+        // Do not fail the route response — routing result is still valid
+      }
+    }
+
+    res.json({
+      success: true,
+      routing: {
+        authority: result.authority,
+        expectedProcessingDays: result.expectedProcessingDays,
+        expedited: result.expedited,
+        submissionInstructions: result.submissionInstructions,
+        requiredDocuments: result.requiredDocuments,
+        contactDetails: result.contactDetails,
+      },
+    })
+  } catch (e: unknown) {
+    log.error('yellow_zone_route_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'YELLOW_ZONE_ROUTE_FAILED' })
+  }
+})
 
 // ── GET /api/drone/violations ─────────────────────────────────────────────────
 // List the authenticated operator's violations.

@@ -28,11 +28,12 @@ import com.jads.ui.theme.JadsTheme
 import com.jads.ui.viewmodel.*
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MainActivity — single-activity host for all 5 JADS screens.
+// MainActivity — single-activity host for all 6 JADS screens.
 //
 // Navigation flow:
 //   Login ──► MissionSetup ──► ActiveMission ──► MissionComplete ──► (loop)
 //     └────────────────────────────────────────────────────────► MissionHistory
+//     └──► AirspaceMap (flight area definition)
 //
 // Back-stack policy:
 //   • Login is always the bottom of the stack — signing out pops to it.
@@ -41,17 +42,21 @@ import com.jads.ui.viewmodel.*
 //   • MissionComplete is a dead-end: Back is suppressed (mission can't restart).
 //
 // ViewModel scoping:
-//   • LoginViewModel    — activity-scoped (owns session state across screens)
-//   • MissionViewModel  — activity-scoped (owns mission lifecycle across 3 screens)
-//   • HistoryViewModel  — activity-scoped (pre-loads history on login)
+//   • LoginViewModel         — activity-scoped (owns session state across screens)
+//   • MissionViewModel       — activity-scoped (owns mission lifecycle across 3 screens)
+//   • HistoryViewModel       — activity-scoped (pre-loads history on login)
+//   • AirspaceMapViewModel   — activity-scoped (airspace polygon drawing + zone check)
+//   • YellowZoneViewModel    — activity-scoped (yellow zone permission submission)
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MainActivity : ComponentActivity() {
 
-    private val loginVm:   LoginViewModel   by viewModels()
-    private val missionVm: MissionViewModel by viewModels()
-    private val historyVm: HistoryViewModel by viewModels()
+    private val loginVm:       LoginViewModel       by viewModels()
+    private val missionVm:     MissionViewModel     by viewModels()
+    private val historyVm:     HistoryViewModel     by viewModels()
+    private val airspaceMapVm: AirspaceMapViewModel by viewModels()
+    private val yellowZoneVm:  YellowZoneViewModel  by viewModels()
 
     // ── Permission state ─────────────────────────────────────────────────────
     // locationGranted drives whether the NavHost is shown or a permission rationale.
@@ -126,7 +131,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val granted by locationGranted
                     if (granted) {
-                        JadsNavHost(loginVm, missionVm, historyVm)
+                        JadsNavHost(loginVm, missionVm, historyVm, airspaceMapVm, yellowZoneVm)
                     } else {
                         LocationPermissionRationale(
                             onRequest = {
@@ -178,9 +183,11 @@ private fun LocationPermissionRationale(onRequest: () -> Unit) {
 
 @Composable
 private fun JadsNavHost(
-    loginVm:   LoginViewModel,
-    missionVm: MissionViewModel,
-    historyVm: HistoryViewModel
+    loginVm:       LoginViewModel,
+    missionVm:     MissionViewModel,
+    historyVm:     HistoryViewModel,
+    airspaceMapVm: AirspaceMapViewModel,
+    yellowZoneVm:  YellowZoneViewModel
 ) {
     val navController = rememberNavController()
     val loginState    by loginVm.state.collectAsStateWithLifecycle()
@@ -224,6 +231,51 @@ private fun JadsNavHost(
                     navController.navigate(Screen.Login.route) {
                         popUpTo(Screen.MissionSetup.route) { inclusive = true }
                     }
+                }
+            )
+        }
+
+        // ── 2b. Airspace Map ─────────────────────────────────────────────
+        composable(Screen.AirspaceMap.route) {
+            AirspaceMapScreen(
+                viewModel = airspaceMapVm,
+                onProceed = {
+                    // If YELLOW zone, navigate to permission submission screen
+                    val mapState = airspaceMapVm.state.value
+                    if (mapState.zoneResult?.zone == "YELLOW") {
+                        // Initialise yellow zone VM with data from the map screen
+                        yellowZoneVm.initialise(
+                            zoneResult = mapState.zoneResult!!,
+                            polygon    = mapState.drawnPolygon,
+                            altitude   = mapState.altitude,
+                            pilotName  = loginState.savedOperatorId,
+                            uinNumber  = ""
+                        )
+                        navController.navigate(Screen.YellowZoneSubmission.route)
+                    } else {
+                        // GREEN or acknowledged RED — go back to planning flow
+                        navController.popBackStack()
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // ── 2c. Yellow Zone Submission ──────────────────────────────────
+        composable(Screen.YellowZoneSubmission.route) {
+            YellowZoneSubmissionScreen(
+                viewModel           = yellowZoneVm,
+                onSubmissionSuccess = {
+                    historyVm.refresh()
+                    navController.navigate(Screen.MissionHistory.route) {
+                        // Clear yellow zone + airspace map from backstack
+                        popUpTo(Screen.AirspaceMap.route) { inclusive = true }
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
                 }
             )
         }
