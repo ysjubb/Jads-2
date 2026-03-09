@@ -145,6 +145,9 @@ dependencies {
     // ── osmdroid (OpenStreetMap tiles) ───────────────────────────────────────
     implementation("org.osmdroid:osmdroid-android:6.1.18")
 
+    // ── JTS (geometry buffering for corridor drawing) ─────────────────────
+    implementation("org.locationtech.jts:jts-core:1.19.0")
+
 
     // ── DataStore (Preferences) ───────────────────────────────────────────────
     // LoginViewModel + MissionViewModel use DataStore to persist session across restarts.

@@ -10,6 +10,11 @@ package com.jads.ui.nav
 //   Login ──► MissionHistory ──► (back to Login)
 //   Login ──► AirspaceMap ──► (flight area definition)
 //   AirspaceMap (YELLOW zone) ──► YellowZoneSubmission ──► MissionHistory
+//   AirspaceMap (GREEN) ──► FlightDetails ──► MissionHistory (MICRO/SMALL)
+//   AirspaceMap (GREEN) ──► AgriculturalFlight ──► MissionHistory (agricultural)
+//   AirspaceMap (GREEN) ──► SpecialOpsFlight ──► MissionHistory (BVLOS/Rule 70)
+//   Login ──► PAManagement ──► (PA download, share, log upload)
+//   MissionSetup ──► ValidationChecklist ──► (eGCA submission)
 //
 // Back-stack rules:
 //   • Login is the start destination — popUpTo(Login, inclusive=true) on sign-out
@@ -28,4 +33,16 @@ sealed class Screen(val route: String) {
     }
     object MissionHistory : Screen("mission_history")
     object YellowZoneSubmission : Screen("yellow_zone_submission")
+    object PAManagement         : Screen("pa_management")
+
+    // ── P24 Flight Planning — Progressive Disclosure ──────────────────
+    object FlightDetails      : Screen("flight_details")
+    object AgriculturalFlight : Screen("agricultural_flight")
+    object SpecialOpsFlight   : Screen("special_ops_flight")
+
+    // ── P35 Pre-Submission Validation Checklist ─────────────────────
+    object ValidationChecklist : Screen("validation_checklist")
+
+    // ── P46 Notification Centre ──────────────────────────────────────
+    object Notifications : Screen("notifications")
 }

@@ -61,4 +61,11 @@ export const env = {
   RFC3161_TSA_PASSWORD:     optionalEnv('RFC3161_TSA_PASSWORD', ''),
   RFC3161_TSA_TIMEOUT_MS:   parseInt(optionalEnv('RFC3161_TSA_TIMEOUT_MS', '15000')),
   RFC3161_TOKEN_STORE_PATH: optionalEnv('RFC3161_TOKEN_STORE_PATH', ''),
+
+  // SMTP settings for notification emails (optional — falls back to in-app only)
+  SMTP_HOST:     optionalEnv('SMTP_HOST', ''),
+  SMTP_PORT:     parseInt(optionalEnv('SMTP_PORT', '587')),
+  SMTP_USER:     optionalEnv('SMTP_USER', ''),
+  SMTP_PASS:     optionalEnv('SMTP_PASS', ''),
+  SMTP_FROM:     optionalEnv('SMTP_FROM', 'noreply@jads.gov.in'),
 } as const

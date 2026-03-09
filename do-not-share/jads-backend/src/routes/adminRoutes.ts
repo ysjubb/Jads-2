@@ -11,12 +11,14 @@ import { SpecialUserAuthService } from '../services/SpecialUserAuthService'
 import { ClearanceService } from '../services/ClearanceService'
 import { decodeCanonical } from '../telemetry/telemetryDecoder'
 import { resolveEgcaAdapter, EgcaAdapterMock, EgcaAdapterImpl } from '../adapters/egca'
+import { DroneNotificationService } from '../services/DroneNotificationService'
 
 const router                = express.Router()
 const prisma                = new PrismaClient()
 const log                   = createServiceLogger('AdminRoutes')
 const specialUserAuthService = new SpecialUserAuthService(prisma)
 const clearanceService       = new ClearanceService(prisma)
+const notifService           = new DroneNotificationService(prisma)
 
 // ── ADMIN LOGIN (no auth required) ────────────────────────────────────────
 
@@ -1826,6 +1828,123 @@ router.get('/atc-queue/:id', requireAdminRole('PLATFORM_SUPER_ADMIN'), async (re
     const msg = e instanceof Error ? e.message : String(e)
     log.error('atc_queue_detail_error', { data: { error: msg } })
     res.status(500).json({ error: 'ATC_QUEUE_DETAIL_FAILED' })
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOTIFICATION / ALERT MANAGEMENT ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── GET /api/admin/alert-configs ─────────────────────────────────────────────
+// Get all 13 alert type configurations.
+router.get('/alert-configs', requireAdminAuth, async (_req, res) => {
+  res.json({ success: true, configs: notifService.getAlertConfigs() })
+})
+
+// ── PUT /api/admin/alert-configs/:type ──────────────────────────────────────
+// Update an alert type's enabled/email/threshold settings.
+router.put('/alert-configs/:type', requireAdminAuth, async (req, res) => {
+  try {
+    const { enabled, emailEnabled, thresholdDays } = req.body
+    const updated = notifService.updateAlertConfig(
+      req.params.type as any,
+      { enabled, emailEnabled, thresholdDays }
+    )
+    if (!updated) {
+      res.status(404).json({ error: 'ALERT_TYPE_NOT_FOUND' })
+      return
+    }
+    res.json({ success: true, config: updated })
+  } catch (e: unknown) {
+    res.status(500).json({ error: 'ALERT_CONFIG_UPDATE_FAILED' })
+  }
+})
+
+// ── POST /api/admin/broadcast ───────────────────────────────────────────────
+// Send a broadcast notification to multiple users.
+router.post('/broadcast', requireAdminAuth, async (req, res) => {
+  try {
+    const { title, body, recipients, category, region } = req.body
+    if (!title || !body) {
+      res.status(400).json({ error: 'MISSING_FIELDS', detail: 'title and body are required' })
+      return
+    }
+
+    let userIds: string[] = []
+
+    if (recipients === 'all') {
+      // Broadcast to all civilian users
+      const users = await prisma.civilianUser.findMany({ select: { id: true } })
+      userIds = users.map(u => u.id)
+    } else if (Array.isArray(recipients)) {
+      userIds = recipients
+    } else {
+      // Filter by role/category
+      const where: Record<string, unknown> = {}
+      if (category) where.role = category
+      const users = await prisma.civilianUser.findMany({ where, select: { id: true } })
+      userIds = users.map(u => u.id)
+    }
+
+    if (userIds.length === 0) {
+      res.json({ success: true, count: 0, message: 'No recipients matched' })
+      return
+    }
+
+    const result = await notifService.broadcast({ userIds, title, body })
+
+    await prisma.auditLog.create({
+      data: {
+        actorType:    'ADMIN_USER',
+        actorId:      req.adminAuth!.adminId,
+        action:       'BROADCAST_NOTIFICATION',
+        resourceType: 'notification',
+        detailJson:   JSON.stringify({ title, recipientCount: userIds.length }),
+      },
+    })
+
+    res.json({ success: true, ...result })
+  } catch (e: unknown) {
+    log.error('broadcast_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'BROADCAST_FAILED' })
+  }
+})
+
+// ── GET /api/admin/delivery-stats ───────────────────────────────────────────
+// Get notification delivery statistics.
+router.get('/delivery-stats', requireAdminAuth, async (_req, res) => {
+  try {
+    const stats = await notifService.getDeliveryStats()
+    res.json({ success: true, stats })
+  } catch (e: unknown) {
+    res.status(500).json({ error: 'DELIVERY_STATS_FAILED' })
+  }
+})
+
+// ── GET /api/admin/upcoming-expiries ────────────────────────────────────────
+// Get upcoming licence/UIN expiries for CSV export.
+router.get('/upcoming-expiries', requireAdminAuth, async (req, res) => {
+  try {
+    const withinDays = parseInt((req.query.days as string) ?? '90')
+    const expiries   = await notifService.getUpcomingExpiries(withinDays)
+
+    // If CSV format requested, generate and return CSV
+    if (req.query.format === 'csv') {
+      const header = 'User ID,Email,Phone,License Number,Expiry Date,Days Remaining,Role,Account Status'
+      const rows = expiries.map(e =>
+        [e.userId, e.email ?? '', e.phone ?? '', e.licenseNumber ?? '',
+         e.expiryDate ?? '', e.daysRemaining ?? '', e.role, e.accountStatus].join(',')
+      )
+      const csv = [header, ...rows].join('\n')
+      res.setHeader('Content-Type', 'text/csv')
+      res.setHeader('Content-Disposition', `attachment; filename="expiries-${withinDays}d.csv"`)
+      res.send(csv)
+      return
+    }
+
+    res.json({ success: true, expiries, count: expiries.length })
+  } catch (e: unknown) {
+    res.status(500).json({ error: 'UPCOMING_EXPIRIES_FAILED' })
   }
 })
 

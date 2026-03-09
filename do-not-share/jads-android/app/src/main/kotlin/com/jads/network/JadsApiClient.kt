@@ -105,7 +105,106 @@ class JadsApiClient(
         }
     }
 
+    // ── Flight plan validation ───────────────────────────────────────────────
+
+    fun validateFlightPlan(payloadJson: String): ApiResult<ValidationResult> {
+        return post("/api/drone/validate-flight-plan", payloadJson, authenticated = true) { json ->
+            val checksArray = json.getAsJsonArray("checks") ?: return@post null
+            val checks = checksArray.map { elem ->
+                val obj = elem.asJsonObject
+                ValidationCheck(
+                    code        = obj.get("code")?.asString ?: "",
+                    severity    = obj.get("severity")?.asString ?: "INFO",
+                    name        = obj.get("name")?.asString ?: "",
+                    description = obj.get("description")?.asString ?: "",
+                    passed      = obj.get("passed")?.asBoolean ?: false,
+                    field       = obj.get("field")?.asString,
+                    remediation = obj.get("remediation")?.asString
+                )
+            }
+            ValidationResult(
+                ready  = json.get("ready")?.asBoolean ?: false,
+                checks = checks
+            )
+        }
+    }
+
+    // ── Notifications ─────────────────────────────────────────────────────
+
+    fun getNotifications(
+        category:  String? = null,
+        unreadOnly: Boolean = false,
+        limit:     Int     = 20
+    ): ApiResult<NotificationsResponse> {
+        return get("/api/drone/notifications", mapOf(
+            "limit"    to limit.toString(),
+            "unread"   to if (unreadOnly) "true" else "false",
+            "category" to (category ?: "")
+        )) { json ->
+            val notifs = json.getAsJsonArray("notifications")?.map { elem ->
+                val obj = elem.asJsonObject
+                val type = obj.get("type")?.asString ?: ""
+                val createdAt = obj.get("createdAt")?.asString ?: ""
+                NotificationDto(
+                    id        = obj.get("id")?.asString ?: "",
+                    type      = type,
+                    title     = obj.get("title")?.asString ?: "",
+                    body      = obj.get("body")?.asString ?: "",
+                    read      = obj.get("read")?.asBoolean ?: false,
+                    createdAt = createdAt
+                )
+            } ?: emptyList()
+            NotificationsResponse(
+                notifications = notifs,
+                total         = json.get("total")?.asInt ?: 0,
+                unreadCount   = json.get("unreadCount")?.asInt ?: 0
+            )
+        }
+    }
+
+    fun markNotificationRead(notificationId: String): ApiResult<Unit> {
+        return post("/api/drone/notifications/$notificationId/read", "{}", authenticated = true) {
+            Unit
+        }
+    }
+
+    fun markAllNotificationsRead(): ApiResult<Unit> {
+        return post("/api/drone/notifications/read-all", "{}", authenticated = true) {
+            Unit
+        }
+    }
+
     // ── Generic helpers ─────────────────────────────────────────────────────
+
+    private fun <T : Any> get(
+        path:          String,
+        params:        Map<String, String> = emptyMap(),
+        parse:         (JsonObject) -> T?
+    ): ApiResult<T> {
+        return try {
+            val urlBuilder = StringBuilder("$baseUrl$path")
+            if (params.isNotEmpty()) {
+                urlBuilder.append("?")
+                urlBuilder.append(params.filter { it.value.isNotBlank() }
+                    .entries.joinToString("&") { "${it.key}=${it.value}" })
+            }
+            val reqBuilder = Request.Builder().url(urlBuilder.toString()).get()
+            if (jwtToken != null) {
+                reqBuilder.header("Authorization", "Bearer $jwtToken")
+            }
+            val response = http.newCall(reqBuilder.build()).execute()
+            val rawBody  = response.body?.string() ?: ""
+            if (!response.isSuccessful) {
+                return ApiResult.Error(response.code, response.message, rawBody)
+            }
+            val json   = gson.fromJson(rawBody, JsonObject::class.java)
+            val parsed = parse(json)
+            if (parsed == null) ApiResult.Error(-1, "Parse failed", rawBody)
+            else ApiResult.Success(parsed)
+        } catch (e: Exception) {
+            ApiResult.NetworkError(e.message ?: "Unknown network error")
+        }
+    }
 
     private fun <T : Any> post(
         path:          String,
@@ -150,4 +249,34 @@ data class ZoneClassificationResult(
     val zone:         String,    // "GREEN" | "YELLOW" | "RED"
     val reasons:      List<String>,
     val atcAuthority: String?
+)
+
+data class ValidationCheck(
+    val code:        String,     // e.g. "NPNT_PA_VALID", "PILOT_LICENCE_EXPIRY"
+    val severity:    String,     // "REQUIRED" | "ADVISORY" | "INFO"
+    val name:        String,     // human-readable check name
+    val description: String,     // what the check verifies
+    val passed:      Boolean,    // true = passed, false = failed
+    val field:       String?,    // optional field reference
+    val remediation: String?     // hint for fixing failures
+)
+
+data class ValidationResult(
+    val ready:  Boolean,         // true = all REQUIRED checks passed
+    val checks: List<ValidationCheck>
+)
+
+data class NotificationDto(
+    val id:        String,
+    val type:      String,
+    val title:     String,
+    val body:      String,
+    val read:      Boolean,
+    val createdAt: String
+)
+
+data class NotificationsResponse(
+    val notifications: List<NotificationDto>,
+    val total:         Int,
+    val unreadCount:   Int
 )

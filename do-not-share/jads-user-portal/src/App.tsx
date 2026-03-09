@@ -8,6 +8,13 @@ import { FlightPlanDetailPage }  from './pages/FlightPlanDetailPage'
 import { EditFlightPlanPage }    from './pages/EditFlightPlanPage'
 import { DronePlanDetailPage }   from './pages/DronePlanDetailPage'
 import { FlightPlannerPage }    from './pages/drone/FlightPlannerPage'
+import { MyPermissionsPage }   from './pages/drone/MyPermissionsPage'
+import { TemplateLibraryPage } from './pages/drone/TemplateLibraryPage'
+import { NotificationsPage }  from './pages/drone/NotificationsPage'
+import { PAVerifyPage }        from './pages/drone/PAVerifyPage'
+import { FleetManagerPage }    from './pages/drone/FleetManagerPage'
+import { FlightAnalyticsPage } from './pages/drone/FlightAnalyticsPage'
+import { NotificationBell }   from './components/drone/NotificationBell'
 import { useAuth }               from './hooks/useAuth'
 
 // ── Theme Constants (blue-tinted variant for user portal) ─────────────────────
@@ -28,6 +35,12 @@ const NAV_ITEMS = [
   { to: '/file-flight-plan', label: 'FILE FPL',   icon: 'FPL' },
   { to: '/file-drone-plan',  label: 'FILE DRONE', icon: 'DOP' },
   { to: '/flight-planner',   label: 'FLT PLANNER', icon: 'MAP' },
+  { to: '/drone/permissions',   label: 'MY PERMITS',     icon: 'PA' },
+  { to: '/drone/notifications', label: 'NOTIFICATIONS', icon: 'NTF' },
+  { to: '/drone/templates',     label: 'TEMPLATES',     icon: 'TPL' },
+  { to: '/drone/verify',        label: 'PA VERIFY',     icon: 'CHK' },
+  { to: '/drone/fleet',          label: 'FLEET MGR',     icon: 'FLT' },
+  { to: '/drone/analytics',     label: 'ANALYTICS',     icon: 'ANL' },
 ]
 
 function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
@@ -52,6 +65,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
           {collapsed ? 'J' : 'JADS'}
         </span>
         {!collapsed && <span style={{ fontSize: '0.6rem', color: T.muted }}>USER PORTAL v4.0</span>}
+        <span style={{ marginLeft: 'auto' }}><NotificationBell /></span>
       </div>
 
       <div style={{ flex: 1, padding: '0.5rem 0' }}>
@@ -111,6 +125,12 @@ export default function App() {
         <Route path="/edit-flight-plan/:id" element={<ProtectedLayout><EditFlightPlanPage /></ProtectedLayout>} />
         <Route path="/drone-plan/:id"      element={<ProtectedLayout><DronePlanDetailPage /></ProtectedLayout>} />
         <Route path="/flight-planner"    element={<ProtectedLayout><FlightPlannerPage /></ProtectedLayout>} />
+        <Route path="/drone/permissions"   element={<ProtectedLayout><MyPermissionsPage /></ProtectedLayout>} />
+        <Route path="/drone/notifications" element={<ProtectedLayout><NotificationsPage /></ProtectedLayout>} />
+        <Route path="/drone/templates"     element={<ProtectedLayout><TemplateLibraryPage /></ProtectedLayout>} />
+        <Route path="/drone/verify"       element={<ProtectedLayout><PAVerifyPage /></ProtectedLayout>} />
+        <Route path="/drone/fleet"        element={<ProtectedLayout><FleetManagerPage /></ProtectedLayout>} />
+        <Route path="/drone/analytics"   element={<ProtectedLayout><FlightAnalyticsPage /></ProtectedLayout>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
