@@ -444,6 +444,156 @@ final class FlightPlanViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Published Properties — Validation Checklist (P36)
+
+    /// Validation checks that failed with REQUIRED severity.
+    @Published var failures: [ValidationItem] = []
+
+    /// Validation checks with ADVISORY severity.
+    @Published var warnings: [ValidationItem] = []
+
+    /// Validation checks with INFO severity.
+    @Published var infoItems: [ValidationItem] = []
+
+    /// Set of check codes the user has acknowledged (advisory only).
+    @Published var acknowledgedWarnings: Set<String> = []
+
+    /// Whether a validation request is in progress.
+    @Published var isValidating = false
+
+    /// Error from the most recent validation attempt.
+    @Published var validationError: String?
+
+    /// Whether a validated plan submission is in progress.
+    @Published var isSubmittingValidation = false
+
+    /// Error from the most recent submission attempt.
+    @Published var validationSubmitError: String?
+
+    /// Whether all conditions are met to submit the validated plan.
+    ///
+    /// True when:
+    /// - All REQUIRED checks passed
+    /// - All ADVISORY warnings are either passed or acknowledged
+    /// - At least one check exists
+    /// - Not currently submitting
+    var isReadyToSubmit: Bool {
+        let allRequiredPassed = failures.allSatisfy { $0.passed }
+        let allWarningsHandled = warnings.allSatisfy { $0.passed || acknowledgedWarnings.contains($0.code) }
+        let hasChecks = !failures.isEmpty || !warnings.isEmpty || !infoItems.isEmpty
+        return allRequiredPassed && allWarningsHandled && hasChecks && !isSubmittingValidation
+    }
+
+    /// Number of checks that are passed or acknowledged.
+    var validationPassedCount: Int {
+        let requiredPassed = failures.count { $0.passed }
+        let advisoryPassed = warnings.count { $0.passed || acknowledgedWarnings.contains($0.code) }
+        let infoPassed = infoItems.count  // info items always count as passed
+        return requiredPassed + advisoryPassed + infoPassed
+    }
+
+    // MARK: - Validation Actions
+
+    /// Run pre-submission validation for the current flight plan.
+    ///
+    /// Sends the polygon, altitude, and time window to the backend
+    /// and populates the three checklist sections from the response.
+    func runValidation() async {
+        guard vertices.count >= Self.minimumVertices else {
+            validationError = "At least \(Self.minimumVertices) polygon vertices are required."
+            return
+        }
+
+        isValidating = true
+        validationError = nil
+
+        do {
+            let result = try await egcaService.validateFlightPlan(
+                polygon: polygonLatLng,
+                altitudeMeters: altitudeMeters,
+                startTime: startTime,
+                endTime: endTime
+            )
+
+            self.failures = result.checks.filter { $0.severity == .required }
+            self.warnings = result.checks.filter { $0.severity == .advisory }
+            self.infoItems = result.checks.filter { $0.severity == .info }
+            self.validationError = nil
+        } catch {
+            self.validationError = (error as? EgcaError)?.userFacingMessage
+                ?? "Validation failed: \(error.localizedDescription)"
+        }
+
+        isValidating = false
+    }
+
+    /// Toggle acknowledgement for an advisory warning.
+    ///
+    /// - Parameter code: The check code to acknowledge or un-acknowledge.
+    func acknowledge(_ code: String) {
+        if acknowledgedWarnings.contains(code) {
+            acknowledgedWarnings.remove(code)
+        } else {
+            acknowledgedWarnings.insert(code)
+        }
+    }
+
+    /// Submit the validated flight plan to eGCA.
+    ///
+    /// Only callable when ``isReadyToSubmit`` is true.
+    ///
+    /// - Returns: The application ID on success, or nil on failure.
+    func submitValidatedPlan() async -> String? {
+        guard isReadyToSubmit else { return nil }
+
+        isSubmittingValidation = true
+        validationSubmitError = nil
+
+        do {
+            let payload = FlightPermissionPayload(
+                pilotBusinessIdentifier: "",  // Populated from session
+                droneId: 1,
+                uinNumber: "",
+                flyArea: polygonLatLng,
+                payloadWeightInKg: 0.0,
+                payloadDetails: "Standard payload",
+                flightPurpose: yellowZoneOperationType.rawValue,
+                startDateTime: EgcaDateFormatters.digitalSky.string(from: startTime),
+                endDateTime: EgcaDateFormatters.digitalSky.string(from: endTime),
+                maxAltitudeInMeters: altitudeMeters,
+                typeOfOperation: yellowZoneOperationType,
+                flightTerminationOrReturnHomeCapability: yellowZoneRTHCapability,
+                geoFencingCapability: yellowZoneGeoFencing,
+                detectAndAvoidCapability: yellowZoneDAA,
+                selfDeclaration: true,
+                recurringTimeExpression: nil,
+                recurringTimeDurationInMinutes: nil
+            )
+            let application = try await egcaService.submitFlightPermission(payload)
+            isSubmittingValidation = false
+            return application.applicationId
+        } catch {
+            validationSubmitError = (error as? EgcaError)?.userFacingMessage
+                ?? "Submission failed: \(error.localizedDescription)"
+            isSubmittingValidation = false
+            return nil
+        }
+    }
+
+    /// Clear all validation state.
+    func clearValidation() {
+        failures = []
+        warnings = []
+        infoItems = []
+        acknowledgedWarnings = []
+        validationError = nil
+        validationSubmitError = nil
+        isValidating = false
+        isSubmittingValidation = false
+    }
+
+    // MARK: - Private — Centroid
+
     /// Compute the centroid of the current polygon vertices.
     private func polygonCentroid() -> CLLocationCoordinate2D {
         guard !vertices.isEmpty else {

@@ -9,10 +9,13 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.3.4",
+    "@tmcw/togeojson":  "^5.8.1",
+    "@turf/turf":       "^7.1.0",
     "axios":            "^1.6.7",
     "react":            "^18.2.0",
     "react-dom":        "^18.2.0",
     "react-hook-form":  "^7.51.0",
+    "recharts":         "^3.8.0",
     "react-router-dom": "^6.22.2",
     "zod":              "^3.22.4"
   },

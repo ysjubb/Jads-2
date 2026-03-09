@@ -70,4 +70,24 @@ protocol EgcaServiceProtocol: Sendable {
     /// - Parameter payload: The ``YellowZonePermissionPayload`` with operation details.
     /// - Returns: The application ID assigned by the backend.
     func submitYellowZonePermission(payload: YellowZonePermissionPayload) async throws -> String
+
+    /// Validate a flight plan before eGCA submission.
+    ///
+    /// Sends the flight plan parameters to the backend for pre-submission
+    /// validation. Returns a ``ValidationResult`` containing individual checks
+    /// grouped by severity (REQUIRED, ADVISORY, INFO).
+    ///
+    /// - Parameters:
+    ///   - polygon: The flight area polygon vertices.
+    ///   - altitudeMeters: The maximum altitude in meters.
+    ///   - startTime: The planned flight start time.
+    ///   - endTime: The planned flight end time.
+    /// - Returns: A ``ValidationResult`` with readiness flag and individual checks.
+    /// - Throws: ``EgcaError/invalidPayload(_:)`` if the parameters are invalid.
+    func validateFlightPlan(
+        polygon: [LatLng],
+        altitudeMeters: Double,
+        startTime: Date,
+        endTime: Date
+    ) async throws -> ValidationResult
 }

@@ -59,7 +59,7 @@ enum EgcaDateFormatters {
 // MARK: - Coordinate
 
 /// A geographic coordinate used in fly area definitions.
-struct LatLng: Codable, Sendable, Equatable {
+struct LatLng: Codable, Sendable, Equatable, Hashable {
     let latitude: Double
     let longitude: Double
 }

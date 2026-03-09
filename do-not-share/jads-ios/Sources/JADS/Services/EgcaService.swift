@@ -216,6 +216,38 @@ final class EgcaService: EgcaServiceProtocol, Sendable {
         return response.applicationId
     }
 
+    func validateFlightPlan(
+        polygon: [LatLng],
+        altitudeMeters: Double,
+        startTime: Date,
+        endTime: Date
+    ) async throws -> ValidationResult {
+        struct ValidatePayload: Encodable {
+            let polygon: [LatLng]
+            let altitudeMeters: Double
+            let startDateTime: String
+            let endDateTime: String
+        }
+
+        let payload = ValidatePayload(
+            polygon: polygon,
+            altitudeMeters: altitudeMeters,
+            startDateTime: EgcaDateFormatters.digitalSky.string(from: startTime),
+            endDateTime: EgcaDateFormatters.digitalSky.string(from: endTime)
+        )
+
+        let bodyData = try encodeJSON(payload)
+
+        let data = try await authenticatedRequest(
+            method: "POST",
+            path: "/drone/validate-flight-plan",
+            bodyData: bodyData,
+            contentType: "application/json"
+        )
+
+        return try decodeJSON(ValidationResult.self, from: data)
+    }
+
     // MARK: - Authenticated Request (with token refresh)
 
     /// Perform an authenticated request, automatically refreshing the token if needed.
