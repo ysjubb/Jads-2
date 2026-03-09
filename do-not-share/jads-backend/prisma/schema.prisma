@@ -534,9 +534,44 @@ model DroneOperationPlan {
   approvedAt        DateTime?
   approvedBy        String?
 
+  // ── Yellow-zone routing decision fields ──
+  routingAuthority  String?                         // e.g. "AAI Delhi NOF", "IAF WAC", "NAVY ANC"
+  expeditedFlag     Boolean  @default(false)        // true if application qualifies for expedited processing
+  routedAt          DateTime?                       // when the routing decision was made
+  approvalDueBy     DateTime?                       // expected approval deadline based on processing days
+
+  artefacts         PermissionArtefact[]
+
   @@index([operatorId])
   @@index([status])
   @@index([plannedStartUtc, plannedEndUtc])
+}
+
+// ── Permission Artefact Lifecycle ────────────────────────────────────────────
+// Tracks the full lifecycle of a DGCA Permission Artefact (PA) from submission
+// through eGCA to download, verification, flight log upload, and archival.
+// Per NPNT (No Permission No Takeoff) compliance under DGCA UAS Rules 2021.
+model PermissionArtefact {
+  id              String   @id @default(uuid())
+  applicationId   String   @unique                // eGCA application reference
+  planId          String                          // → DroneOperationPlan
+  status          String                          // SUBMITTED | PENDING | APPROVED | REJECTED | EXPIRED | COMPLETED
+  paFileHash      String?                         // SHA-256 of downloaded PA ZIP
+  paFilePath      String?                         // Local storage path
+  signatureValid  Boolean?                        // W3C XMLDSig RSA-SHA256 verification result
+  submittedAt     DateTime                        // When submitted to eGCA
+  approvedAt      DateTime?                       // When eGCA approved
+  downloadedAt    DateTime?                       // When PA ZIP was downloaded
+  expiresAt       DateTime?                       // PA expiry time
+  completedAt     DateTime?                       // When flight log was uploaded
+  archivedAt      DateTime?                       // When archived after expiry
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  plan            DroneOperationPlan @relation(fields: [planId], references: [id])
+
+  @@index([status])
+  @@index([expiresAt])
+  @@index([planId])
 }
 
 model DroneTelemetryRecord {

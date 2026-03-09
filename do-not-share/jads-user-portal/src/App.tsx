@@ -7,6 +7,7 @@ import { FileDronePlanPage }     from './pages/FileDronePlanPage'
 import { FlightPlanDetailPage }  from './pages/FlightPlanDetailPage'
 import { EditFlightPlanPage }    from './pages/EditFlightPlanPage'
 import { DronePlanDetailPage }   from './pages/DronePlanDetailPage'
+import { FlightPlannerPage }    from './pages/drone/FlightPlannerPage'
 import { useAuth }               from './hooks/useAuth'
 
 // ── Theme Constants (blue-tinted variant for user portal) ─────────────────────
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { to: '/',                 label: 'DASHBOARD',  icon: '///' },
   { to: '/file-flight-plan', label: 'FILE FPL',   icon: 'FPL' },
   { to: '/file-drone-plan',  label: 'FILE DRONE', icon: 'DOP' },
+  { to: '/flight-planner',   label: 'FLT PLANNER', icon: 'MAP' },
 ]
 
 function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
@@ -108,6 +110,7 @@ export default function App() {
         <Route path="/flight-plan/:id"     element={<ProtectedLayout><FlightPlanDetailPage /></ProtectedLayout>} />
         <Route path="/edit-flight-plan/:id" element={<ProtectedLayout><EditFlightPlanPage /></ProtectedLayout>} />
         <Route path="/drone-plan/:id"      element={<ProtectedLayout><DronePlanDetailPage /></ProtectedLayout>} />
+        <Route path="/flight-planner"    element={<ProtectedLayout><FlightPlannerPage /></ProtectedLayout>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

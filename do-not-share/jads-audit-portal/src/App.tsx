@@ -6,7 +6,9 @@ import { MissionDetailPage } from './pages/MissionDetailPage'
 import { FlightPlansPage }       from './pages/FlightPlansPage'
 import { FlightPlanDetailPage } from './pages/FlightPlanDetailPage'
 import { ViolationsPage }    from './pages/ViolationsPage'
+import { ZoneCompliancePage } from './pages/audit/ZoneCompliancePage'
 import { useAuditAuth }      from './hooks/useAuditAuth'
+import { EgcaSyncBadge }     from './components/EgcaSyncBadge'
 
 const T = {
   bg:         '#050A08',
@@ -24,10 +26,11 @@ const NAV_ITEMS = [
   { to: '/missions',     label: 'Missions',     icon: 'M3 3h18v2H3V3zm0 8h18v2H3v-2zm0 8h18v2H3v-2z' },
   { to: '/flight-plans', label: 'Flight Plans',  icon: 'M21 16v-2l-8-5V3.5A1.5 1.5 0 0011.5 2 1.5 1.5 0 0010 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z' },
   { to: '/violations',   label: 'Violations',    icon: 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z' },
+  { to: '/zone-compliance', label: 'Zone Compliance', icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z' },
 ]
 
 function SidebarNav() {
-  const { logout } = useAuditAuth()
+  const { token, role, logout } = useAuditAuth()
   const loc = useLocation()
   const [collapsed, setCollapsed] = useState(false)
 
@@ -95,8 +98,9 @@ function SidebarNav() {
         })}
       </div>
 
-      {/* Collapse toggle + Sign out */}
+      {/* eGCA Sync + Collapse toggle + Sign out */}
       <div style={{ borderTop: `1px solid ${T.border}`, padding: '0.5rem' }}>
+        <EgcaSyncBadge token={token} role={role} collapsed={collapsed} />
         <button onClick={() => setCollapsed(c => !c)}
           style={{
             width: '100%',
@@ -166,6 +170,9 @@ export default function App() {
         } />
         <Route path="/violations" element={
           <Protected><Layout><ViolationsPage /></Layout></Protected>
+        } />
+        <Route path="/zone-compliance" element={
+          <Protected><Layout><ZoneCompliancePage /></Layout></Protected>
         } />
         <Route path="*" element={<Navigate to="/missions" replace />} />
       </Routes>
