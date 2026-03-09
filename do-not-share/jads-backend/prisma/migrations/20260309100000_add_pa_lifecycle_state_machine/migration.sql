@@ -1,5 +1,5 @@
--- PA Lifecycle State Machine — Enhance PermissionArtefact with full lifecycle tracking
--- Adds PAStatus enum and new columns for NPNT compliance lifecycle:
+-- PA Lifecycle State Machine — Create PermissionArtefact table with full lifecycle tracking
+-- PAStatus enum models the NPNT compliance lifecycle:
 --   PENDING -> APPROVED -> DOWNLOADED -> LOADED -> ACTIVE -> COMPLETED -> LOG_UPLOADED -> AUDIT_COMPLETE
 --   Also: EXPIRED, REJECTED, REVOKED terminal states.
 
@@ -18,45 +18,54 @@ CREATE TYPE "PAStatus" AS ENUM (
   'REVOKED'
 );
 
--- Add new columns to PermissionArtefact
-ALTER TABLE "PermissionArtefact"
-  ADD COLUMN "permissionArtifactId" TEXT,
-  ADD COLUMN "txnId"               TEXT,
-  ADD COLUMN "uinNumber"           TEXT NOT NULL DEFAULT '',
-  ADD COLUMN "pilotId"             TEXT NOT NULL DEFAULT '',
-  ADD COLUMN "operatorId"          TEXT NOT NULL DEFAULT '',
-  ADD COLUMN "primaryZone"         TEXT NOT NULL DEFAULT 'YELLOW',
-  ADD COLUMN "flightStartTime"     TIMESTAMP(3) NOT NULL DEFAULT NOW(),
-  ADD COLUMN "flightEndTime"       TIMESTAMP(3) NOT NULL DEFAULT NOW(),
-  ADD COLUMN "geofencePolygon"     JSONB NOT NULL DEFAULT '[]',
-  ADD COLUMN "maxAltitudeMeters"   INTEGER NOT NULL DEFAULT 120,
-  ADD COLUMN "rawPaXml"            BYTEA,
-  ADD COLUMN "loadedToDroneAt"     TIMESTAMP(3),
-  ADD COLUMN "flightLogUploadedAt" TIMESTAMP(3),
-  ADD COLUMN "flightLogHash"       TEXT,
-  ADD COLUMN "violations"          JSONB,
-  ADD COLUMN "revokedAt"           TIMESTAMP(3),
-  ADD COLUMN "revokeReason"        TEXT;
+-- Create the PermissionArtefact table with all columns
+CREATE TABLE "PermissionArtefact" (
+  "id"                    TEXT NOT NULL,
+  "applicationId"         TEXT NOT NULL,
+  "planId"                TEXT NOT NULL,
+  "permissionArtifactId"  TEXT,
+  "txnId"                 TEXT,
+  "uinNumber"             TEXT NOT NULL,
+  "pilotId"               TEXT NOT NULL,
+  "operatorId"            TEXT NOT NULL,
+  "status"                "PAStatus" NOT NULL DEFAULT 'PENDING',
+  "primaryZone"           TEXT NOT NULL,
+  "flightStartTime"       TIMESTAMP(3) NOT NULL,
+  "flightEndTime"         TIMESTAMP(3) NOT NULL,
+  "geofencePolygon"       JSONB NOT NULL,
+  "maxAltitudeMeters"     INTEGER NOT NULL,
+  "rawPaXml"              BYTEA,
+  "paZipHash"             TEXT,
+  "paFilePath"            TEXT,
+  "signatureValid"        BOOLEAN,
+  "loadedToDroneAt"       TIMESTAMP(3),
+  "flightLogUploadedAt"   TIMESTAMP(3),
+  "flightLogHash"         TEXT,
+  "violations"            JSONB,
+  "submittedAt"           TIMESTAMP(3) NOT NULL,
+  "approvedAt"            TIMESTAMP(3),
+  "downloadedAt"          TIMESTAMP(3),
+  "expiresAt"             TIMESTAMP(3),
+  "completedAt"           TIMESTAMP(3),
+  "archivedAt"            TIMESTAMP(3),
+  "revokedAt"             TIMESTAMP(3),
+  "revokeReason"          TEXT,
+  "createdAt"             TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt"             TIMESTAMP(3) NOT NULL,
 
--- Rename existing paFileHash to paZipHash for consistency
-ALTER TABLE "PermissionArtefact"
-  RENAME COLUMN "paFileHash" TO "paZipHash";
+  CONSTRAINT "PermissionArtefact_pkey" PRIMARY KEY ("id")
+);
 
--- Convert status column from TEXT to PAStatus enum
--- First rename the old column, then add new typed column, copy data, drop old
-ALTER TABLE "PermissionArtefact" RENAME COLUMN "status" TO "status_old";
-ALTER TABLE "PermissionArtefact" ADD COLUMN "status" "PAStatus" NOT NULL DEFAULT 'PENDING';
+-- Unique indexes
+CREATE UNIQUE INDEX "PermissionArtefact_applicationId_key" ON "PermissionArtefact"("applicationId");
 
--- Migrate existing status values
-UPDATE "PermissionArtefact" SET "status" = 'PENDING'  WHERE "status_old" = 'PENDING';
-UPDATE "PermissionArtefact" SET "status" = 'PENDING'  WHERE "status_old" = 'SUBMITTED';
-UPDATE "PermissionArtefact" SET "status" = 'APPROVED' WHERE "status_old" = 'APPROVED';
-UPDATE "PermissionArtefact" SET "status" = 'REJECTED' WHERE "status_old" = 'REJECTED';
-UPDATE "PermissionArtefact" SET "status" = 'EXPIRED'  WHERE "status_old" = 'EXPIRED';
-UPDATE "PermissionArtefact" SET "status" = 'COMPLETED' WHERE "status_old" = 'COMPLETED';
-
-ALTER TABLE "PermissionArtefact" DROP COLUMN "status_old";
-
--- Add new indexes
+-- Performance indexes
+CREATE INDEX "PermissionArtefact_status_idx" ON "PermissionArtefact"("status");
+CREATE INDEX "PermissionArtefact_expiresAt_idx" ON "PermissionArtefact"("expiresAt");
+CREATE INDEX "PermissionArtefact_planId_idx" ON "PermissionArtefact"("planId");
 CREATE INDEX "PermissionArtefact_operatorId_idx" ON "PermissionArtefact"("operatorId");
 CREATE INDEX "PermissionArtefact_uinNumber_idx" ON "PermissionArtefact"("uinNumber");
+
+-- Foreign key: PermissionArtefact → DroneOperationPlan
+ALTER TABLE "PermissionArtefact" ADD CONSTRAINT "PermissionArtefact_planId_fkey"
+  FOREIGN KEY ("planId") REFERENCES "DroneOperationPlan"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
