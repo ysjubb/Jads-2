@@ -52,15 +52,15 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: 'FLEET & LOGS',
     items: [
-      { to: '/fleet',           label: 'Fleet Manager',  icon: 'FLT', domain: 'BOTH' },
+      { to: '/fleet',           label: 'Fleet Manager',  icon: 'FLT', domain: 'DRONE' },
       { to: '/log-upload',      label: 'Log Upload',     icon: 'LOG', domain: 'DRONE' },
     ],
   },
   {
     title: 'COMPLIANCE',
     items: [
-      { to: '/evidence',        label: 'Evidence Chain',  icon: 'EVC', domain: 'BOTH' },
-      { to: '/audit-export',    label: 'Audit Export',    icon: 'AUD', domain: 'BOTH' },
+      { to: '/evidence',        label: 'Evidence Chain',  icon: 'EVC', domain: 'DRONE' },
+      { to: '/audit-export',    label: 'Audit Export',    icon: 'AUD', domain: 'DRONE' },
     ],
   },
   {
