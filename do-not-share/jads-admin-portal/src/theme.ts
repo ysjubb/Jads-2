@@ -10,3 +10,16 @@ export const T = {
   text:       '#b0c8b8',
   textBright: '#d0e8d8',
 }
+
+// ── Zone Conflict Monitor — Dark Green HUD Theme ────────────────────────────
+export const ZT = {
+  bg:         '#020B04',
+  surface:    '#071A0A',
+  phosphor:   '#00FF5F',
+  border:     '#0D2E12',
+  amber:      '#FFB800',
+  red:        '#FF3B3B',
+  muted:      '#3A6A3A',
+  text:       '#8CB88C',
+  textBright: '#C0E8C0',
+}
