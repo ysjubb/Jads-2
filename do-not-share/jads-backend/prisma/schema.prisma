@@ -457,6 +457,9 @@ model MannedFlightPlan {
   ficNotificationSentAt    DateTime?
   fullyClearedNotifSentAt  DateTime?
 
+  // AAI data sync — tracks when status was reported to AAI
+  aaiReportedAt            DateTime?
+
   civilianFiler            CivilianUser?    @relation("FiledByCivilian", fields: [filedBy], references: [id], map: "MannedFlightPlan_civilianFiler_fkey")
   specialFiler             SpecialUser?     @relation("FiledBySpecial", fields: [filedBy], references: [id], map: "MannedFlightPlan_specialFiler_fkey")
   adcRecords               AdcRecord[]
@@ -922,4 +925,64 @@ model Bsa2023PartBDeclaration {
   @@index([missionId])
   @@index([certificateId])
   @@index([declarantUserId])
+}
+
+// ═══════════════════════════════════════════════
+// JEPPESEN CHART DATA (one-way import)
+// ═══════════════════════════════════════════════
+
+model JeppesenChart {
+  id            Int       @id @default(autoincrement())
+  chartId       String    @unique   // e.g. "VIDP-APPROACH-ILS-28R"
+  icaoCode      String
+  chartType     String              // APPROACH, SID, STAR, AIRPORT, ENROUTE
+  procedureName String
+  revision      String
+  effectiveDate DateTime
+  expiryDate    DateTime?
+  chartDataUrl  String?
+  waypointsJson String?
+  isActive      Boolean   @default(true)
+  lastFetchedAt DateTime
+
+  @@index([icaoCode])
+  @@index([chartType])
+}
+
+model Navaid {
+  id            Int       @id @default(autoincrement())
+  navaidId      String    @unique   // e.g. "DPN" (Delhi VOR)
+  type          String              // VOR, DME, NDB, ILS, VORTAC
+  name          String
+  lat           Float
+  lon           Float
+  frequency     String?
+  declination   Float?
+  icaoCode      String?             // associated aerodrome
+  firCode       String?
+  isActive      Boolean   @default(true)
+  lastFetchedAt DateTime
+
+  @@index([firCode])
+  @@index([icaoCode])
+}
+
+// ═══════════════════════════════════════════════
+// AAI AERODROME DATA (two-way sync)
+// ═══════════════════════════════════════════════
+
+model AerodromeInfo {
+  id             Int       @id @default(autoincrement())
+  icaoCode       String    @unique
+  iataCode       String?
+  name           String
+  city           String
+  runwaysJson    String              // JSON array of RunwayInfo
+  operatingHours String
+  elevationFt    Int
+  refLat         Float
+  refLon         Float
+  lastSyncedAt   DateTime
+
+  @@index([icaoCode])
 }

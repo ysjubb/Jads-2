@@ -3,7 +3,10 @@
 // Government replaces this with their FIR office data feeds.
 // This stub must never make network calls.
 
-import type { IFirAdapter, FicPullResult, FicUpdateResult } from '../interfaces/IFirAdapter'
+import type {
+  IFirAdapter, FicPullResult, FicUpdateResult,
+  FicClearanceRequest, FicClearanceResponse,
+} from '../interfaces/IFirAdapter'
 
 const AS_OF = new Date().toISOString()
 
@@ -48,5 +51,22 @@ export class FirAdapterStub implements IFirAdapter {
       expiredFicNumbers: [],
       asOfUtc:           AS_OF,
     }
+  }
+
+  // ── OUTBOUND (JADS → FIR) ─────────────────────────────────
+
+  async submitFlightPlanForFic(request: FicClearanceRequest): Promise<FicClearanceResponse> {
+    const now = new Date().toISOString()
+    return {
+      accepted:               true,
+      ficNumber:              `FIC/${request.firCode}/STUB-${request.flightPlanId.slice(0, 6).toUpperCase()}/2024`,
+      rejectionReason:        null,
+      estimatedProcessingMin: 10,
+      respondedAtUtc:         now,
+    }
+  }
+
+  async acknowledgeFicUpdate(_ficNumber: string, _acknowledged: boolean): Promise<void> {
+    // Stub: no-op — live implementation sends acknowledgement to FIR office
   }
 }
