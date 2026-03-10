@@ -472,6 +472,9 @@ model MannedFlightPlan {
   ficNotificationSentAt    DateTime?
   fullyClearedNotifSentAt  DateTime?
 
+  // AAI data sync — tracks when status was reported to AAI
+  aaiReportedAt            DateTime?
+
   civilianFiler            CivilianUser?    @relation("FiledByCivilian", fields: [filedBy], references: [id], map: "MannedFlightPlan_civilianFiler_fkey")
   specialFiler             SpecialUser?     @relation("FiledBySpecial", fields: [filedBy], references: [id], map: "MannedFlightPlan_specialFiler_fkey")
   adcRecords               AdcRecord[]

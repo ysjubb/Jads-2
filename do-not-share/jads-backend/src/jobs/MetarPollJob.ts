@@ -1,4 +1,5 @@
 // Polls METAR data for 12 major Indian aerodromes every 30 minutes.
+// @dataFlow ONE_WAY — import only from weather data source.
 // Uses IMetarAdapter — no direct HTTP calls in this file.
 // Deduplicates by (icaoCode, observationUtc) to avoid duplicate rows.
 // One ICAO failure does not stop the others.

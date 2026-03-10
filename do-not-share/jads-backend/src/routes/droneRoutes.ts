@@ -7,6 +7,7 @@
 //   DroneTelemetryRecord.sequence is INT (not BigInt)
 
 import express                 from 'express'
+import multer                  from 'multer'
 import { PrismaClient }        from '@prisma/client'
 import { MissionService, MissionSubmissionInput } from '../services/MissionService'
 import { ForensicVerifier }    from '../services/ForensicVerifier'
@@ -38,6 +39,9 @@ const verifier    = new ForensicVerifier(prisma)
 const paLifecycle = new PALifecycleService(prisma)
 const notifService = new DroneNotificationService(prisma)
 const log         = createServiceLogger('DroneRoutes')
+
+// Multer for file uploads — 20MB limit, memory storage
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
 
 // ── POST /api/drone/missions ──────────────────────────────────────────────────
 // Upload a completed mission from the Android device.
@@ -1147,6 +1151,261 @@ router.delete('/flight-templates/:id', requireAuth, async (req, res) => {
   } catch (e: unknown) {
     log.error('flight_template_delete_error', { data: { error: e instanceof Error ? e.message : String(e) } })
     res.status(500).json({ error: 'TEMPLATE_DELETE_FAILED' })
+  }
+})
+
+// ── POST /api/drone/track-logs/upload-file ──────────────────────────────────
+// Upload a raw flight log file (DJI CSV, PhantomHelp CSV, NPNT JSON, or GPS track JSON).
+// Backend parses the file and creates a track log record.
+// Accepts multipart/form-data with field "file" + optional "droneSerialNumber" and "droneOperationPlanId".
+router.post(
+  '/track-logs/upload-file',
+  requireAuth,
+  requireDomain('DRONE'),
+  upload.single('file'),
+  async (req, res) => {
+    try {
+      const { userId } = req.auth!
+      const file = req.file
+      if (!file) {
+        res.status(400).json({ error: 'NO_FILE', detail: 'Attach a file as multipart field "file"' })
+        return
+      }
+
+      const text = file.buffer.toString('utf-8')
+      const filename = file.originalname.toLowerCase()
+      const droneSerialNumber = (req.body.droneSerialNumber as string) || 'UNKNOWN'
+      const droneOperationPlanId = (req.body.droneOperationPlanId as string) || null
+
+      // ── Detect format and parse ──────────────────────────────────
+      let format: string
+      let pathPoints: { lat: number; lon: number; alt?: number; timestampMs?: number }[] = []
+      let takeoffLat: number | null = null
+      let takeoffLon: number | null = null
+      let landingLat: number | null = null
+      let landingLon: number | null = null
+      let maxAltitudeM = 0
+      let durationSec  = 0
+      let breachCount  = 0
+
+      if (filename.endsWith('.json')) {
+        // NPNT JSON or GPS track JSON
+        const json = JSON.parse(text)
+        if (json.flightLog?.logEntries) {
+          format = 'NPNT_JSON'
+          const entries = json.flightLog.logEntries as any[]
+          pathPoints = entries
+            .filter((e: any) => e.latitude != null && e.longitude != null)
+            .map((e: any) => ({ lat: e.latitude, lon: e.longitude, alt: e.altitude ?? 0, timestampMs: e.timeStamp }))
+          const breaches = entries.filter((e: any) => e.entryType === 'GEOFENCE_BREACH' || e.entryType === 'TIME_BREACH')
+          breachCount = breaches.length
+        } else if (json.type === 'GPS_TRACK' && Array.isArray(json.points)) {
+          format = 'GPS_TRACK'
+          pathPoints = json.points.map((p: any) => ({
+            lat: p.lat, lon: p.lon, alt: p.alt ?? 0, timestampMs: p.timestampMs ?? p.t,
+          }))
+        } else {
+          res.status(400).json({ error: 'UNSUPPORTED_JSON_FORMAT' })
+          return
+        }
+      } else if (filename.endsWith('.csv') || filename.endsWith('.txt')) {
+        const lines = text.trim().split('\n')
+        if (lines.length < 2) {
+          res.status(400).json({ error: 'EMPTY_FILE' })
+          return
+        }
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
+
+        if (headers.includes('osd.latitude')) {
+          format = 'DJI_PHANTOMHELP'
+          const latIdx = headers.indexOf('osd.latitude')
+          const lonIdx = headers.indexOf('osd.longitude')
+          const altIdx = headers.indexOf('osd.altitude [m]') >= 0 ? headers.indexOf('osd.altitude [m]') : headers.indexOf('osd.altitude')
+          for (let i = 1; i < lines.length; i += 10) {
+            const cols = lines[i].split(',')
+            const lat = parseFloat(cols[latIdx])
+            const lon = parseFloat(cols[lonIdx])
+            const alt = altIdx >= 0 ? parseFloat(cols[altIdx]) : 0
+            if (!isNaN(lat) && !isNaN(lon)) pathPoints.push({ lat, lon, alt: isNaN(alt) ? 0 : alt })
+          }
+        } else if (headers.includes('latitude') && (headers.includes('longitude') || headers.includes('longitude'))) {
+          format = 'DJI_AIRDATA'
+          const latIdx = headers.indexOf('latitude')
+          const lonIdx = headers.indexOf('longitude')
+          const altIdx = headers.indexOf('height_above_takeoff')
+          for (let i = 1; i < lines.length; i += 10) {
+            const cols = lines[i].split(',')
+            const lat = parseFloat(cols[latIdx])
+            const lon = parseFloat(cols[lonIdx])
+            const alt = altIdx >= 0 ? parseFloat(cols[altIdx]) : 0
+            if (!isNaN(lat) && !isNaN(lon)) pathPoints.push({ lat, lon, alt: isNaN(alt) ? 0 : alt })
+          }
+        } else {
+          // Generic CSV — try to find lat/lon columns
+          const latIdx = headers.findIndex(h => h.includes('lat'))
+          const lonIdx = headers.findIndex(h => h.includes('lon') || h.includes('lng'))
+          const altIdx = headers.findIndex(h => h.includes('alt') || h.includes('height'))
+          if (latIdx < 0 || lonIdx < 0) {
+            res.status(400).json({ error: 'UNSUPPORTED_CSV', detail: 'Could not find lat/lon columns' })
+            return
+          }
+          format = 'GENERIC_CSV'
+          for (let i = 1; i < lines.length; i += 10) {
+            const cols = lines[i].split(',')
+            const lat = parseFloat(cols[latIdx])
+            const lon = parseFloat(cols[lonIdx])
+            const alt = altIdx >= 0 ? parseFloat(cols[altIdx]) : 0
+            if (!isNaN(lat) && !isNaN(lon)) pathPoints.push({ lat, lon, alt: isNaN(alt) ? 0 : alt })
+          }
+        }
+      } else {
+        res.status(400).json({ error: 'UNSUPPORTED_FILE_TYPE', detail: 'Supported: .csv, .txt, .json' })
+        return
+      }
+
+      if (pathPoints.length === 0) {
+        res.status(400).json({ error: 'NO_VALID_POINTS', detail: 'File contained no parseable GPS points' })
+        return
+      }
+
+      // Compute summary
+      takeoffLat = pathPoints[0].lat
+      takeoffLon = pathPoints[0].lon
+      landingLat = pathPoints[pathPoints.length - 1].lat
+      landingLon = pathPoints[pathPoints.length - 1].lon
+      maxAltitudeM = Math.max(0, ...pathPoints.map(p => p.alt ?? 0))
+
+      if (pathPoints[0].timestampMs && pathPoints[pathPoints.length - 1].timestampMs) {
+        durationSec = (pathPoints[pathPoints.length - 1].timestampMs! - pathPoints[0].timestampMs!) / 1000
+      } else {
+        durationSec = pathPoints.length // estimate: 1 point per second (subsampled at 10Hz→1Hz)
+      }
+
+      const trackLog = await prisma.trackLog.create({
+        data: {
+          operatorId:           userId,
+          droneSerialNumber,
+          format,
+          takeoffLat,
+          takeoffLon,
+          landingLat,
+          landingLon,
+          pathPointsJson:       JSON.stringify(pathPoints),
+          maxAltitudeM,
+          durationSec,
+          breachCount,
+          violationsJson:       null,
+          droneOperationPlanId,
+        },
+      })
+
+      await prisma.auditLog.create({
+        data: {
+          actorType: 'USER', actorId: userId, actorRole: req.auth!.role,
+          action: 'TRACK_LOG_UPLOADED', resourceType: 'track_log', resourceId: trackLog.id,
+          detailJson: JSON.stringify({
+            droneSerialNumber, format, filename: file.originalname,
+            pointCount: pathPoints.length, source: 'FILE_UPLOAD',
+          }),
+        }
+      })
+
+      log.info('track_log_file_uploaded', {
+        data: { trackLogId: trackLog.id, droneSerialNumber, format, points: pathPoints.length }
+      })
+
+      res.status(201).json(serializeForJson({
+        success:     true,
+        trackLogId:  trackLog.id,
+        format,
+        pointCount:  pathPoints.length,
+        maxAltitudeM,
+        durationSec: Math.round(durationSec),
+        takeoff:     { lat: takeoffLat, lon: takeoffLon },
+        landing:     { lat: landingLat, lon: landingLon },
+      }))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      log.error('track_log_file_upload_error', { data: { error: msg } })
+      res.status(500).json({ error: 'TRACK_LOG_FILE_UPLOAD_FAILED' })
+    }
+  }
+)
+
+// ── POST /api/drone/track-logs/gps-track ────────────────────────────────────
+// Upload a GPS track recorded by the Capacitor app or browser GPS recorder.
+// Body: { droneSerialNumber, points: [{lat, lon, alt, timestampMs}], droneOperationPlanId? }
+router.post('/track-logs/gps-track', requireAuth, requireDomain('DRONE'), async (req, res) => {
+  try {
+    const { userId } = req.auth!
+    const { droneSerialNumber, points, droneOperationPlanId } = req.body
+
+    if (!Array.isArray(points) || points.length === 0) {
+      res.status(400).json({ error: 'INVALID_PAYLOAD', detail: 'points must be a non-empty array' })
+      return
+    }
+    if (points.length > 50_000) {
+      res.status(400).json({ error: 'TOO_MANY_POINTS', limit: 50_000, received: points.length })
+      return
+    }
+
+    const pathPoints = points.map((p: any) => ({
+      lat: p.lat, lon: p.lon, alt: p.alt ?? 0, timestampMs: p.timestampMs ?? p.t ?? 0,
+    }))
+
+    const takeoffLat = pathPoints[0].lat
+    const takeoffLon = pathPoints[0].lon
+    const landingLat = pathPoints[pathPoints.length - 1].lat
+    const landingLon = pathPoints[pathPoints.length - 1].lon
+    const maxAltitudeM = Math.max(0, ...pathPoints.map(p => p.alt))
+    const durationSec = pathPoints[0].timestampMs && pathPoints[pathPoints.length - 1].timestampMs
+      ? (pathPoints[pathPoints.length - 1].timestampMs - pathPoints[0].timestampMs) / 1000
+      : pathPoints.length
+
+    const trackLog = await prisma.trackLog.create({
+      data: {
+        operatorId:           userId,
+        droneSerialNumber:    droneSerialNumber || 'GPS_RECORDER',
+        format:               'GPS_TRACK',
+        takeoffLat,
+        takeoffLon,
+        landingLat,
+        landingLon,
+        pathPointsJson:       JSON.stringify(pathPoints),
+        maxAltitudeM,
+        durationSec,
+        breachCount:          0,
+        violationsJson:       null,
+        droneOperationPlanId: droneOperationPlanId ?? null,
+      },
+    })
+
+    await prisma.auditLog.create({
+      data: {
+        actorType: 'USER', actorId: userId, actorRole: req.auth!.role,
+        action: 'TRACK_LOG_UPLOADED', resourceType: 'track_log', resourceId: trackLog.id,
+        detailJson: JSON.stringify({
+          droneSerialNumber: droneSerialNumber || 'GPS_RECORDER',
+          format: 'GPS_TRACK', pointCount: pathPoints.length, source: 'GPS_RECORDER',
+        }),
+      }
+    })
+
+    log.info('gps_track_uploaded', {
+      data: { trackLogId: trackLog.id, points: pathPoints.length, durationSec: Math.round(durationSec) }
+    })
+
+    res.status(201).json(serializeForJson({
+      success:     true,
+      trackLogId:  trackLog.id,
+      pointCount:  pathPoints.length,
+      maxAltitudeM,
+      durationSec: Math.round(durationSec),
+    }))
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('gps_track_upload_error', { data: { error: msg } })
+    res.status(500).json({ error: 'GPS_TRACK_UPLOAD_FAILED' })
   }
 })
 

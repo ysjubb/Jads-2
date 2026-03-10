@@ -155,6 +155,9 @@ async function main() {
   console.log('🌱 Seeding JADS development database...')
 
   // ── 0. Clean up all seeded data for idempotent re-runs ────────────
+  await prisma.jeppesenChart.deleteMany({})
+  await prisma.navaid.deleteMany({})
+  await prisma.aerodromeInfo.deleteMany({})
   await prisma.notamRecord.deleteMany({})
   await prisma.metarRecord.deleteMany({})
   await prisma.auditLog.deleteMany({})
@@ -869,6 +872,64 @@ async function main() {
   })
   console.log(`  ✓ Audit log: 5 entries (zone create, zone approve, zone draft, mission upload, replay detect)`)
 
+  // ── Jeppesen Charts (ONE_WAY import — licensed chart data) ──────────
+  const now = new Date()
+  const jeppesenCharts = [
+    { chartId: 'VIDP-APPROACH-ILS-28R', icaoCode: 'VIDP', chartType: 'APPROACH', procedureName: 'ILS 28R', revision: 'REV-24-03' },
+    { chartId: 'VIDP-SID-GUDUM-1A',     icaoCode: 'VIDP', chartType: 'SID',      procedureName: 'GUDUM 1A', revision: 'REV-24-02' },
+    { chartId: 'VIDP-STAR-EDNOL-1A',    icaoCode: 'VIDP', chartType: 'STAR',     procedureName: 'EDNOL 1A', revision: 'REV-24-02' },
+    { chartId: 'VIDP-AIRPORT-AD',        icaoCode: 'VIDP', chartType: 'AIRPORT',  procedureName: 'AD Chart',  revision: 'REV-24-01' },
+    { chartId: 'VABB-APPROACH-ILS-27',   icaoCode: 'VABB', chartType: 'APPROACH', procedureName: 'ILS 27',   revision: 'REV-24-03' },
+    { chartId: 'VABB-SID-ANDHERI-1A',   icaoCode: 'VABB', chartType: 'SID',      procedureName: 'ANDHERI 1A', revision: 'REV-24-01' },
+    { chartId: 'VOMM-APPROACH-ILS-07',  icaoCode: 'VOMM', chartType: 'APPROACH', procedureName: 'ILS 07',   revision: 'REV-24-02' },
+    { chartId: 'VECC-APPROACH-ILS-19R', icaoCode: 'VECC', chartType: 'APPROACH', procedureName: 'ILS 19R',  revision: 'REV-24-02' },
+  ]
+  for (const chart of jeppesenCharts) {
+    await prisma.jeppesenChart.create({
+      data: {
+        ...chart,
+        effectiveDate: new Date('2024-01-15T00:00:00Z'),
+        expiryDate:    new Date('2025-01-14T23:59:59Z'),
+        isActive:      true,
+        lastFetchedAt: now,
+      },
+    })
+  }
+  console.log(`  ✓ Jeppesen charts: ${jeppesenCharts.length} (VIDP, VABB, VOMM, VECC)`)
+
+  // ── Navaids (ONE_WAY import from Jeppesen) ──────────────────────────
+  const navaids = [
+    { navaidId: 'DPN', type: 'VOR/DME', name: 'Delhi VOR',       lat: 28.5665, lon: 77.1031, frequency: '116.10', firCode: 'VIDF', icaoCode: 'VIDP' },
+    { navaidId: 'PNJ', type: 'VOR',     name: 'Pinjore VOR',     lat: 30.7600, lon: 76.9200, frequency: '113.60', firCode: 'VIDF', icaoCode: null },
+    { navaidId: 'BBB', type: 'VOR/DME', name: 'Mumbai VOR',      lat: 19.0896, lon: 72.8656, frequency: '116.50', firCode: 'VABB', icaoCode: 'VABB' },
+    { navaidId: 'CCU', type: 'VOR/DME', name: 'Kolkata VOR',     lat: 22.6500, lon: 88.4500, frequency: '113.30', firCode: 'VECC', icaoCode: 'VECC' },
+    { navaidId: 'MAA', type: 'VOR/DME', name: 'Chennai VOR',     lat: 12.9900, lon: 80.1800, frequency: '115.90', firCode: 'VOMF', icaoCode: 'VOMM' },
+    { navaidId: 'BLR', type: 'VOR/DME', name: 'Bangalore VOR',   lat: 13.1986, lon: 77.7066, frequency: '114.50', firCode: 'VOMF', icaoCode: 'VOBL' },
+  ]
+  for (const nav of navaids) {
+    await prisma.navaid.create({
+      data: { ...nav, declination: null, isActive: true, lastFetchedAt: now },
+    })
+  }
+  console.log(`  ✓ Navaids: ${navaids.length} (VOR/DME across 4 FIRs)`)
+
+  // ── AAI Aerodrome Data (TWO_WAY sync) ───────────────────────────────
+  const aerodromes = [
+    { icaoCode: 'VIDP', iataCode: 'DEL', name: 'Indira Gandhi International Airport', city: 'New Delhi',  elevationFt: 777,  refLat: 28.5665, refLon: 77.1031, operatingHours: 'H24', runways: [{ designator: '28R/10L', lengthM: 4430, widthM: 60, surfaceType: 'ASPHALT', ilsAvailable: true, status: 'OPEN' }] },
+    { icaoCode: 'VABB', iataCode: 'BOM', name: 'Chhatrapati Shivaji Maharaj Intl',    city: 'Mumbai',     elevationFt: 37,   refLat: 19.0896, refLon: 72.8656, operatingHours: 'H24', runways: [{ designator: '27/09', lengthM: 3660, widthM: 46, surfaceType: 'ASPHALT', ilsAvailable: true, status: 'OPEN' }] },
+    { icaoCode: 'VOMM', iataCode: 'MAA', name: 'Chennai International Airport',       city: 'Chennai',    elevationFt: 52,   refLat: 12.9941, refLon: 80.1709, operatingHours: 'H24', runways: [{ designator: '07/25', lengthM: 3658, widthM: 45, surfaceType: 'ASPHALT', ilsAvailable: true, status: 'OPEN' }] },
+    { icaoCode: 'VECC', iataCode: 'CCU', name: 'Netaji Subhas Chandra Bose Intl',     city: 'Kolkata',    elevationFt: 16,   refLat: 22.6547, refLon: 88.4467, operatingHours: 'H24', runways: [{ designator: '19R/01L', lengthM: 3627, widthM: 46, surfaceType: 'ASPHALT', ilsAvailable: true, status: 'OPEN' }] },
+    { icaoCode: 'VOBL', iataCode: 'BLR', name: 'Kempegowda International Airport',    city: 'Bengaluru',  elevationFt: 3000, refLat: 13.1986, refLon: 77.7066, operatingHours: 'H24', runways: [{ designator: '09L/27R', lengthM: 4000, widthM: 45, surfaceType: 'ASPHALT', ilsAvailable: true, status: 'OPEN' }] },
+    { icaoCode: 'VOHB', iataCode: 'HYD', name: 'Rajiv Gandhi International Airport',  city: 'Hyderabad',  elevationFt: 2024, refLat: 17.2403, refLon: 78.4294, operatingHours: 'H24', runways: [{ designator: '09L/27R', lengthM: 4260, widthM: 60, surfaceType: 'ASPHALT', ilsAvailable: true, status: 'OPEN' }] },
+  ]
+  for (const ad of aerodromes) {
+    const { runways, ...rest } = ad
+    await prisma.aerodromeInfo.create({
+      data: { ...rest, runwaysJson: JSON.stringify(runways), lastSyncedAt: now },
+    })
+  }
+  console.log(`  ✓ AAI Aerodromes: ${aerodromes.length} (VIDP, VABB, VOMM, VECC, VOBL, VOHB)`)
+
   console.log('\n✅ Seed complete. Summary:')
   console.log('   Admin A login:        dgca.admin       / Admin@JADS2024     (PLATFORM_SUPER_ADMIN)')
   console.log('   Admin B login:        aai.approver     / AAI@Approve2024    (GOVT_ADMIN)')
@@ -884,6 +945,9 @@ async function main() {
   console.log('   Airspace:             1 ACTIVE (YELLOW 400ft), 1 DRAFT (RED IAF exercise)')
   console.log('   METAR:                VIDP 320°/8kt 2800m 12/10 Q1018')
   console.log('   NOTAM:                A0234/24 IAF exercise VIDF FIR')
+  console.log('   Jeppesen Charts:      8 (ILS, SID, STAR, AD for VIDP, VABB, VOMM, VECC)')
+  console.log('   Navaids:              6 (VOR/DME across 4 FIRs)')
+  console.log('   AAI Aerodromes:       6 (VIDP, VABB, VOMM, VECC, VOBL, VOHB)')
   console.log('\n   Backend:  http://localhost:8080')
   console.log('   Admin:    http://localhost:5173')
   console.log('   Audit:    http://localhost:5174')

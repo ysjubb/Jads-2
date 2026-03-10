@@ -3,7 +3,10 @@
 // Government replaces this with their AFMLU portal data feeds.
 // This stub must never make network calls.
 
-import type { IAfmluAdapter, AdcPullResult, AdcUpdateResult } from '../interfaces/IAfmluAdapter'
+import type {
+  IAfmluAdapter, AdcPullResult, AdcUpdateResult,
+  AdcClearanceRequest, AdcClearanceResponse,
+} from '../interfaces/IAfmluAdapter'
 
 const AS_OF = new Date().toISOString()
 
@@ -55,5 +58,22 @@ export class AfmluAdapterStub implements IAfmluAdapter {
       withdrawnAdcNumbers: [],
       asOfUtc:             AS_OF,
     }
+  }
+
+  // ── OUTBOUND (JADS → AFMLU) ────────────────────────────────
+
+  async submitFlightPlanForAdc(_afmluId: number, request: AdcClearanceRequest): Promise<AdcClearanceResponse> {
+    const now = new Date().toISOString()
+    return {
+      accepted:               true,
+      adcNumber:              `ADC-STUB-${request.flightPlanId.slice(0, 8).toUpperCase()}`,
+      rejectionReason:        null,
+      estimatedProcessingMin: 5,
+      respondedAtUtc:         now,
+    }
+  }
+
+  async acknowledgeAdcUpdate(_adcNumber: string, _acknowledged: boolean): Promise<void> {
+    // Stub: no-op — live implementation sends acknowledgement to AFMLU
   }
 }

@@ -49,6 +49,15 @@ export const env = {
   EGCA_API_PASSWORD:    optionalEnv('EGCA_API_PASSWORD', ''),
   USE_LIVE_ADAPTERS:    optionalEnv('USE_LIVE_ADAPTERS', 'false') === 'true',
 
+  // Jeppesen NavData (ONE_WAY import — licensed chart and navaid data)
+  JEPPESEN_BASE_URL:   optionalEnv('JEPPESEN_BASE_URL', ''),
+  JEPPESEN_API_KEY:    optionalEnv('JEPPESEN_API_KEY', ''),
+  JEPPESEN_LICENSE_ID: optionalEnv('JEPPESEN_LICENSE_ID', ''),
+
+  // AAI Data Exchange (TWO_WAY — aerodrome data import + flight status push)
+  AAI_DATA_BASE_URL:   optionalEnv('AAI_DATA_BASE_URL', ''),
+  AAI_DATA_API_KEY:    optionalEnv('AAI_DATA_API_KEY', ''),
+
   // Shared secret for inbound adapter push webhooks (AFMLU, FIR).
   // Must be set to a strong random value in production.
   // AFMLU/FIR systems include this in X-JADS-Adapter-Key header.

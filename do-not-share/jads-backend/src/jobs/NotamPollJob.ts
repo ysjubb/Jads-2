@@ -1,4 +1,5 @@
-// Polls NOTAM data for all 4 Indian FIRs every 15 minutes.
+// Polls NOTAM data for all 4 Indian FIRs daily at midnight UTC.
+// @dataFlow ONE_WAY — import only from government NOTAM source.
 // Uses INotamAdapter — no direct HTTP calls in this file.
 // All errors are caught per-FIR so one failure doesn't stop others.
 // All upserts are idempotent: running twice produces the same DB state.
@@ -11,7 +12,7 @@ import { createServiceLogger } from '../logger'
 
 const log = createServiceLogger('NotamPollJob')
 
-const CRON_SCHEDULE = '*/5 * * * *'
+const CRON_SCHEDULE = '0 0 * * *'  // Daily at midnight UTC
 const INDIA_FIRS    = ['VIDF', 'VABB', 'VECC', 'VOMF']
 
 export class NotamPollJob {

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">JADS</string>
+    <string name="title_activity_main">JADS</string>
+    <string name="package_name">in.gov.jads.userportal</string>
+    <string name="custom_url_scheme">in.gov.jads.userportal</string>
+</resources>

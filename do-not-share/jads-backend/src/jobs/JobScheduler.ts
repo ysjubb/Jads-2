@@ -2,14 +2,15 @@
 // All jobs self-register their cron schedules via their start() method.
 // SIGTERM handler calls scheduler.stopAll() for graceful shutdown.
 
-import { PrismaClient }       from '@prisma/client'
-import { ReverificationJob }  from './ReverificationJob'
-import { NotamPollJob }       from './NotamPollJob'
-import { MetarPollJob }       from './MetarPollJob'
-import { AdcFicPollJob }      from './AdcFicPollJob'
-import { AirspaceDataPollJob } from './AirspaceDataPollJob'
+import { PrismaClient }        from '@prisma/client'
+import { ReverificationJob }   from './ReverificationJob'
+import { NotamPollJob }        from './NotamPollJob'
+import { MetarPollJob }        from './MetarPollJob'
+import { AdcFicPollJob }       from './AdcFicPollJob'
+import { JeppesenPollJob }     from './JeppesenPollJob'
+import { AAIDataSyncJob }      from './AAIDataSyncJob'
 import { AnnualReconfirmJob }  from './AnnualReconfirmJob'
-import { EvidenceLedgerJob }    from './EvidenceLedgerJob'
+import { EvidenceLedgerJob }   from './EvidenceLedgerJob'
 import { CredentialSyncJob }   from './CredentialSyncJob'
 import { createServiceLogger } from '../logger'
 
@@ -26,12 +27,14 @@ export class JobScheduler {
   constructor(private readonly prisma: PrismaClient) {
     this.jobs = {
       reverification:  new ReverificationJob(prisma),
-      notamPoll:       new NotamPollJob(prisma),
-      metarPoll:       new MetarPollJob(prisma),
-      adcFicPoll:      new AdcFicPollJob(prisma),
+      notamPoll:       new NotamPollJob(prisma),          // Daily — ONE_WAY import
+      metarPoll:       new MetarPollJob(prisma),           // 30 min — ONE_WAY import
+      adcFicPoll:      new AdcFicPollJob(prisma),          // 1 min — TWO_WAY (ADC + FIC)
+      jeppesenPoll:    new JeppesenPollJob(prisma),        // Daily — ONE_WAY import
+      aaiDataSync:     new AAIDataSyncJob(prisma),         // Daily — TWO_WAY
       annualReconfirm: new AnnualReconfirmJob(prisma),
       evidenceLedger:  new EvidenceLedgerJob(prisma),
-      credentialSync:  new CredentialSyncJob(prisma),
+      credentialSync:  new CredentialSyncJob(prisma),      // Daily — TWO_WAY
     }
   }
 
