@@ -1,6 +1,12 @@
 import axios from 'axios'
+import { Capacitor } from '@capacitor/core'
 
-const API = '/api'
+// On native mobile (Capacitor), Vite proxy isn't available — use full backend URL.
+// Set VITE_API_BASE_URL in .env for production, or fall back to localhost for dev.
+const API = Capacitor.isNativePlatform()
+  ? (import.meta.env.VITE_API_BASE_URL || 'http://10.0.2.2:8080') + '/api'
+  : '/api'
+
 const TOKEN_KEY = 'jads_user_token'
 
 export function getToken(): string | null {

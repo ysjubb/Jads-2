@@ -18,6 +18,7 @@ import { BVLOSWizard }           from './components/portal/BVLOSWizard'
 import { TrajectoryViewer }      from './components/portal/TrajectoryViewer'
 import { APISettings }           from './components/portal/APISettings'
 import { EvidenceExportPanel }   from './components/portal/EvidenceExportPanel'
+import { GpsRecorderPage }       from './pages/GpsRecorderPage'
 import { SystemStatusBar }       from './components/portal/SystemStatusBar'
 import { useAuth }               from './hooks/useAuth'
 
@@ -54,6 +55,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/fleet',           label: 'Fleet Manager',  icon: 'FLT', domain: 'DRONE' },
       { to: '/log-upload',      label: 'Log Upload',     icon: 'LOG', domain: 'DRONE' },
+      { to: '/gps-recorder',   label: 'GPS Recorder',   icon: 'GPS', domain: 'DRONE' },
     ],
   },
   {
@@ -175,9 +177,22 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
   )
 }
 
+function useIsMobile() {
+  const [mobile, setMobile] = useState(window.innerWidth < 768)
+  useEffect(() => {
+    const handler = () => setMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  return mobile
+}
+
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const { token, credentialDomain } = useAuth()
-  const [collapsed, setCollapsed] = useState(false)
+  const isMobile = useIsMobile()
+  const [collapsed, setCollapsed] = useState(isMobile)
+
+  useEffect(() => { setCollapsed(isMobile) }, [isMobile])
 
   useEffect(() => {
     document.title = credentialDomain === 'AIRCRAFT' ? 'JADS Aircraft Portal'
@@ -188,8 +203,24 @@ function ProtectedLayout({ children }: { children: React.ReactNode }) {
   if (!token) return <Navigate to="/login" replace />
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: T.bg }}>
-      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
+      {/* On mobile when expanded, overlay the sidebar */}
+      {isMobile && !collapsed && (
+        <div onClick={() => setCollapsed(true)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 99,
+        }} />
+      )}
+      <div style={isMobile && !collapsed ? { position: 'fixed', zIndex: 100, height: '100vh' } : undefined}>
+        <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
+      </div>
       <main style={{ flex: 1, minHeight: '100vh', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+        {isMobile && (
+          <div onClick={() => setCollapsed(false)} style={{
+            padding: '0.5rem 1rem', borderBottom: `1px solid ${T.border}`,
+            cursor: 'pointer', fontSize: '0.8rem', color: T.primary, fontWeight: 700,
+          }}>
+            &#9776; MENU
+          </div>
+        )}
         <div style={{ flex: 1 }}>{children}</div>
         <SystemStatusBar />
       </main>
@@ -219,6 +250,7 @@ export default function App() {
         {/* Fleet & Logs */}
         <Route path="/fleet"                element={<ProtectedLayout><FleetManager /></ProtectedLayout>} />
         <Route path="/log-upload"           element={<ProtectedLayout><LogUploadPage /></ProtectedLayout>} />
+        <Route path="/gps-recorder"        element={<ProtectedLayout><GpsRecorderPage /></ProtectedLayout>} />
 
         {/* Compliance */}
         <Route path="/evidence"             element={<ProtectedLayout><EvidencePage /></ProtectedLayout>} />
