@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { userApi } from '../api/client'
-import { T } from '../App'
+import { T } from '../theme'
 
 export function EditFlightPlanPage() {
   const { id } = useParams<{ id: string }>()

@@ -10,7 +10,7 @@ import express                 from 'express'
 import { PrismaClient }        from '@prisma/client'
 import { MissionService, MissionSubmissionInput } from '../services/MissionService'
 import { ForensicVerifier }    from '../services/ForensicVerifier'
-import { requireAuth, requireRole, requireAuditAuth } from '../middleware/authMiddleware'
+import { requireAuth, requireRole, requireAuditAuth, requireDomain } from '../middleware/authMiddleware'
 import { missionUploadRateLimit } from '../middleware/rateLimiter'
 import { serializeForJson }    from '../utils/bigintSerializer'
 import { decodeCanonical }     from '../telemetry/telemetryDecoder'
@@ -29,7 +29,7 @@ const log      = createServiceLogger('DroneRoutes')
 // Response 202: duplicate (safe retry — same missionId already accepted)
 // Response 409: replay attack (same missionId, different operator)
 // Response 422: chain verification failed
-router.post('/missions', requireAuth, missionUploadRateLimit, async (req, res) => {
+router.post('/missions', requireAuth, requireDomain('DRONE'), missionUploadRateLimit, async (req, res) => {
   try {
     const { userId, userType } = req.auth!
     const input = req.body as MissionSubmissionInput
@@ -123,7 +123,7 @@ router.post('/missions', requireAuth, missionUploadRateLimit, async (req, res) =
 
 // ── GET /api/drone/missions ───────────────────────────────────────────────────
 // List the authenticated operator's missions (paginated).
-router.get('/missions', requireAuth, async (req, res) => {
+router.get('/missions', requireAuth, requireDomain('DRONE'), async (req, res) => {
   try {
     const { userId } = req.auth!
     const page  = Math.max(1, parseInt((req.query.page  as string) ?? '1'))
@@ -326,6 +326,64 @@ router.get('/violations', requireAuth, async (req, res) => {
     res.json(serializeForJson({ success: true, violations, count: violations.length }))
   } catch (e: unknown) {
     res.status(500).json({ error: 'VIOLATIONS_LIST_FAILED' })
+  }
+})
+
+// ── POST /api/drone/track-logs ────────────────────────────────────────────────
+// Upload a track log for a completed drone flight.
+// Violations are stored but NOT returned to the user.
+router.post('/track-logs', requireAuth, requireDomain('DRONE'), async (req, res) => {
+  try {
+    const { userId } = req.auth!
+    const {
+      droneSerialNumber, format, takeoff, landing, pathPoints,
+      maxAltitude, duration, breachCount, violations, droneOperationPlanId,
+    } = req.body
+
+    if (!droneSerialNumber || !format || !takeoff || !landing) {
+      res.status(400).json({
+        error: 'INVALID_PAYLOAD',
+        required: ['droneSerialNumber', 'format', 'takeoff', 'landing'],
+      })
+      return
+    }
+
+    const trackLog = await prisma.trackLog.create({
+      data: {
+        operatorId:           userId,
+        droneSerialNumber,
+        format,
+        takeoffLat:           takeoff.latDeg ?? null,
+        takeoffLon:           takeoff.lonDeg ?? null,
+        landingLat:           landing.latDeg ?? null,
+        landingLon:           landing.lonDeg ?? null,
+        pathPointsJson:       pathPoints ? JSON.stringify(pathPoints) : '[]',
+        maxAltitudeM:         maxAltitude ?? 0,
+        durationSec:          duration ?? 0,
+        breachCount:          breachCount ?? 0,
+        violationsJson:       violations ? JSON.stringify(violations) : null,
+        droneOperationPlanId: droneOperationPlanId ?? null,
+      },
+    })
+
+    await prisma.auditLog.create({
+      data: {
+        actorType: 'USER', actorId: userId, actorRole: req.auth!.role,
+        action: 'TRACK_LOG_UPLOADED', resourceType: 'track_log', resourceId: trackLog.id,
+        detailJson: JSON.stringify({
+          droneSerialNumber, format,
+          droneOperationPlanId: droneOperationPlanId ?? null,
+        }),
+      }
+    })
+
+    log.info('track_log_uploaded', { data: { trackLogId: trackLog.id, droneSerialNumber } })
+    // Do NOT include violation details in the response — violations are hidden from the user
+    res.status(201).json(serializeForJson({ success: true, trackLogId: trackLog.id }))
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('track_log_upload_error', { data: { error: msg } })
+    res.status(500).json({ error: 'TRACK_LOG_UPLOAD_FAILED' })
   }
 })
 

@@ -9,6 +9,8 @@ import { FlightPlansPage }  from './pages/FlightPlansPage'
 import { DroneZonesPage }    from './pages/DroneZonesPage'
 import { DroneMissionsPage } from './pages/DroneMissionsPage'
 import { DroneOperationPlansPage } from './pages/DroneOperationPlansPage'
+import { TrackLogsPage }          from './pages/TrackLogsPage'
+import { TrackLogDetailPage }     from './pages/TrackLogDetailPage'
 import { useAdminAuth }     from './hooks/useAdminAuth'
 import { T }                from './theme'
 export { T }                from './theme'
@@ -22,6 +24,7 @@ const NAV_ITEMS = [
   { to: '/drone-missions', label: 'DRONE MISSIONS', icon: 'MSN' },
   { to: '/flight-plans',  label: 'FLIGHT PLANS',   icon: 'FPL' },
   { to: '/drone-plans',   label: 'DRONE PLANS',    icon: 'DOP' },
+  { to: '/track-logs',    label: 'TRACK LOGS',     icon: 'TRK' },
 ]
 
 function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
@@ -106,6 +109,8 @@ export default function App() {
         <Route path="/drone-missions" element={<ProtectedLayout><DroneMissionsPage /></ProtectedLayout>} />
         <Route path="/flight-plans"  element={<ProtectedLayout><FlightPlansPage /></ProtectedLayout>} />
         <Route path="/drone-plans"  element={<ProtectedLayout><DroneOperationPlansPage /></ProtectedLayout>} />
+        <Route path="/track-logs"  element={<ProtectedLayout><TrackLogsPage /></ProtectedLayout>} />
+        <Route path="/track-logs/:id" element={<ProtectedLayout><TrackLogDetailPage /></ProtectedLayout>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

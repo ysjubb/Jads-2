@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { userApi } from '../api/client'
-import { T } from '../App'
+import { T } from '../theme'
+import { AirspaceMap } from '../components/portal/AirspaceMap'
+import { useAuth } from '../hooks/useAuth'
 
 interface FlightPlan {
   id: string; flightPlanId: string | null; aircraftId: string
@@ -24,23 +26,30 @@ const DOP_STATUS_COLOR: Record<string, string> = {
 }
 
 export function DashboardPage() {
+  const { credentialDomain, role } = useAuth()
   const [fplans, setFplans] = useState<FlightPlan[]>([])
   const [dplans, setDplans] = useState<DronePlan[]>([])
   const [loading, setLoading] = useState(true)
 
+  const isAircraft = credentialDomain === 'AIRCRAFT' || role === 'PLATFORM_SUPER_ADMIN'
+  const isDrone    = credentialDomain === 'DRONE'    || role === 'PLATFORM_SUPER_ADMIN'
+
   useEffect(() => {
     (async () => {
       try {
-        const [fRes, dRes] = await Promise.allSettled([
-          userApi().get('/flight-plans'),
-          userApi().get('/drone-plans'),
-        ])
+        const promises: Promise<any>[] = []
+        if (isAircraft) promises.push(userApi().get('/flight-plans'))
+        else promises.push(Promise.reject('skip'))
+        if (isDrone) promises.push(userApi().get('/drone-plans'))
+        else promises.push(Promise.reject('skip'))
+
+        const [fRes, dRes] = await Promise.allSettled(promises)
         if (fRes.status === 'fulfilled') setFplans(fRes.value.data.plans ?? [])
         if (dRes.status === 'fulfilled') setDplans(dRes.value.data.plans ?? [])
       } catch { /* ignore */ }
       setLoading(false)
     })()
-  }, [])
+  }, [isAircraft, isDrone])
 
   const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString() : '--'
 
@@ -51,21 +60,34 @@ export function DashboardPage() {
         Your flight plans and drone operation plans
       </p>
 
-      {/* Quick action buttons */}
+      {/* Quick action buttons — domain-filtered */}
       <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '1.5rem' }}>
-        <Link to="/file-flight-plan" style={{
-          padding: '0.6rem 1.2rem', background: T.primary + '15', border: `1px solid ${T.primary}40`,
-          borderRadius: '4px', color: T.primary, textDecoration: 'none', fontSize: '0.75rem', fontWeight: 600,
-        }}>+ File Flight Plan</Link>
-        <Link to="/file-drone-plan" style={{
-          padding: '0.6rem 1.2rem', background: T.amber + '15', border: `1px solid ${T.amber}40`,
-          borderRadius: '4px', color: T.amber, textDecoration: 'none', fontSize: '0.75rem', fontWeight: 600,
-        }}>+ File Drone Plan</Link>
+        {isAircraft && (
+          <Link to="/file-flight-plan" style={{
+            padding: '0.6rem 1.2rem', background: T.primary + '15', border: `1px solid ${T.primary}40`,
+            borderRadius: '4px', color: T.primary, textDecoration: 'none', fontSize: '0.75rem', fontWeight: 600,
+          }}>+ File Flight Plan</Link>
+        )}
+        {isDrone && (
+          <Link to="/file-drone-plan" style={{
+            padding: '0.6rem 1.2rem', background: T.amber + '15', border: `1px solid ${T.amber}40`,
+            borderRadius: '4px', color: T.amber, textDecoration: 'none', fontSize: '0.75rem', fontWeight: 600,
+          }}>+ File Drone Plan</Link>
+        )}
+      </div>
+
+      {/* Airspace Map — India Overview */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h2 style={{ color: T.textBright, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+          Airspace Overview
+        </h2>
+        <AirspaceMap height="350px" />
       </div>
 
       {loading ? <p style={{ color: T.muted }}>Loading...</p> : (
         <>
-          {/* Flight Plans Table */}
+          {/* Flight Plans Table — AIRCRAFT domain only */}
+          {isAircraft && <>
           <h2 style={{ color: T.textBright, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
             Flight Plans ({fplans.length})
           </h2>
@@ -109,8 +131,10 @@ export function DashboardPage() {
               </table>
             </div>
           )}
+          </>}
 
-          {/* Drone Plans Table */}
+          {/* Drone Plans Table — DRONE domain only */}
+          {isDrone && <>
           <h2 style={{ color: T.textBright, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
             Drone Operation Plans ({dplans.length})
           </h2>
@@ -153,6 +177,7 @@ export function DashboardPage() {
               </table>
             </div>
           )}
+          </>}
         </>
       )}
     </div>

@@ -173,6 +173,17 @@ enum FlightPlanStatus {
   DEPARTED          // Aircraft departed — DEP message (Phase 2; not yet implemented)
 }
 
+enum CredentialDomain {
+  AIRCRAFT
+  DRONE
+}
+
+enum IssuingAuthority {
+  AAI
+  DGCA
+  DIGITAL_SKY
+}
+
 // ═══════════════════════════════════════════════
 // MODELS
 // ═══════════════════════════════════════════════
@@ -184,6 +195,10 @@ model CivilianUser {
   mobileNumber          String?                    @unique
   email                 String?
   role                  UserRole                   @default(PILOT)
+  credentialDomain      CredentialDomain
+  issuingAuthority      IssuingAuthority
+  credentialSyncedAt    DateTime?
+  credentialExternalId  String?
   dgcaLicenseNumber     String?
   dgcaLicenseExpiry     DateTime?
   pilotLicenceNumber    String?
@@ -218,6 +233,10 @@ model SpecialUser {
   unitDesignator        String
   entityCode            String
   role                  UserRole          @default(GOVT_DRONE_OPERATOR)
+  credentialDomain      CredentialDomain
+  issuingAuthority      IssuingAuthority
+  credentialSyncedAt    DateTime?
+  credentialExternalId  String?
   accountStatus         UserAccountStatus @default(ACTIVE)
   provisionedBy         String
   provisionedAt         DateTime          @default(now())
@@ -533,10 +552,46 @@ model DroneOperationPlan {
   submittedAt       DateTime?
   approvedAt        DateTime?
   approvedBy        String?
+  // Yellow-zone routing (populated by /drone/yellow-zone-route)
+  routingAuthority  String?
+  expeditedFlag     Boolean?
+  routedAt          DateTime?
+  approvalDueBy     DateTime?
+  // Digital Sky validation on submit
+  digitalSkyRegStatus String?                        // result from Digital Sky check
+  digitalSkyCheckAt   DateTime?
+  // Flight feedback (post-approval)
+  flightFeedback    String?                          // 'FLEW' | 'DID_NOT_FLY'
+  flightFeedbackAt  DateTime?
+  trackLogId        String?                          // → TrackLog if FLEW
 
   @@index([operatorId])
   @@index([status])
   @@index([plannedStartUtc, plannedEndUtc])
+}
+
+// ── Track Logs ───────────────────────────────────────────────────────────────
+// Web-uploaded flight track logs (DJI CSV, NPNT JSON).
+// Separate from DroneMission (which comes from the Android NPNT app).
+model TrackLog {
+  id                     String   @id @default(cuid())
+  operatorId             String                          // who uploaded
+  droneOperationPlanId   String?                         // optional link to DOP
+  droneSerialNumber      String
+  format                 String                          // 'DJI_AIRDATA' | 'DJI_PHANTOMHELP' | 'NPNT_JSON'
+  takeoffLat             Float?
+  takeoffLon             Float?
+  landingLat             Float?
+  landingLon             Float?
+  pathPointsJson         String                          // JSON array of {lat,lon,alt,timestampMs}
+  maxAltitudeM           Float    @default(0)
+  durationSec            Float    @default(0)
+  breachCount            Int      @default(0)
+  violationsJson         String?                         // JSON array of {type,lat,lon,alt,timestampMs,detail}
+  uploadedAt             DateTime @default(now())
+
+  @@index([operatorId])
+  @@index([droneOperationPlanId])
 }
 
 model DroneTelemetryRecord {

@@ -4,16 +4,18 @@
 
 import express          from 'express'
 import { PrismaClient } from '@prisma/client'
-import { requireAuth, requireRole } from '../middleware/authMiddleware'
+import { requireAuth, requireRole, requireDomain } from '../middleware/authMiddleware'
 import { serializeForJson }         from '../utils/bigintSerializer'
 import { createServiceLogger }      from '../logger'
+import { DigitalSkyAdapterStub }    from '../adapters/stubs/DigitalSkyAdapterStub'
 
 const router = express.Router()
 const prisma = new PrismaClient()
 const log    = createServiceLogger('DroneOperationPlanRoutes')
+const digitalSkyAdapter = new DigitalSkyAdapterStub()
 
 // Roles allowed to file drone operation plans
-const DOP_ROLES = ['DRONE_OPERATOR', 'PILOT_AND_DRONE', 'GOVT_DRONE_OPERATOR', 'PLATFORM_SUPER_ADMIN']
+const DOP_ROLES = ['DRONE_OPERATOR', 'GOVT_DRONE_OPERATOR', 'PLATFORM_SUPER_ADMIN']
 
 // Statuses where plan edits are still allowed
 const EDITABLE_STATUSES = ['DRAFT', 'SUBMITTED']
@@ -79,7 +81,7 @@ function validateAreaPayload(body: Record<string, unknown>): string | null {
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/drone-plans — Create a new drone operation plan (DRAFT)
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/', requireAuth, requireRole(DOP_ROLES), async (req, res) => {
+router.post('/', requireAuth, requireDomain('DRONE'), requireRole(DOP_ROLES), async (req, res) => {
   try {
     const err = validateAreaPayload(req.body)
     if (err) { res.status(400).json({ error: 'VALIDATION_FAILED', detail: err }); return }
@@ -131,7 +133,7 @@ router.post('/', requireAuth, requireRole(DOP_ROLES), async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // PUT /api/drone-plans/:id — Edit a plan (DRAFT or SUBMITTED only)
 // ─────────────────────────────────────────────────────────────────────────────
-router.put('/:id', requireAuth, async (req, res) => {
+router.put('/:id', requireAuth, requireDomain('DRONE'), async (req, res) => {
   try {
     const plan = await prisma.droneOperationPlan.findUnique({ where: { id: req.params.id } })
     if (!plan) { res.status(404).json({ error: 'DRONE_PLAN_NOT_FOUND' }); return }
@@ -203,13 +205,33 @@ router.put('/:id', requireAuth, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/drone-plans/:id/submit — Submit plan for approval
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/:id/submit', requireAuth, async (req, res) => {
+router.post('/:id/submit', requireAuth, requireDomain('DRONE'), async (req, res) => {
   try {
     const plan = await prisma.droneOperationPlan.findUnique({ where: { id: req.params.id } })
     if (!plan) { res.status(404).json({ error: 'DRONE_PLAN_NOT_FOUND' }); return }
     if (plan.operatorId !== req.auth!.userId) { res.status(403).json({ error: 'NOT_YOUR_PLAN' }); return }
     if (plan.status !== 'DRAFT') {
       res.status(409).json({ error: 'CANNOT_SUBMIT', detail: `Plan is already ${plan.status}` }); return
+    }
+
+    // Digital Sky validation — non-blocking. Check drone registration if UIN is provided.
+    let digitalSkyValidation: { checked: boolean; registered: boolean; registration?: any; error?: string } = {
+      checked: false, registered: false,
+    }
+    if (plan.uinNumber) {
+      try {
+        const registration = await digitalSkyAdapter.getDroneRegistration(plan.uinNumber)
+        digitalSkyValidation = {
+          checked: true,
+          registered: registration !== null,
+          registration: registration ?? undefined,
+        }
+        log.info('digital_sky_check', { data: { planId: plan.planId, uin: plan.uinNumber, registered: registration !== null } })
+      } catch (dsErr: unknown) {
+        const dsMsg = dsErr instanceof Error ? dsErr.message : String(dsErr)
+        digitalSkyValidation = { checked: true, registered: false, error: dsMsg }
+        log.warn('digital_sky_check_failed', { data: { planId: plan.planId, uin: plan.uinNumber, error: dsMsg } })
+      }
     }
 
     const updated = await prisma.droneOperationPlan.update({
@@ -221,12 +243,12 @@ router.post('/:id/submit', requireAuth, async (req, res) => {
       data: {
         actorType: 'USER', actorId: req.auth!.userId, actorRole: req.auth!.role,
         action: 'DRONE_PLAN_SUBMITTED', resourceType: 'drone_operation_plan', resourceId: plan.id,
-        detailJson: JSON.stringify({ planId: plan.planId }),
+        detailJson: JSON.stringify({ planId: plan.planId, digitalSkyValidation }),
       }
     })
 
     log.info('drone_plan_submitted', { data: { planId: plan.planId } })
-    res.json(serializeForJson({ success: true, plan: updated }))
+    res.json(serializeForJson({ success: true, plan: updated, digitalSkyValidation }))
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     log.error('drone_plan_submit_error', { data: { error: msg } })
@@ -237,7 +259,7 @@ router.post('/:id/submit', requireAuth, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/drone-plans/:id/cancel — Cancel plan (user-initiated)
 // ─────────────────────────────────────────────────────────────────────────────
-router.post('/:id/cancel', requireAuth, async (req, res) => {
+router.post('/:id/cancel', requireAuth, requireDomain('DRONE'), async (req, res) => {
   try {
     const plan = await prisma.droneOperationPlan.findUnique({ where: { id: req.params.id } })
     if (!plan) { res.status(404).json({ error: 'DRONE_PLAN_NOT_FOUND' }); return }
@@ -271,7 +293,7 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/drone-plans — List user's own plans
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, requireDomain('DRONE'), async (req, res) => {
   try {
     const plans = await prisma.droneOperationPlan.findMany({
       where: { operatorId: req.auth!.userId },
@@ -287,7 +309,7 @@ router.get('/', requireAuth, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/drone-plans/:id — Get plan detail
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/:id', requireAuth, async (req, res) => {
+router.get('/:id', requireAuth, requireDomain('DRONE'), async (req, res) => {
   try {
     const plan = await prisma.droneOperationPlan.findUnique({ where: { id: req.params.id } })
     if (!plan) { res.status(404).json({ error: 'DRONE_PLAN_NOT_FOUND' }); return }
@@ -298,6 +320,52 @@ router.get('/:id', requireAuth, async (req, res) => {
     res.json(serializeForJson({ success: true, plan }))
   } catch {
     res.status(500).json({ error: 'DRONE_PLAN_FETCH_FAILED' })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/drone-plans/:id/flight-feedback — Record post-flight feedback
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/flight-feedback', requireAuth, requireDomain('DRONE'), async (req, res) => {
+  try {
+    const plan = await prisma.droneOperationPlan.findUnique({ where: { id: req.params.id } })
+    if (!plan) { res.status(404).json({ error: 'DRONE_PLAN_NOT_FOUND' }); return }
+    if (plan.operatorId !== req.auth!.userId) { res.status(403).json({ error: 'NOT_YOUR_PLAN' }); return }
+    if (plan.status !== 'APPROVED') {
+      res.status(409).json({ error: 'PLAN_NOT_APPROVED', detail: `Plan is ${plan.status}, must be APPROVED` }); return
+    }
+
+    const { feedback, trackLogId } = req.body
+    if (!feedback || !['FLEW', 'DID_NOT_FLY'].includes(feedback)) {
+      res.status(400).json({ error: 'INVALID_FEEDBACK', detail: "feedback must be 'FLEW' or 'DID_NOT_FLY'" }); return
+    }
+    if (feedback === 'FLEW' && !trackLogId) {
+      res.status(400).json({ error: 'TRACK_LOG_REQUIRED', detail: 'trackLogId is required when feedback is FLEW' }); return
+    }
+
+    const updated = await prisma.droneOperationPlan.update({
+      where: { id: req.params.id },
+      data: {
+        flightFeedback:   feedback,
+        flightFeedbackAt: new Date(),
+        trackLogId:       feedback === 'FLEW' ? trackLogId : null,
+      },
+    })
+
+    await prisma.auditLog.create({
+      data: {
+        actorType: 'USER', actorId: req.auth!.userId, actorRole: req.auth!.role,
+        action: 'DRONE_PLAN_FLIGHT_FEEDBACK', resourceType: 'drone_operation_plan', resourceId: plan.id,
+        detailJson: JSON.stringify({ planId: plan.planId, feedback, trackLogId: trackLogId ?? null }),
+      }
+    })
+
+    log.info('drone_plan_flight_feedback', { data: { planId: plan.planId, feedback } })
+    res.json(serializeForJson({ success: true, plan: updated }))
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('drone_plan_flight_feedback_error', { data: { error: msg } })
+    res.status(500).json({ error: 'FLIGHT_FEEDBACK_FAILED' })
   }
 })
 

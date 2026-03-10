@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { userApi } from '../api/client'
-import { T } from '../App'
+import { T } from '../theme'
+import { LogUploadWidget } from '../components/portal/LogUploadWidget'
 
 const STATUS_COLOR: Record<string, string> = {
   DRAFT: T.muted, SUBMITTED: T.amber, APPROVED: T.primary, REJECTED: T.red, CANCELLED: '#888',
@@ -13,6 +14,8 @@ export function DronePlanDetailPage() {
   const [plan, setPlan]       = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
+  const [showLogUpload, setShowLogUpload] = useState(false)
+  const [feedbackLoading, setFeedbackLoading] = useState(false)
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
 
@@ -79,6 +82,35 @@ export function DronePlanDetailPage() {
     setActionLoading(false)
   }
 
+  const refreshPlan = async () => {
+    try {
+      const { data } = await userApi().get(`/drone-plans/${id}`)
+      setPlan(data.plan)
+    } catch { /* ignore */ }
+  }
+
+  const handleDidNotFly = async () => {
+    setFeedbackLoading(true)
+    try {
+      await userApi().post(`/drone-plans/${id}/flight-feedback`, { feedback: 'DID_NOT_FLY' })
+      await refreshPlan()
+    } catch (e: any) {
+      alert(e.response?.data?.error ?? 'Feedback failed')
+    }
+    setFeedbackLoading(false)
+  }
+
+  const handleLogUploaded = async (trackLogId: string) => {
+    setFeedbackLoading(true)
+    try {
+      await userApi().post(`/drone-plans/${id}/flight-feedback`, { feedback: 'FLEW', trackLogId })
+      await refreshPlan()
+    } catch (e: any) {
+      alert(e.response?.data?.error ?? 'Feedback failed')
+    }
+    setFeedbackLoading(false)
+  }
+
   const handleCancel = async () => {
     setActionLoading(true)
     try {
@@ -141,6 +173,58 @@ export function DronePlanDetailPage() {
           }}>{actionLoading ? '...' : 'CANCEL PLAN'}</button>
         )}
       </div>
+
+      {/* Flight Feedback */}
+      {plan.status === 'APPROVED' && !plan.flightFeedback && !showLogUpload && (
+        <div style={{
+          marginTop: '1.5rem', padding: '1rem', border: `1px solid ${T.border}`,
+          borderRadius: '6px', background: T.surface,
+        }}>
+          <p style={{ color: T.textBright, fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.6rem' }}>
+            Did the drone fly?
+          </p>
+          <div style={{ display: 'flex', gap: '0.8rem' }}>
+            <button onClick={() => setShowLogUpload(true)} disabled={feedbackLoading} style={{
+              padding: '0.5rem 1.5rem', background: T.primary, color: T.bg, border: 'none',
+              borderRadius: '4px', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem',
+            }}>YES</button>
+            <button onClick={handleDidNotFly} disabled={feedbackLoading} style={{
+              padding: '0.5rem 1.5rem', background: T.amber, color: T.bg, border: 'none',
+              borderRadius: '4px', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem',
+            }}>{feedbackLoading ? '...' : 'NO'}</button>
+          </div>
+        </div>
+      )}
+
+      {plan.status === 'APPROVED' && !plan.flightFeedback && showLogUpload && (
+        <div style={{
+          marginTop: '1.5rem', padding: '1rem', border: `1px solid ${T.border}`,
+          borderRadius: '6px', background: T.surface,
+        }}>
+          <p style={{ color: T.textBright, fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.6rem' }}>
+            Upload Flight Log
+          </p>
+          <LogUploadWidget
+            droneSerialNumber={plan.droneSerialNumber}
+            droneOperationPlanId={plan.id}
+            onUploaded={handleLogUploaded}
+          />
+        </div>
+      )}
+
+      {plan.flightFeedback && (
+        <div style={{ marginTop: '1.5rem' }}>
+          <span style={{
+            display: 'inline-block', padding: '4px 12px', borderRadius: '4px',
+            fontSize: '0.75rem', fontWeight: 700,
+            background: plan.flightFeedback === 'FLEW' ? T.primary + '20' : T.amber + '20',
+            color: plan.flightFeedback === 'FLEW' ? T.primary : T.amber,
+            border: `1px solid ${plan.flightFeedback === 'FLEW' ? T.primary : T.amber}40`,
+          }}>
+            {plan.flightFeedback === 'FLEW' ? 'FLEW' : 'DID NOT FLY'}
+          </span>
+        </div>
+      )}
     </div>
   )
 }

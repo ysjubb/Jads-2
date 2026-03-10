@@ -490,4 +490,36 @@ router.post('/ledger/anchor-now', requireRole(['PLATFORM_SUPER_ADMIN']), async (
 })
 
 
+// ── TRACK LOG AUDIT ENDPOINTS ────────────────────────────────────────────
+
+// GET /api/audit/track-logs — List all track logs with scope enforcement
+router.get('/track-logs', async (req, res) => {
+  try {
+    const { role } = req.auth!
+    const page  = Math.max(1, parseInt((req.query.page  as string) ?? '1'))
+    const limit = Math.min(100, Math.max(1, parseInt((req.query.limit as string) ?? '50')))
+
+    const [trackLogs, total] = await Promise.all([
+      prisma.trackLog.findMany({
+        skip:    (page - 1) * limit,
+        take:    limit,
+        orderBy: { uploadedAt: 'desc' },
+      }),
+      prisma.trackLog.count(),
+    ])
+
+    res.json(serializeForJson(withMeta({ trackLogs, total, page, limit }, role)))
+  } catch (e) { handleScopeError(res, e) }
+})
+
+// GET /api/audit/track-logs/:id — Get single track log detail (includes pathPointsJson and violationsJson)
+router.get('/track-logs/:id', async (req, res) => {
+  try {
+    const { role } = req.auth!
+    const trackLog = await prisma.trackLog.findUnique({ where: { id: req.params.id } })
+    if (!trackLog) { res.status(404).json({ error: 'TRACK_LOG_NOT_FOUND' }); return }
+    res.json(serializeForJson(withMeta({ trackLog }, role)))
+  } catch (e) { handleScopeError(res, e) }
+})
+
 export default router

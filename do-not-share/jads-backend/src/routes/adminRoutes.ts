@@ -535,8 +535,9 @@ router.post('/airspace/airac-import', requireAdminRole('PLATFORM_SUPER_ADMIN'), 
 router.post('/users/special', async (req, res) => {
   try {
     const { entityCode, serviceNumber, officialEmail, mobileNumber,
-            unitDesignation, role, authorisedCallsigns } = req.body
-    if (!entityCode || !serviceNumber || !officialEmail || !role) {
+            unitDesignation, role, authorisedCallsigns,
+            credentialDomain, issuingAuthority } = req.body
+    if (!entityCode || !serviceNumber || !officialEmail || !role || !credentialDomain || !issuingAuthority) {
       res.status(400).json({ error: 'MISSING_REQUIRED_FIELDS' }); return
     }
     // Entity scoping: non-superadmin can only create users in own entity
@@ -557,6 +558,7 @@ router.post('/users/special', async (req, res) => {
       provisionedBy: req.adminAuth!.adminUserId,
       entityCode, serviceNumber, officialEmail, mobileNumber: mobileNumber ?? '',
       unitDesignation: unitDesignation ?? '', role: role as any,
+      credentialDomain: credentialDomain as any, issuingAuthority: issuingAuthority as any,
       authorisedCallsigns: authorisedCallsigns ?? [],
       accountStatus: 'ACTIVE', reconfirmationStatus: 'CURRENT',
       lastReconfirmedAt: new Date(), nextReconfirmDueAt: new Date(Date.now() + 365 * 86400000),
@@ -1115,6 +1117,36 @@ router.post('/drone-plans/:id/reject', requireAdminAuth, async (req, res) => {
     const msg = e instanceof Error ? e.message : String(e)
     log.error('drone_plan_reject_error', { data: { error: msg } })
     res.status(500).json({ error: 'DRONE_PLAN_REJECT_FAILED' })
+  }
+})
+
+// ── TRACK LOG MANAGEMENT ─────────────────────────────────────────────────
+
+// GET /api/admin/track-logs — List all track logs (most recent first)
+router.get('/track-logs', requireAdminAuth, async (_req, res) => {
+  try {
+    const trackLogs = await prisma.trackLog.findMany({
+      orderBy: { uploadedAt: 'desc' },
+      take: 100,
+    })
+    res.json(serializeForJson({ success: true, trackLogs }))
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('admin_track_logs_list_error', { data: { error: msg } })
+    res.status(500).json({ error: 'TRACK_LOGS_LIST_FAILED' })
+  }
+})
+
+// GET /api/admin/track-logs/:id — Get single track log detail
+router.get('/track-logs/:id', requireAdminAuth, async (req, res) => {
+  try {
+    const trackLog = await prisma.trackLog.findUnique({ where: { id: req.params.id } })
+    if (!trackLog) { res.status(404).json({ error: 'TRACK_LOG_NOT_FOUND' }); return }
+    res.json(serializeForJson({ success: true, trackLog }))
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('admin_track_log_detail_error', { data: { error: msg } })
+    res.status(500).json({ error: 'TRACK_LOG_FETCH_FAILED' })
   }
 })
 

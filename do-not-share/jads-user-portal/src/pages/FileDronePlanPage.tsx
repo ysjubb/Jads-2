@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { userApi } from '../api/client'
-import { T } from '../App'
+import { T } from '../theme'
 
 export function FileDronePlanPage() {
   const navigate = useNavigate()
@@ -108,33 +108,40 @@ export function FileDronePlanPage() {
     return JSON.stringify({ type: 'Polygon', coordinates: [coords] })
   }
 
+  const [submitAfterCreate, setSubmitAfterCreate] = useState(false)
+
+  const buildPayload = () => {
+    const payload: Record<string, unknown> = {
+      droneSerialNumber: form.droneSerialNumber,
+      uinNumber:         form.uinNumber || undefined,
+      areaType,
+      maxAltitudeAglM:   parseFloat(form.maxAltitudeAglM),
+      minAltitudeAglM:   parseFloat(form.minAltitudeAglM),
+      plannedStartUtc:   form.plannedStartUtc,
+      plannedEndUtc:     form.plannedEndUtc,
+      purpose:           form.purpose,
+      remarks:           form.remarks || undefined,
+      notifyEmail:       form.notifyEmail || undefined,
+      notifyMobile:      form.notifyMobile || undefined,
+      additionalEmails:  form.additionalEmails ? form.additionalEmails.split(',').map(s => s.trim()).filter(Boolean) : [],
+    }
+
+    if (areaType === 'CIRCLE') {
+      payload.centerLatDeg = parseFloat(centerLat)
+      payload.centerLonDeg = parseFloat(centerLon)
+      payload.radiusM      = parseFloat(radiusM)
+    } else {
+      payload.areaGeoJson = buildGeoJson()
+    }
+
+    return payload
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true); setError(null)
     try {
-      const payload: Record<string, unknown> = {
-        droneSerialNumber: form.droneSerialNumber,
-        uinNumber:         form.uinNumber || undefined,
-        areaType,
-        maxAltitudeAglM:   parseFloat(form.maxAltitudeAglM),
-        minAltitudeAglM:   parseFloat(form.minAltitudeAglM),
-        plannedStartUtc:   form.plannedStartUtc,
-        plannedEndUtc:     form.plannedEndUtc,
-        purpose:           form.purpose,
-        remarks:           form.remarks || undefined,
-        notifyEmail:       form.notifyEmail || undefined,
-        notifyMobile:      form.notifyMobile || undefined,
-        additionalEmails:  form.additionalEmails ? form.additionalEmails.split(',').map(s => s.trim()).filter(Boolean) : [],
-      }
-
-      if (areaType === 'CIRCLE') {
-        payload.centerLatDeg = parseFloat(centerLat)
-        payload.centerLonDeg = parseFloat(centerLon)
-        payload.radiusM      = parseFloat(radiusM)
-      } else {
-        payload.areaGeoJson = buildGeoJson()
-      }
-
+      const payload = buildPayload()
       const { data } = await userApi().post('/drone-plans', payload)
       if (data.success) {
         navigate(`/drone-plan/${data.plan.id}`)
@@ -145,6 +152,30 @@ export function FileDronePlanPage() {
       setError(e.response?.data?.detail ?? e.response?.data?.error ?? 'DRONE_PLAN_FILE_FAILED')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleCreateAndSubmit = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    setLoading(true); setError(null); setSubmitAfterCreate(true)
+    try {
+      const payload = buildPayload()
+      const { data } = await userApi().post('/drone-plans', payload)
+      if (!data.success) {
+        setError(data.error ?? 'Filing failed')
+        return
+      }
+      const planId = data.plan.id
+      try {
+        await userApi().post(`/drone-plans/${planId}/submit`)
+      } catch {
+        // Draft was created but submit failed — still navigate to detail page
+      }
+      navigate(`/drone-plan/${planId}`)
+    } catch (e: any) {
+      setError(e.response?.data?.detail ?? e.response?.data?.error ?? 'DRONE_PLAN_FILE_FAILED')
+    } finally {
+      setLoading(false); setSubmitAfterCreate(false)
     }
   }
 
@@ -264,7 +295,13 @@ export function FileDronePlanPage() {
             padding: '0.7rem 2rem', background: T.amber, color: T.bg, border: 'none',
             borderRadius: '4px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem',
           }}>
-            {loading ? 'Saving...' : 'CREATE DRONE PLAN (DRAFT)'}
+            {loading && !submitAfterCreate ? 'Saving...' : 'CREATE DRONE PLAN (DRAFT)'}
+          </button>
+          <button type="button" disabled={loading} onClick={handleCreateAndSubmit} style={{
+            padding: '0.7rem 2rem', background: T.primary, color: T.bg, border: 'none',
+            borderRadius: '4px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem',
+          }}>
+            {loading && submitAfterCreate ? 'Submitting...' : 'CREATE & SUBMIT'}
           </button>
         </div>
       </form>

@@ -6,6 +6,8 @@ import { MissionDetailPage } from './pages/MissionDetailPage'
 import { FlightPlansPage }       from './pages/FlightPlansPage'
 import { FlightPlanDetailPage } from './pages/FlightPlanDetailPage'
 import { ViolationsPage }    from './pages/ViolationsPage'
+import { TrackLogsPage }         from './pages/TrackLogsPage'
+import { TrackLogDetailPage }    from './pages/TrackLogDetailPage'
 import { useAuditAuth }      from './hooks/useAuditAuth'
 
 const T = {
@@ -24,6 +26,7 @@ const NAV_ITEMS = [
   { to: '/missions',     label: 'Missions',     icon: 'M3 3h18v2H3V3zm0 8h18v2H3v-2zm0 8h18v2H3v-2z' },
   { to: '/flight-plans', label: 'Flight Plans',  icon: 'M21 16v-2l-8-5V3.5A1.5 1.5 0 0011.5 2 1.5 1.5 0 0010 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z' },
   { to: '/violations',   label: 'Violations',    icon: 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z' },
+  { to: '/track-logs',   label: 'Track Logs',    icon: 'M3 3v18h18V3H3zm16 16H5V5h14v14zM7 7h2v10H7V7zm4 4h2v6h-2v-6zm4-2h2v8h-2V9z' },
 ]
 
 function SidebarNav() {
@@ -166,6 +169,12 @@ export default function App() {
         } />
         <Route path="/violations" element={
           <Protected><Layout><ViolationsPage /></Layout></Protected>
+        } />
+        <Route path="/track-logs" element={
+          <Protected><Layout><TrackLogsPage /></Layout></Protected>
+        } />
+        <Route path="/track-logs/:id" element={
+          <Protected><Layout><TrackLogDetailPage /></Layout></Protected>
         } />
         <Route path="*" element={<Navigate to="/missions" replace />} />
       </Routes>

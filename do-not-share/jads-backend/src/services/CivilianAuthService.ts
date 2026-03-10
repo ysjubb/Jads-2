@@ -6,6 +6,7 @@ import { createServiceLogger } from '../logger'
 import {
   OTP_EXPIRY_MINUTES, OTP_MAX_ATTEMPTS, BCRYPT_ROUNDS,
   USER_SESSION_HOURS, AADHAAR_REVERIFY_DAYS,
+  DOMAIN_ROLE_MAP, DOMAIN_AUTHORITY_MAP, BLOCKED_ROLES,
 } from '../constants'
 
 const log = createServiceLogger('CivilianAuthService')
@@ -14,6 +15,8 @@ interface RegistrationInput {
   email:               string
   mobileNumber:        string
   role:                string
+  credentialDomain:    string
+  issuingAuthority:    string
   pilotLicenceNumber?: string
   uinNumber?:          string
 }
@@ -27,11 +30,27 @@ export class CivilianAuthService {
     })
     if (existing) throw new Error('EMAIL_OR_MOBILE_ALREADY_REGISTERED')
 
+    // Block PILOT_AND_DRONE — no dual-domain access
+    if ((BLOCKED_ROLES as readonly string[]).includes(input.role)) {
+      throw new Error('ROLE_NOT_ALLOWED_PILOT_AND_DRONE')
+    }
+
+    // Validate domain/role/authority consistency
+    const domain = input.credentialDomain as 'AIRCRAFT' | 'DRONE'
+    if (!DOMAIN_ROLE_MAP[domain]?.includes(input.role)) {
+      throw new Error('ROLE_DOMAIN_MISMATCH')
+    }
+    if (!DOMAIN_AUTHORITY_MAP[domain]?.includes(input.issuingAuthority)) {
+      throw new Error('AUTHORITY_DOMAIN_MISMATCH')
+    }
+
     const user = await this.prisma.civilianUser.create({
       data: {
         email:               input.email,
         mobileNumber:        input.mobileNumber,
         role:                input.role as never,
+        credentialDomain:    input.credentialDomain as never,
+        issuingAuthority:    input.issuingAuthority as never,
         pilotLicenceNumber:  input.pilotLicenceNumber,
         uinNumber:           input.uinNumber,
         accountStatus:       'PENDING_APPROVAL',
@@ -118,7 +137,7 @@ export class CivilianAuthService {
     const user = await this.prisma.civilianUser.findUniqueOrThrow({ where: { id: userId } })
 
     const token = jwt.sign(
-      { userId: user.id, role: user.role, userType: 'CIVILIAN' },
+      { userId: user.id, role: user.role, userType: 'CIVILIAN', credentialDomain: user.credentialDomain },
       env.JWT_SECRET,
       { expiresIn: `${USER_SESSION_HOURS}h` }
     )
