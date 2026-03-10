@@ -9,8 +9,14 @@ import { FlightPlansPage }  from './pages/FlightPlansPage'
 import { DroneZonesPage }    from './pages/DroneZonesPage'
 import { DroneMissionsPage } from './pages/DroneMissionsPage'
 import { DroneOperationPlansPage } from './pages/DroneOperationPlansPage'
-import { TrackLogsPage }          from './pages/TrackLogsPage'
-import { TrackLogDetailPage }     from './pages/TrackLogDetailPage'
+import { ATCQueuePage }     from './pages/drone/ATCQueuePage'
+import { UserCategoryPage } from './pages/drone/UserCategoryPage'
+import { NPNTTestPage }    from './pages/drone/NPNTTestPage'
+import { ValidationAnalyticsPage } from './pages/drone/ValidationAnalyticsPage'
+import { AlertManagementPage } from './pages/drone/AlertManagementPage'
+import { FleetOverviewPage }   from './pages/drone/FleetOverviewPage'
+import { NationalAnalyticsPage } from './pages/drone/NationalAnalyticsPage'
+import { SystemPage }       from './pages/SystemPage'
 import { useAdminAuth }     from './hooks/useAdminAuth'
 import { T }                from './theme'
 export { T }                from './theme'
@@ -24,7 +30,14 @@ const NAV_ITEMS = [
   { to: '/drone-missions', label: 'DRONE MISSIONS', icon: 'MSN' },
   { to: '/flight-plans',  label: 'FLIGHT PLANS',   icon: 'FPL' },
   { to: '/drone-plans',   label: 'DRONE PLANS',    icon: 'DOP' },
-  { to: '/track-logs',    label: 'TRACK LOGS',     icon: 'TRK' },
+  { to: '/atc-queue',     label: 'ATC QUEUE',       icon: 'ATC' },
+  { to: '/user-categories', label: 'USER CATS',     icon: 'CAT' },
+  { to: '/npnt-test',     label: 'NPNT TEST',       icon: 'NPT' },
+  { to: '/validation-analytics', label: 'VAL ANALYTICS', icon: 'VAL' },
+  { to: '/alert-management',    label: 'ALERTS',         icon: 'ALR' },
+  { to: '/fleet-overview',      label: 'FLEET OVW',      icon: 'FLO' },
+  { to: '/national-analytics',  label: 'NATL ANALYTICS', icon: 'NAT' },
+  { to: '/system',              label: 'SYSTEM',         icon: 'SYS' },
 ]
 
 function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
@@ -109,8 +122,14 @@ export default function App() {
         <Route path="/drone-missions" element={<ProtectedLayout><DroneMissionsPage /></ProtectedLayout>} />
         <Route path="/flight-plans"  element={<ProtectedLayout><FlightPlansPage /></ProtectedLayout>} />
         <Route path="/drone-plans"  element={<ProtectedLayout><DroneOperationPlansPage /></ProtectedLayout>} />
-        <Route path="/track-logs"  element={<ProtectedLayout><TrackLogsPage /></ProtectedLayout>} />
-        <Route path="/track-logs/:id" element={<ProtectedLayout><TrackLogDetailPage /></ProtectedLayout>} />
+        <Route path="/atc-queue"   element={<ProtectedLayout><ATCQueuePage /></ProtectedLayout>} />
+        <Route path="/user-categories" element={<ProtectedLayout><UserCategoryPage /></ProtectedLayout>} />
+        <Route path="/npnt-test"   element={<ProtectedLayout><NPNTTestPage /></ProtectedLayout>} />
+        <Route path="/validation-analytics" element={<ProtectedLayout><ValidationAnalyticsPage /></ProtectedLayout>} />
+        <Route path="/alert-management"    element={<ProtectedLayout><AlertManagementPage /></ProtectedLayout>} />
+        <Route path="/fleet-overview"      element={<ProtectedLayout><FleetOverviewPage /></ProtectedLayout>} />
+        <Route path="/national-analytics" element={<ProtectedLayout><NationalAnalyticsPage /></ProtectedLayout>} />
+        <Route path="/system"      element={<ProtectedLayout><SystemPage /></ProtectedLayout>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

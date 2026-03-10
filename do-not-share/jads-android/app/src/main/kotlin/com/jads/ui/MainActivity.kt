@@ -28,11 +28,15 @@ import com.jads.ui.theme.JadsTheme
 import com.jads.ui.viewmodel.*
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MainActivity — single-activity host for all 5 JADS screens.
+// MainActivity — single-activity host for all 10 JADS screens.
 //
 // Navigation flow:
 //   Login ──► MissionSetup ──► ActiveMission ──► MissionComplete ──► (loop)
 //     └────────────────────────────────────────────────────────► MissionHistory
+//     └──► AirspaceMap (flight area definition)
+//     └──► FlightDetails (MICRO/SMALL flight planning)
+//     └──► AgriculturalFlight (agricultural drone operations)
+//     └──► SpecialOpsFlight (BVLOS / Rule 70 exemption)
 //
 // Back-stack policy:
 //   • Login is always the bottom of the stack — signing out pops to it.
@@ -41,17 +45,28 @@ import com.jads.ui.viewmodel.*
 //   • MissionComplete is a dead-end: Back is suppressed (mission can't restart).
 //
 // ViewModel scoping:
-//   • LoginViewModel    — activity-scoped (owns session state across screens)
-//   • MissionViewModel  — activity-scoped (owns mission lifecycle across 3 screens)
-//   • HistoryViewModel  — activity-scoped (pre-loads history on login)
+//   • LoginViewModel         — activity-scoped (owns session state across screens)
+//   • MissionViewModel       — activity-scoped (owns mission lifecycle across 3 screens)
+//   • HistoryViewModel       — activity-scoped (pre-loads history on login)
+//   • AirspaceMapViewModel   — activity-scoped (airspace polygon drawing + zone check)
+//   • YellowZoneViewModel    — activity-scoped (yellow zone permission submission)
+//   • PAManagementViewModel  — activity-scoped (PA download, share, log upload)
+//   • FlightFormViewModel    — activity-scoped (progressive flight form state)
+//   • ValidationViewModel    — activity-scoped (pre-submission checklist + eGCA submit)
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MainActivity : ComponentActivity() {
 
-    private val loginVm:   LoginViewModel   by viewModels()
-    private val missionVm: MissionViewModel by viewModels()
-    private val historyVm: HistoryViewModel by viewModels()
+    private val loginVm:       LoginViewModel       by viewModels()
+    private val missionVm:     MissionViewModel     by viewModels()
+    private val historyVm:     HistoryViewModel     by viewModels()
+    private val airspaceMapVm: AirspaceMapViewModel by viewModels()
+    private val yellowZoneVm:  YellowZoneViewModel  by viewModels()
+    private val paManagementVm: PAManagementViewModel by viewModels()
+    private val flightFormVm:   FlightFormViewModel   by viewModels()
+    private val validationVm:   ValidationViewModel   by viewModels()
+    private val notificationVm: NotificationViewModel by viewModels()
 
     // ── Permission state ─────────────────────────────────────────────────────
     // locationGranted drives whether the NavHost is shown or a permission rationale.
@@ -126,7 +141,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val granted by locationGranted
                     if (granted) {
-                        JadsNavHost(loginVm, missionVm, historyVm)
+                        JadsNavHost(loginVm, missionVm, historyVm, airspaceMapVm, yellowZoneVm, paManagementVm, flightFormVm, validationVm, notificationVm)
                     } else {
                         LocationPermissionRationale(
                             onRequest = {
@@ -178,9 +193,15 @@ private fun LocationPermissionRationale(onRequest: () -> Unit) {
 
 @Composable
 private fun JadsNavHost(
-    loginVm:   LoginViewModel,
-    missionVm: MissionViewModel,
-    historyVm: HistoryViewModel
+    loginVm:        LoginViewModel,
+    missionVm:      MissionViewModel,
+    historyVm:      HistoryViewModel,
+    airspaceMapVm:  AirspaceMapViewModel,
+    yellowZoneVm:   YellowZoneViewModel,
+    paManagementVm: PAManagementViewModel,
+    flightFormVm:   FlightFormViewModel,
+    validationVm:   ValidationViewModel,
+    notificationVm: NotificationViewModel
 ) {
     val navController = rememberNavController()
     val loginState    by loginVm.state.collectAsStateWithLifecycle()
@@ -228,6 +249,51 @@ private fun JadsNavHost(
             )
         }
 
+        // ── 2b. Airspace Map ─────────────────────────────────────────────
+        composable(Screen.AirspaceMap.route) {
+            AirspaceMapScreen(
+                viewModel = airspaceMapVm,
+                onProceed = {
+                    // If YELLOW zone, navigate to permission submission screen
+                    val mapState = airspaceMapVm.state.value
+                    if (mapState.zoneResult?.zone == "YELLOW") {
+                        // Initialise yellow zone VM with data from the map screen
+                        yellowZoneVm.initialise(
+                            zoneResult = mapState.zoneResult!!,
+                            polygon    = mapState.drawnPolygon,
+                            altitude   = mapState.altitude,
+                            pilotName  = loginState.savedOperatorId,
+                            uinNumber  = ""
+                        )
+                        navController.navigate(Screen.YellowZoneSubmission.route)
+                    } else {
+                        // GREEN or acknowledged RED — go back to planning flow
+                        navController.popBackStack()
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // ── 2c. Yellow Zone Submission ──────────────────────────────────
+        composable(Screen.YellowZoneSubmission.route) {
+            YellowZoneSubmissionScreen(
+                viewModel           = yellowZoneVm,
+                onSubmissionSuccess = {
+                    historyVm.refresh()
+                    navController.navigate(Screen.MissionHistory.route) {
+                        // Clear yellow zone + airspace map from backstack
+                        popUpTo(Screen.AirspaceMap.route) { inclusive = true }
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
         // ── 3. Active Mission ──────────────────────────────────────────────
         composable(Screen.ActiveMission.route) {
             ActiveMissionScreen(
@@ -268,6 +334,86 @@ private fun JadsNavHost(
         composable(Screen.MissionHistory.route) {
             MissionHistoryScreen(
                 viewModel = historyVm,
+                onBack    = { navController.popBackStack() }
+            )
+        }
+
+        // ── 6. PA Management ─────────────────────────────────────────────
+        composable(Screen.PAManagement.route) {
+            PAManagementScreen(
+                viewModel = paManagementVm,
+                onBack    = { navController.popBackStack() }
+            )
+        }
+
+        // ── 7. Flight Details (MICRO/SMALL) ─────────────────────────────
+        composable(Screen.FlightDetails.route) {
+            FlightDetailsScreen(
+                viewModel       = flightFormVm,
+                onSubmitSuccess = {
+                    historyVm.refresh()
+                    navController.navigate(Screen.MissionHistory.route) {
+                        popUpTo(Screen.AirspaceMap.route) { inclusive = true }
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // ── 8. Agricultural Flight ──────────────────────────────────────
+        composable(Screen.AgriculturalFlight.route) {
+            AgriculturalFlightScreen(
+                viewModel       = flightFormVm,
+                onSubmitSuccess = {
+                    historyVm.refresh()
+                    navController.navigate(Screen.MissionHistory.route) {
+                        popUpTo(Screen.AirspaceMap.route) { inclusive = true }
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // ── 9. Special Ops Flight (BVLOS / Rule 70) ─────────────────────
+        composable(Screen.SpecialOpsFlight.route) {
+            SpecialOpsFlightScreen(
+                viewModel       = flightFormVm,
+                onSubmitSuccess = {
+                    historyVm.refresh()
+                    navController.navigate(Screen.MissionHistory.route) {
+                        popUpTo(Screen.AirspaceMap.route) { inclusive = true }
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // ── 10. Validation Checklist (P35 — Pre-Submission) ──────────────
+        composable(Screen.ValidationChecklist.route) {
+            ValidationChecklistScreen(
+                viewModel        = validationVm,
+                onSubmissionDone = { applicationId ->
+                    historyVm.refresh()
+                    navController.navigate(Screen.MissionHistory.route) {
+                        popUpTo(Screen.ValidationChecklist.route) { inclusive = true }
+                    }
+                },
+                onBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        // ── 11. Notifications ─────────────────────────────────────────────
+        composable(Screen.Notifications.route) {
+            NotificationScreen(
+                viewModel = notificationVm,
                 onBack    = { navController.popBackStack() }
             )
         }

@@ -65,6 +65,9 @@ export interface AftnFplInput {
 export class AftnMessageBuilder {
 
   build(input: AftnFplInput): string {
+    // Normalise callsign: strip hyphens (VT-ABC → VTABC) for AFTN Item 7
+    input = { ...input, callsign: input.callsign.replace(/-/g, '') }
+
     // ── INPUT VALIDATION: ICAO Doc 4444 field constraints ───────────────────
     if (!/^[A-Z0-9]{2,7}$/.test(input.callsign))
       throw new Error(`AFTN_INVALID_CALLSIGN: '${input.callsign}' — must be 2-7 alphanumeric`)

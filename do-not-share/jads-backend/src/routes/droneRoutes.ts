@@ -10,17 +10,34 @@ import express                 from 'express'
 import { PrismaClient }        from '@prisma/client'
 import { MissionService, MissionSubmissionInput } from '../services/MissionService'
 import { ForensicVerifier }    from '../services/ForensicVerifier'
-import { requireAuth, requireRole, requireAuditAuth, requireDomain } from '../middleware/authMiddleware'
+import { PALifecycleService }  from '../services/PALifecycleService'
+import { requireAuth, requireRole, requireAuditAuth } from '../middleware/authMiddleware'
 import { missionUploadRateLimit } from '../middleware/rateLimiter'
 import { serializeForJson }    from '../utils/bigintSerializer'
 import { decodeCanonical }     from '../telemetry/telemetryDecoder'
+import { classifyPolygon, LatLng } from '../services/ZoneClassificationService'
+import {
+  YellowZoneRoutingService,
+  FlightPermissionPayload,
+} from '../services/YellowZoneRoutingService'
+import {
+  FlightPlanValidationService,
+  FlightPlanInput,
+} from '../services/FlightPlanValidationService'
+import {
+  DroneNotificationService,
+  getCategoryForType,
+  NotificationCategory,
+} from '../services/DroneNotificationService'
 import { createServiceLogger } from '../logger'
 
-const router   = express.Router()
-const prisma   = new PrismaClient()
-const service  = new MissionService(prisma)
-const verifier = new ForensicVerifier(prisma)
-const log      = createServiceLogger('DroneRoutes')
+const router      = express.Router()
+const prisma      = new PrismaClient()
+const service     = new MissionService(prisma)
+const verifier    = new ForensicVerifier(prisma)
+const paLifecycle = new PALifecycleService(prisma)
+const notifService = new DroneNotificationService(prisma)
+const log         = createServiceLogger('DroneRoutes')
 
 // ── POST /api/drone/missions ──────────────────────────────────────────────────
 // Upload a completed mission from the Android device.
@@ -301,6 +318,490 @@ router.get(
   }
 )
 
+// ── POST /api/drone/zone-check ────────────────────────────────────────────────
+// Classify a geofence polygon against India's drone airspace zones.
+// Body: { polygon: Array<{ lat: number, lng: number }>, altitudeAGL: number }
+// Response 200: ZoneClassificationResult
+// No auth required — zone data is public per DGCA Digital Sky Platform.
+router.post('/zone-check', async (req, res) => {
+  try {
+    const { polygon, altitudeAGL } = req.body as {
+      polygon:     LatLng[]
+      altitudeAGL: number
+    }
+
+    // Input validation
+    if (!Array.isArray(polygon) || polygon.length < 3) {
+      res.status(400).json({
+        error: 'INVALID_POLYGON',
+        detail: 'polygon must be an array of at least 3 { lat, lng } points',
+      })
+      return
+    }
+
+    for (let i = 0; i < polygon.length; i++) {
+      const pt = polygon[i]
+      if (typeof pt.lat !== 'number' || typeof pt.lng !== 'number' ||
+          pt.lat < -90 || pt.lat > 90 || pt.lng < -180 || pt.lng > 180) {
+        res.status(400).json({
+          error: 'INVALID_COORDINATE',
+          detail: `polygon[${i}] has invalid lat/lng values`,
+        })
+        return
+      }
+    }
+
+    if (typeof altitudeAGL !== 'number' || altitudeAGL < 0) {
+      res.status(400).json({
+        error: 'INVALID_ALTITUDE',
+        detail: 'altitudeAGL must be a non-negative number (meters AGL)',
+      })
+      return
+    }
+
+    // Hard cap on polygon vertex count to prevent CPU abuse
+    const MAX_VERTICES = 500
+    if (polygon.length > MAX_VERTICES) {
+      res.status(400).json({
+        error: 'TOO_MANY_VERTICES',
+        detail: `polygon has ${polygon.length} vertices, maximum is ${MAX_VERTICES}`,
+      })
+      return
+    }
+
+    const result = await classifyPolygon(polygon, altitudeAGL)
+    res.json({ success: true, classification: result })
+  } catch (e: unknown) {
+    log.error('zone_check_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'ZONE_CHECK_FAILED' })
+  }
+})
+
+// ── POST /api/drone/validate-flight-plan ──────────────────────────────────────
+// Run pre-submission validation engine on a drone flight plan.
+// Returns ValidationResult with failures[], warnings[], info[].
+// Body: FlightPlanInput
+// Response 200: ValidationResult
+router.post('/validate-flight-plan', requireAuth, async (req, res) => {
+  try {
+    const input = req.body as FlightPlanInput
+
+    // Basic input validation
+    if (!input.droneSerialNumber) {
+      res.status(400).json({ error: 'MISSING_DRONE_SERIAL', detail: 'droneSerialNumber is required' })
+      return
+    }
+    if (!input.droneWeightCategory) {
+      res.status(400).json({ error: 'MISSING_WEIGHT_CATEGORY', detail: 'droneWeightCategory is required' })
+      return
+    }
+    if (!input.areaType || !['POLYGON', 'CIRCLE'].includes(input.areaType)) {
+      res.status(400).json({ error: 'INVALID_AREA_TYPE', detail: 'areaType must be POLYGON or CIRCLE' })
+      return
+    }
+    if (typeof input.maxAltitudeAglM !== 'number' || input.maxAltitudeAglM <= 0) {
+      res.status(400).json({ error: 'INVALID_ALTITUDE', detail: 'maxAltitudeAglM must be a positive number' })
+      return
+    }
+    if (!input.plannedStartUtc || !input.plannedEndUtc) {
+      res.status(400).json({ error: 'MISSING_TIME_WINDOW', detail: 'plannedStartUtc and plannedEndUtc are required' })
+      return
+    }
+    if (new Date(input.plannedStartUtc) >= new Date(input.plannedEndUtc)) {
+      res.status(400).json({ error: 'INVALID_TIME_WINDOW', detail: 'plannedEndUtc must be after plannedStartUtc' })
+      return
+    }
+
+    // Set operatorId from authenticated user
+    const validationInput: FlightPlanInput = {
+      ...input,
+      operatorId: input.operatorId ?? req.auth!.userId,
+    }
+
+    const result = await FlightPlanValidationService.validateFlightPlan(validationInput, prisma)
+
+    res.json({ success: true, validation: result })
+  } catch (e: unknown) {
+    log.error('validate_flight_plan_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'VALIDATION_FAILED' })
+  }
+})
+
+// ── POST /api/drone/yellow-zone-route ─────────────────────────────────────────
+// Determine ATC authority routing and expedited eligibility for a yellow-zone
+// drone flight permission application.
+// Body: FlightPermissionPayload (area, altitude, operator info, etc.)
+// Response 200: RoutingResult
+// Optionally links to a DroneOperationPlan if planId is provided.
+router.post('/yellow-zone-route', requireAuth, async (req, res) => {
+  try {
+    const body = req.body as FlightPermissionPayload & { planId?: string; zoneIcao?: string }
+
+    // Input validation
+    if (!body.areaType || !['POLYGON', 'CIRCLE'].includes(body.areaType)) {
+      res.status(400).json({ error: 'INVALID_AREA_TYPE', detail: 'areaType must be POLYGON or CIRCLE' })
+      return
+    }
+    if (body.areaType === 'POLYGON' && !body.areaGeoJson) {
+      res.status(400).json({ error: 'MISSING_GEOJSON', detail: 'areaGeoJson required for POLYGON type' })
+      return
+    }
+    if (body.areaType === 'CIRCLE') {
+      if (typeof body.centerLatDeg !== 'number' || typeof body.centerLonDeg !== 'number') {
+        res.status(400).json({ error: 'MISSING_CENTER', detail: 'centerLatDeg and centerLonDeg required for CIRCLE type' })
+        return
+      }
+      if (typeof body.radiusM !== 'number' || body.radiusM <= 0) {
+        res.status(400).json({ error: 'INVALID_RADIUS', detail: 'radiusM must be a positive number' })
+        return
+      }
+    }
+    if (typeof body.maxAltitudeAglM !== 'number' || body.maxAltitudeAglM <= 0) {
+      res.status(400).json({ error: 'INVALID_ALTITUDE', detail: 'maxAltitudeAglM must be a positive number' })
+      return
+    }
+    if (!body.plannedStartUtc || !body.plannedEndUtc) {
+      res.status(400).json({ error: 'MISSING_TIME_WINDOW', detail: 'plannedStartUtc and plannedEndUtc are required' })
+      return
+    }
+    if (new Date(body.plannedStartUtc) >= new Date(body.plannedEndUtc)) {
+      res.status(400).json({ error: 'INVALID_TIME_WINDOW', detail: 'plannedEndUtc must be after plannedStartUtc' })
+      return
+    }
+    if (!body.droneSerialNumber) {
+      res.status(400).json({ error: 'MISSING_DRONE_SERIAL', detail: 'droneSerialNumber is required' })
+      return
+    }
+
+    // Set operatorId from authenticated user if not provided
+    const payload: FlightPermissionPayload = {
+      ...body,
+      operatorId: body.operatorId ?? req.auth!.userId,
+    }
+
+    // Route the application
+    const result = await YellowZoneRoutingService.routeApplication(
+      payload,
+      body.zoneIcao ?? null,
+      prisma
+    )
+
+    // If a planId is provided, update the DroneOperationPlan with routing decision
+    if (body.planId) {
+      try {
+        const plan = await prisma.droneOperationPlan.findUnique({
+          where: { id: body.planId },
+        })
+        if (plan && plan.operatorId === req.auth!.userId) {
+          const routedAt = new Date()
+          const approvalDueBy = new Date(routedAt)
+          approvalDueBy.setDate(approvalDueBy.getDate() + result.expectedProcessingDays)
+
+          await prisma.droneOperationPlan.update({
+            where: { id: body.planId },
+            data: {
+              routingAuthority: result.authority.name,
+              expeditedFlag: result.expedited,
+              routedAt,
+              approvalDueBy,
+            },
+          })
+
+          // Audit log
+          await prisma.auditLog.create({
+            data: {
+              actorType: 'USER',
+              actorId: req.auth!.userId,
+              actorRole: req.auth!.role,
+              action: 'DRONE_PLAN_ROUTED',
+              resourceType: 'drone_operation_plan',
+              resourceId: body.planId,
+              detailJson: JSON.stringify({
+                planId: plan.planId,
+                authority: result.authority.name,
+                authorityType: result.authority.type,
+                expedited: result.expedited,
+                expectedProcessingDays: result.expectedProcessingDays,
+              }),
+            },
+          })
+
+          log.info('drone_plan_routing_saved', {
+            data: {
+              planId: plan.planId,
+              authority: result.authority.name,
+              expedited: result.expedited,
+            },
+          })
+        }
+      } catch (planErr) {
+        log.warn('drone_plan_routing_update_failed', {
+          data: { planId: body.planId, error: planErr instanceof Error ? planErr.message : String(planErr) },
+        })
+        // Do not fail the route response — routing result is still valid
+      }
+    }
+
+    res.json({
+      success: true,
+      routing: {
+        authority: result.authority,
+        expectedProcessingDays: result.expectedProcessingDays,
+        expedited: result.expedited,
+        submissionInstructions: result.submissionInstructions,
+        requiredDocuments: result.requiredDocuments,
+        contactDetails: result.contactDetails,
+      },
+    })
+  } catch (e: unknown) {
+    log.error('yellow_zone_route_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'YELLOW_ZONE_ROUTE_FAILED' })
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PERMISSION ARTEFACT LIFECYCLE ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── GET /api/drone/permissions ───────────────────────────────────────────────
+// List the authenticated user's Permission Artefacts (paginated).
+router.get('/permissions', requireAuth, async (req, res) => {
+  try {
+    const { userId } = req.auth!
+    const page  = Math.max(1, parseInt((req.query.page  as string) ?? '1'))
+    const limit = Math.min(50, Math.max(1, parseInt((req.query.limit as string) ?? '20')))
+    const status = req.query.status as string | undefined
+
+    const where: Record<string, unknown> = { operatorId: userId }
+    if (status) {
+      where.status = status
+    }
+
+    const [permissions, total] = await Promise.all([
+      prisma.permissionArtefact.findMany({
+        where,
+        skip:    (page - 1) * limit,
+        take:    limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id:                   true,
+          applicationId:        true,
+          permissionArtifactId: true,
+          uinNumber:            true,
+          pilotId:              true,
+          status:               true,
+          primaryZone:          true,
+          flightStartTime:      true,
+          flightEndTime:        true,
+          maxAltitudeMeters:    true,
+          paZipHash:            true,
+          loadedToDroneAt:      true,
+          flightLogUploadedAt:  true,
+          submittedAt:          true,
+          approvedAt:           true,
+          downloadedAt:         true,
+          createdAt:            true,
+        },
+      }),
+      prisma.permissionArtefact.count({ where }),
+    ])
+
+    res.json(serializeForJson({ success: true, permissions, total, page, limit }))
+  } catch (e: unknown) {
+    log.error('permissions_list_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'PERMISSIONS_LIST_FAILED' })
+  }
+})
+
+// ── GET /api/drone/permissions/:id ──────────────────────────────────────────
+// Get full PA details. Operator sees own PAs; auditors see all.
+router.get('/permissions/:id', requireAuth, async (req, res) => {
+  try {
+    const { userId, role } = req.auth!
+    const pa = await prisma.permissionArtefact.findUnique({
+      where: { id: req.params.id },
+      include: { plan: true },
+    })
+    if (!pa) {
+      res.status(404).json({ error: 'PERMISSION_NOT_FOUND' })
+      return
+    }
+
+    const AUDITOR_ROLES = ['DGCA_AUDITOR', 'IAF_AUDITOR', 'ARMY_AUDITOR', 'NAVY_AUDITOR',
+                           'INVESTIGATION_OFFICER', 'PLATFORM_SUPER_ADMIN']
+    const isOwner   = pa.operatorId === userId
+    const isAuditor = AUDITOR_ROLES.includes(role)
+    if (!isOwner && !isAuditor) {
+      res.status(403).json({ error: 'ACCESS_DENIED' })
+      return
+    }
+
+    // Omit rawPaXml (binary) from JSON response
+    const { rawPaXml, ...safePA } = pa
+    res.json(serializeForJson({
+      success: true,
+      permission: {
+        ...safePA,
+        hasRawPaXml: rawPaXml !== null,
+      },
+    }))
+  } catch (e: unknown) {
+    log.error('permission_detail_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'PERMISSION_FETCH_FAILED' })
+  }
+})
+
+// ── GET /api/drone/permissions/:id/download ─────────────────────────────────
+// Proxy PA ZIP download. Returns the stored PA ZIP binary.
+router.get('/permissions/:id/download', requireAuth, async (req, res) => {
+  try {
+    const { userId } = req.auth!
+    const pa = await prisma.permissionArtefact.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id:          true,
+        operatorId:  true,
+        applicationId: true,
+        status:      true,
+        rawPaXml:    true,
+        paZipHash:   true,
+      },
+    })
+
+    if (!pa) {
+      res.status(404).json({ error: 'PERMISSION_NOT_FOUND' })
+      return
+    }
+    if (pa.operatorId !== userId) {
+      res.status(403).json({ error: 'ACCESS_DENIED' })
+      return
+    }
+
+    // If we don't have the ZIP stored locally, try downloading from eGCA
+    let zipData = pa.rawPaXml ? Buffer.from(pa.rawPaXml) : null
+    if (!zipData) {
+      try {
+        await paLifecycle.downloadAndStorePA(pa.applicationId)
+        const updated = await prisma.permissionArtefact.findUnique({
+          where: { id: pa.id },
+          select: { rawPaXml: true },
+        })
+        zipData = updated?.rawPaXml ? Buffer.from(updated.rawPaXml) : null
+      } catch (dlErr) {
+        log.warn('pa_download_proxy_failed', {
+          data: { id: pa.id, error: dlErr instanceof Error ? dlErr.message : String(dlErr) },
+        })
+      }
+    }
+
+    if (!zipData) {
+      res.status(404).json({ error: 'PA_ZIP_NOT_AVAILABLE' })
+      return
+    }
+
+    res.setHeader('Content-Type', 'application/zip')
+    res.setHeader('Content-Disposition', `attachment; filename="PA-${pa.applicationId}.zip"`)
+    res.setHeader('X-PA-SHA256', pa.paZipHash ?? 'unknown')
+    res.send(zipData)
+  } catch (e: unknown) {
+    log.error('pa_download_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'PA_DOWNLOAD_FAILED' })
+  }
+})
+
+// ── POST /api/drone/permissions/:id/loaded ──────────────────────────────────
+// Mark a PA as loaded to a drone. Body: { droneUin: string }
+router.post('/permissions/:id/loaded', requireAuth, async (req, res) => {
+  try {
+    const { userId } = req.auth!
+    const { droneUin } = req.body as { droneUin?: string }
+
+    if (!droneUin) {
+      res.status(400).json({ error: 'MISSING_DRONE_UIN', detail: 'droneUin is required' })
+      return
+    }
+
+    const pa = await prisma.permissionArtefact.findUnique({
+      where: { id: req.params.id },
+    })
+    if (!pa) {
+      res.status(404).json({ error: 'PERMISSION_NOT_FOUND' })
+      return
+    }
+    if (pa.operatorId !== userId) {
+      res.status(403).json({ error: 'ACCESS_DENIED' })
+      return
+    }
+
+    await paLifecycle.markLoadedToDrone(pa.applicationId, droneUin)
+
+    res.json({ success: true, message: 'PA marked as loaded to drone', droneUin })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('pa_mark_loaded_error', { data: { error: msg } })
+
+    if (msg.includes('UIN mismatch') || msg.includes('must be DOWNLOADED')) {
+      res.status(400).json({ error: 'PA_LOAD_FAILED', detail: msg })
+      return
+    }
+    res.status(500).json({ error: 'PA_MARK_LOADED_FAILED' })
+  }
+})
+
+// ── POST /api/drone/permissions/:id/log ─────────────────────────────────────
+// Upload a signed flight log for a PA.
+// Body: raw JWT-signed log bundle (application/octet-stream or JSON)
+router.post('/permissions/:id/log', requireAuth, async (req, res) => {
+  try {
+    const { userId } = req.auth!
+
+    const pa = await prisma.permissionArtefact.findUnique({
+      where: { id: req.params.id },
+    })
+    if (!pa) {
+      res.status(404).json({ error: 'PERMISSION_NOT_FOUND' })
+      return
+    }
+    if (pa.operatorId !== userId) {
+      res.status(403).json({ error: 'ACCESS_DENIED' })
+      return
+    }
+
+    // Accept log bundle as raw body or JSON with logBundle field
+    let logBundle: Buffer
+    if (Buffer.isBuffer(req.body)) {
+      logBundle = req.body
+    } else if (typeof req.body === 'object' && req.body.logBundle) {
+      logBundle = Buffer.from(req.body.logBundle, typeof req.body.logBundle === 'string' ? 'utf-8' : undefined)
+    } else if (typeof req.body === 'string') {
+      logBundle = Buffer.from(req.body, 'utf-8')
+    } else {
+      res.status(400).json({ error: 'MISSING_LOG_BUNDLE', detail: 'Request body must contain the signed flight log' })
+      return
+    }
+
+    const report = await paLifecycle.processFlightLog(pa.applicationId, logBundle)
+
+    res.json(serializeForJson({
+      success: true,
+      report,
+    }))
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('pa_log_upload_error', { data: { error: msg } })
+
+    if (msg.includes('JWT verification failed') || msg.includes('missing entries')) {
+      res.status(400).json({ error: 'INVALID_LOG_BUNDLE', detail: msg })
+      return
+    }
+    if (msg.includes('Cannot process flight log')) {
+      res.status(400).json({ error: 'PA_LOG_FAILED', detail: msg })
+      return
+    }
+    res.status(500).json({ error: 'PA_LOG_UPLOAD_FAILED' })
+  }
+})
+
 // ── GET /api/drone/violations ─────────────────────────────────────────────────
 // List the authenticated operator's violations.
 router.get('/violations', requireAuth, async (req, res) => {
@@ -329,61 +830,323 @@ router.get('/violations', requireAuth, async (req, res) => {
   }
 })
 
-// ── POST /api/drone/track-logs ────────────────────────────────────────────────
-// Upload a track log for a completed drone flight.
-// Violations are stored but NOT returned to the user.
-router.post('/track-logs', requireAuth, requireDomain('DRONE'), async (req, res) => {
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOTIFICATION ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── GET /api/drone/notifications ─────────────────────────────────────────────
+// List notifications for the authenticated user (paginated, filterable).
+router.get('/notifications', requireAuth, async (req, res) => {
   try {
     const { userId } = req.auth!
-    const {
-      droneSerialNumber, format, takeoff, landing, pathPoints,
-      maxAltitude, duration, breachCount, violations, droneOperationPlanId,
-    } = req.body
+    const page       = parseInt((req.query.page  as string) ?? '1')
+    const limit      = parseInt((req.query.limit as string) ?? '20')
+    const unreadOnly = req.query.unread === 'true'
+    const category   = req.query.category as NotificationCategory | undefined
 
-    if (!droneSerialNumber || !format || !takeoff || !landing) {
-      res.status(400).json({
-        error: 'INVALID_PAYLOAD',
-        required: ['droneSerialNumber', 'format', 'takeoff', 'landing'],
-      })
+    const result = await notifService.getNotifications({
+      userId,
+      unreadOnly,
+      category: category && ['EXPIRY', 'PERMISSION', 'COMPLIANCE', 'SYSTEM'].includes(category)
+        ? category
+        : undefined,
+      page,
+      limit,
+    })
+
+    res.json({ success: true, ...result })
+  } catch (e: unknown) {
+    log.error('notifications_list_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'NOTIFICATIONS_LIST_FAILED' })
+  }
+})
+
+// ── GET /api/drone/notifications/unread-count ────────────────────────────────
+// Quick unread count for the bell badge.
+router.get('/notifications/unread-count', requireAuth, async (req, res) => {
+  try {
+    const count = await notifService.getUnreadCount(req.auth!.userId)
+    res.json({ success: true, count })
+  } catch (e: unknown) {
+    res.status(500).json({ error: 'UNREAD_COUNT_FAILED' })
+  }
+})
+
+// ── POST /api/drone/notifications/:id/read ───────────────────────────────────
+// Mark a single notification as read.
+router.post('/notifications/:id/read', requireAuth, async (req, res) => {
+  try {
+    const record = await notifService.markRead(req.params.id, req.auth!.userId)
+    if (!record) {
+      res.status(404).json({ error: 'NOTIFICATION_NOT_FOUND' })
+      return
+    }
+    res.json({ success: true, notification: record })
+  } catch (e: unknown) {
+    res.status(500).json({ error: 'MARK_READ_FAILED' })
+  }
+})
+
+// ── POST /api/drone/notifications/read-all ───────────────────────────────────
+// Mark all notifications as read for the authenticated user.
+router.post('/notifications/read-all', requireAuth, async (req, res) => {
+  try {
+    const result = await notifService.markAllRead(req.auth!.userId)
+    res.json({ success: true, ...result })
+  } catch (e: unknown) {
+    res.status(500).json({ error: 'MARK_ALL_READ_FAILED' })
+  }
+})
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FLIGHT PLAN TEMPLATE ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// In-memory store for flight corridor templates. Templates are scoped per user.
+// TODO: Migrate to a FlightTemplate Prisma model for persistence once the
+// schema migration is approved. The API contract will remain identical.
+
+interface FlightTemplateRecord {
+  id: string
+  userId: string
+  name: string
+  description: string
+  zone: 'GREEN' | 'YELLOW' | 'RED'
+  areaSqKm: number
+  geometry: any
+  waypoints: Array<{ lat: number; lng: number }>
+  bufferWidthM: number
+  shared: boolean
+  lastUsedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+const flightTemplateStore: FlightTemplateRecord[] = []
+
+function generateTemplateId(): string {
+  return 'ftpl_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8)
+}
+
+// ── GET /api/drone/flight-templates ─────────────────────────────────────────
+// List all flight templates for the authenticated user, plus shared templates.
+router.get('/flight-templates', requireAuth, async (req, res) => {
+  try {
+    const { userId } = req.auth!
+
+    // Return user's own templates + all shared templates
+    const templates = flightTemplateStore.filter(
+      t => t.userId === userId || t.shared
+    )
+
+    res.json({
+      success: true,
+      templates: templates.map(t => ({
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        zone: t.zone,
+        areaSqKm: t.areaSqKm,
+        geometry: t.geometry,
+        waypoints: t.waypoints,
+        bufferWidthM: t.bufferWidthM,
+        shared: t.shared,
+        lastUsedAt: t.lastUsedAt,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
+        createdBy: t.shared ? t.userId : undefined,
+      })),
+      count: templates.length,
+    })
+  } catch (e: unknown) {
+    log.error('flight_templates_list_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'TEMPLATES_LIST_FAILED' })
+  }
+})
+
+// ── POST /api/drone/flight-templates ────────────────────────────────────────
+// Create a new flight template.
+router.post('/flight-templates', requireAuth, async (req, res) => {
+  try {
+    const { userId } = req.auth!
+    const { name, description, geometry, waypoints, bufferWidthM, areaSqKm, shared } = req.body as {
+      name: string
+      description?: string
+      geometry?: any
+      waypoints?: Array<{ lat: number; lng: number }>
+      bufferWidthM?: number
+      areaSqKm?: number
+      shared?: boolean
+    }
+
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      res.status(400).json({ error: 'MISSING_NAME', detail: 'name is required' })
+      return
+    }
+    if (name.trim().length > 200) {
+      res.status(400).json({ error: 'NAME_TOO_LONG', detail: 'name must be 200 characters or less' })
       return
     }
 
-    const trackLog = await prisma.trackLog.create({
-      data: {
-        operatorId:           userId,
-        droneSerialNumber,
-        format,
-        takeoffLat:           takeoff.latDeg ?? null,
-        takeoffLon:           takeoff.lonDeg ?? null,
-        landingLat:           landing.latDeg ?? null,
-        landingLon:           landing.lonDeg ?? null,
-        pathPointsJson:       pathPoints ? JSON.stringify(pathPoints) : '[]',
-        maxAltitudeM:         maxAltitude ?? 0,
-        durationSec:          duration ?? 0,
-        breachCount:          breachCount ?? 0,
-        violationsJson:       violations ? JSON.stringify(violations) : null,
-        droneOperationPlanId: droneOperationPlanId ?? null,
+    // Determine zone classification based on geometry if provided
+    let zone: 'GREEN' | 'YELLOW' | 'RED' = 'GREEN'
+    if (waypoints && waypoints.length >= 3) {
+      try {
+        const polygon = waypoints.map(p => ({ lat: p.lat, lng: p.lng }))
+        const result = await classifyPolygon(polygon, 120)
+        zone = result.classification as 'GREEN' | 'YELLOW' | 'RED'
+      } catch {
+        // Default to GREEN if classification fails
+      }
+    }
+
+    const now = new Date().toISOString()
+    const template: FlightTemplateRecord = {
+      id: generateTemplateId(),
+      userId,
+      name: name.trim(),
+      description: (description || '').trim(),
+      zone,
+      areaSqKm: areaSqKm ?? 0,
+      geometry: geometry ?? null,
+      waypoints: waypoints ?? [],
+      bufferWidthM: bufferWidthM ?? 100,
+      shared: shared ?? false,
+      lastUsedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    flightTemplateStore.push(template)
+
+    log.info('flight_template_created', {
+      data: { templateId: template.id, name: template.name, userId },
+    })
+
+    res.status(201).json({
+      success: true,
+      template: {
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        zone: template.zone,
+        areaSqKm: template.areaSqKm,
+        geometry: template.geometry,
+        waypoints: template.waypoints,
+        bufferWidthM: template.bufferWidthM,
+        shared: template.shared,
+        lastUsedAt: template.lastUsedAt,
+        createdAt: template.createdAt,
+        updatedAt: template.updatedAt,
       },
     })
+  } catch (e: unknown) {
+    log.error('flight_template_create_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'TEMPLATE_CREATE_FAILED' })
+  }
+})
 
-    await prisma.auditLog.create({
-      data: {
-        actorType: 'USER', actorId: userId, actorRole: req.auth!.role,
-        action: 'TRACK_LOG_UPLOADED', resourceType: 'track_log', resourceId: trackLog.id,
-        detailJson: JSON.stringify({
-          droneSerialNumber, format,
-          droneOperationPlanId: droneOperationPlanId ?? null,
-        }),
+// ── PUT /api/drone/flight-templates/:id ─────────────────────────────────────
+// Update an existing flight template. Only the owner can update.
+router.put('/flight-templates/:id', requireAuth, async (req, res) => {
+  try {
+    const { userId } = req.auth!
+    const { id } = req.params
+    const { name, description, geometry, waypoints, bufferWidthM, areaSqKm, shared } = req.body as {
+      name?: string
+      description?: string
+      geometry?: any
+      waypoints?: Array<{ lat: number; lng: number }>
+      bufferWidthM?: number
+      areaSqKm?: number
+      shared?: boolean
+    }
+
+    const idx = flightTemplateStore.findIndex(t => t.id === id)
+    if (idx === -1) {
+      res.status(404).json({ error: 'TEMPLATE_NOT_FOUND' })
+      return
+    }
+
+    const template = flightTemplateStore[idx]
+    if (template.userId !== userId) {
+      res.status(403).json({ error: 'ACCESS_DENIED' })
+      return
+    }
+
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.trim().length === 0) {
+        res.status(400).json({ error: 'INVALID_NAME' })
+        return
       }
+      template.name = name.trim()
+    }
+    if (description !== undefined) template.description = description.trim()
+    if (geometry !== undefined)    template.geometry = geometry
+    if (waypoints !== undefined)   template.waypoints = waypoints
+    if (bufferWidthM !== undefined) template.bufferWidthM = bufferWidthM
+    if (areaSqKm !== undefined)    template.areaSqKm = areaSqKm
+    if (shared !== undefined)      template.shared = shared
+    template.updatedAt = new Date().toISOString()
+
+    flightTemplateStore[idx] = template
+
+    log.info('flight_template_updated', {
+      data: { templateId: id, userId },
     })
 
-    log.info('track_log_uploaded', { data: { trackLogId: trackLog.id, droneSerialNumber } })
-    // Do NOT include violation details in the response — violations are hidden from the user
-    res.status(201).json(serializeForJson({ success: true, trackLogId: trackLog.id }))
+    res.json({
+      success: true,
+      template: {
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        zone: template.zone,
+        areaSqKm: template.areaSqKm,
+        geometry: template.geometry,
+        waypoints: template.waypoints,
+        bufferWidthM: template.bufferWidthM,
+        shared: template.shared,
+        lastUsedAt: template.lastUsedAt,
+        createdAt: template.createdAt,
+        updatedAt: template.updatedAt,
+      },
+    })
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e)
-    log.error('track_log_upload_error', { data: { error: msg } })
-    res.status(500).json({ error: 'TRACK_LOG_UPLOAD_FAILED' })
+    log.error('flight_template_update_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'TEMPLATE_UPDATE_FAILED' })
+  }
+})
+
+// ── DELETE /api/drone/flight-templates/:id ───────────────────────────────────
+// Delete a flight template. Only the owner can delete.
+router.delete('/flight-templates/:id', requireAuth, async (req, res) => {
+  try {
+    const { userId } = req.auth!
+    const { id } = req.params
+
+    const idx = flightTemplateStore.findIndex(t => t.id === id)
+    if (idx === -1) {
+      res.status(404).json({ error: 'TEMPLATE_NOT_FOUND' })
+      return
+    }
+
+    const template = flightTemplateStore[idx]
+    if (template.userId !== userId) {
+      res.status(403).json({ error: 'ACCESS_DENIED' })
+      return
+    }
+
+    flightTemplateStore.splice(idx, 1)
+
+    log.info('flight_template_deleted', {
+      data: { templateId: id, name: template.name, userId },
+    })
+
+    res.json({ success: true, deleted: id })
+  } catch (e: unknown) {
+    log.error('flight_template_delete_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'TEMPLATE_DELETE_FAILED' })
   }
 })
 
