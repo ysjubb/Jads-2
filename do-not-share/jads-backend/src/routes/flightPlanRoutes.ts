@@ -15,7 +15,7 @@ const routeService = new RoutePlanningService()
 const log          = createServiceLogger('FlightPlanRoutes')
 
 // Roles authorised for manned flight plan filing and lifecycle operations
-const FPL_ROLES = ['PILOT', 'GOVT_PILOT', 'PLATFORM_SUPER_ADMIN']
+const FPL_ROLES = ['PILOT', 'PILOT_AND_DRONE', 'GOVT_PILOT', 'GOVT_DRONE_OPERATOR', 'PLATFORM_SUPER_ADMIN']
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/flight-plans/route-plan
@@ -59,15 +59,75 @@ router.post('/route-plan', requireAuth, requireDomain('AIRCRAFT'), requireRole(F
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Map form field names (UI) → FlightPlanService internal field names.
+// The user portal sends user-friendly fields (adep, ades, cruisingSpeed)
+// while the service expects ICAO-oriented names (departureIcao, speedIndicator).
+// ─────────────────────────────────────────────────────────────────────────────
+function mapFormToService(body: Record<string, any>): Record<string, any> {
+  // Parse cruising speed: "N0120" → indicator="N", value="0120"
+  const speed = body.cruisingSpeed || ''
+  const speedIndicator = speed.charAt(0) || 'N'
+  const speedValue     = speed.substring(1) || '0000'
+
+  // Parse cruising level: "VFR" stays as-is; "F350" → indicator="F", value="350"
+  const level = body.cruisingLevel || 'VFR'
+  let levelIndicator = 'VFR'
+  let levelValue     = ''
+  if (level !== 'VFR') {
+    levelIndicator = level.charAt(0) // F, A, S, M
+    levelValue     = level.substring(1)
+  }
+
+  // Convert ISO eobt to DDHHmm format for service's parseEobt()
+  let estimatedOffBlock = body.eobt || ''
+  if (estimatedOffBlock.includes('T') || estimatedOffBlock.includes('-')) {
+    const d = new Date(estimatedOffBlock)
+    if (!isNaN(d.getTime())) {
+      const dd = String(d.getUTCDate()).padStart(2, '0')
+      const hh = String(d.getUTCHours()).padStart(2, '0')
+      const mm = String(d.getUTCMinutes()).padStart(2, '0')
+      estimatedOffBlock = `${dd}${hh}${mm}`
+    }
+  }
+
+  // Map form flightRules: "VFR"→"V", "IFR"→"I", "Y"→"Y", "Z"→"Z"
+  const rulesMap: Record<string, string> = { VFR: 'V', IFR: 'I', Y: 'Y', Z: 'Z', V: 'V', I: 'I' }
+  const flightRules = rulesMap[body.flightRules] || body.flightRules
+
+  return {
+    ...body,
+    flightRules,
+    // Service field names — keep hyphens for validation (VT-ABC), AFTN builder handles stripping
+    callsign:          body.aircraftId   || body.callsign,
+    departureIcao:     body.adep         || body.departureIcao,
+    destinationIcao:   body.ades         || body.destinationIcao,
+    alternate1:        body.altn1        || body.alternate1 || undefined,
+    alternate2:        body.altn2        || body.alternate2 || undefined,
+    estimatedOffBlock,
+    speedIndicator,
+    speedValue,
+    levelIndicator,
+    levelValue,
+    enduranceHHmm:     body.endurance    || body.enduranceHHmm,
+    otherInfo:         body.item18       || body.otherInfo,
+    pilotEmail:        body.notifyEmail  || body.pilotEmail,
+    pilotMobile:       body.notifyMobile || body.pilotMobile,
+    surveillance:      body.surveillance || '',
+    equipment:         body.equipment    || 'S',
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/flight-plans
 // File a manned aircraft flight plan. Validates, builds AFTN message,
 // generates AFTN addressees, transmits via AFTN stub, sends confirmation.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/', requireAuth, requireDomain('AIRCRAFT'), requireRole(FPL_ROLES), async (req, res) => {
   try {
+    const mapped = mapFormToService(req.body)
     const result = await fplService.createAndFilePlan(
       {
-        ...req.body,
+        ...mapped,
         filedBy:    req.auth!.userId,
         entityCode: req.auth!.entityCode,
       },
@@ -83,8 +143,9 @@ router.post('/', requireAuth, requireDomain('AIRCRAFT'), requireRole(FPL_ROLES),
     res.status(201).json(serializeForJson({ success: true, ...result }))
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
-    log.error('flight_plan_file_error', { data: { error: msg } })
-    res.status(500).json({ error: 'FLIGHT_PLAN_FILE_FAILED' })
+    const stack = e instanceof Error ? e.stack : undefined
+    log.error('flight_plan_file_error', { data: { error: msg, stack } })
+    res.status(500).json({ error: 'FLIGHT_PLAN_FILE_FAILED', detail: msg })
   }
 })
 

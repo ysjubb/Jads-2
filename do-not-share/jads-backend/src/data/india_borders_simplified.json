@@ -1,0 +1,125 @@
+{
+  "_meta": {
+    "source": "Survey of India simplified boundary",
+    "description": "Simplified India international border polygon for 25km buffer zone classification. Not for cartographic use.",
+    "coordinateSystem": "WGS84",
+    "note": "Approximate vertices. For precise boundary, use Survey of India official data."
+  },
+  "borderSegments": [
+    {
+      "name": "India-Pakistan (western border including LoC)",
+      "coordinates": [
+        { "lat": 32.8700, "lng": 73.7100 },
+        { "lat": 32.0500, "lng": 74.6000 },
+        { "lat": 30.9800, "lng": 73.9200 },
+        { "lat": 29.3600, "lng": 71.0400 },
+        { "lat": 27.6000, "lng": 68.8800 },
+        { "lat": 25.3200, "lng": 68.3600 },
+        { "lat": 24.0700, "lng": 68.7500 },
+        { "lat": 23.7100, "lng": 68.4800 },
+        { "lat": 23.5600, "lng": 68.1700 }
+      ]
+    },
+    {
+      "name": "India-Pakistan (Gujarat / Rajasthan border including Sir Creek)",
+      "coordinates": [
+        { "lat": 23.5600, "lng": 68.1700 },
+        { "lat": 23.4300, "lng": 68.4100 },
+        { "lat": 23.2200, "lng": 68.6400 },
+        { "lat": 23.8500, "lng": 69.2500 },
+        { "lat": 24.6300, "lng": 69.6200 },
+        { "lat": 24.2600, "lng": 70.7900 },
+        { "lat": 24.8900, "lng": 71.0700 }
+      ]
+    },
+    {
+      "name": "India-China (LAC approximate - northern border)",
+      "coordinates": [
+        { "lat": 35.5000, "lng": 76.8000 },
+        { "lat": 34.7000, "lng": 77.8000 },
+        { "lat": 33.7000, "lng": 78.8000 },
+        { "lat": 32.5000, "lng": 79.5000 },
+        { "lat": 31.5000, "lng": 79.9000 },
+        { "lat": 30.4000, "lng": 80.4000 },
+        { "lat": 30.2000, "lng": 81.0000 },
+        { "lat": 30.0000, "lng": 81.5000 },
+        { "lat": 29.5000, "lng": 82.0000 },
+        { "lat": 28.7000, "lng": 83.5000 },
+        { "lat": 28.3000, "lng": 85.3000 },
+        { "lat": 27.8000, "lng": 86.7000 },
+        { "lat": 27.9000, "lng": 88.1000 },
+        { "lat": 28.2000, "lng": 89.0000 },
+        { "lat": 27.5000, "lng": 89.7000 },
+        { "lat": 27.1000, "lng": 91.6000 },
+        { "lat": 27.8000, "lng": 92.0000 },
+        { "lat": 28.0000, "lng": 93.0000 },
+        { "lat": 28.5000, "lng": 96.0000 },
+        { "lat": 28.2000, "lng": 97.3000 }
+      ]
+    },
+    {
+      "name": "India-Nepal border",
+      "coordinates": [
+        { "lat": 30.2000, "lng": 80.4000 },
+        { "lat": 29.4000, "lng": 80.2000 },
+        { "lat": 28.9000, "lng": 80.5000 },
+        { "lat": 28.5000, "lng": 81.3000 },
+        { "lat": 27.5000, "lng": 83.3000 },
+        { "lat": 27.0000, "lng": 84.6000 },
+        { "lat": 26.6000, "lng": 85.8000 },
+        { "lat": 26.4000, "lng": 86.7000 },
+        { "lat": 26.5000, "lng": 87.3000 },
+        { "lat": 26.8000, "lng": 88.0000 }
+      ]
+    },
+    {
+      "name": "India-Bhutan border",
+      "coordinates": [
+        { "lat": 26.8500, "lng": 89.0000 },
+        { "lat": 26.9000, "lng": 89.6000 },
+        { "lat": 27.0000, "lng": 90.5000 },
+        { "lat": 26.8000, "lng": 91.5000 },
+        { "lat": 27.1000, "lng": 91.6000 }
+      ]
+    },
+    {
+      "name": "India-Bangladesh border",
+      "coordinates": [
+        { "lat": 26.1300, "lng": 89.7000 },
+        { "lat": 25.2000, "lng": 89.8000 },
+        { "lat": 25.0000, "lng": 88.9000 },
+        { "lat": 24.4500, "lng": 88.3000 },
+        { "lat": 24.0000, "lng": 88.7000 },
+        { "lat": 23.6000, "lng": 88.9000 },
+        { "lat": 23.2000, "lng": 88.7000 },
+        { "lat": 22.6700, "lng": 88.9000 },
+        { "lat": 22.2000, "lng": 89.0000 },
+        { "lat": 21.7000, "lng": 89.1000 },
+        { "lat": 22.0000, "lng": 90.5000 },
+        { "lat": 22.3000, "lng": 91.0000 },
+        { "lat": 22.5000, "lng": 91.8000 },
+        { "lat": 23.2000, "lng": 91.4000 },
+        { "lat": 24.1000, "lng": 92.0000 },
+        { "lat": 24.4000, "lng": 92.1000 },
+        { "lat": 25.1000, "lng": 92.5000 }
+      ]
+    },
+    {
+      "name": "India-Myanmar border",
+      "coordinates": [
+        { "lat": 28.2000, "lng": 97.3000 },
+        { "lat": 27.6000, "lng": 97.0000 },
+        { "lat": 27.1000, "lng": 96.6000 },
+        { "lat": 26.3000, "lng": 96.3000 },
+        { "lat": 25.6000, "lng": 95.0000 },
+        { "lat": 25.2000, "lng": 94.6000 },
+        { "lat": 24.5000, "lng": 94.0000 },
+        { "lat": 23.5000, "lng": 93.4000 },
+        { "lat": 23.0000, "lng": 93.2000 },
+        { "lat": 22.3000, "lng": 93.0000 },
+        { "lat": 21.2000, "lng": 92.6000 },
+        { "lat": 20.7400, "lng": 92.3400 }
+      ]
+    }
+  ]
+}

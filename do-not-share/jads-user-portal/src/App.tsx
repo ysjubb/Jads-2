@@ -7,19 +7,14 @@ import { FileDronePlanPage }     from './pages/FileDronePlanPage'
 import { FlightPlanDetailPage }  from './pages/FlightPlanDetailPage'
 import { EditFlightPlanPage }    from './pages/EditFlightPlanPage'
 import { DronePlanDetailPage }   from './pages/DronePlanDetailPage'
-import { ChartsPage }            from './pages/ChartsPage'
-import { NOTAMPage }             from './pages/NOTAMPage'
-import { RouteBuilderPage }      from './pages/RouteBuilderPage'
-import { EvidencePage }          from './pages/EvidencePage'
-import { LogUploadPage }         from './pages/LogUploadPage'
-import { WeightBalancePage }     from './pages/WeightBalancePage'
-import { FleetManager }          from './components/portal/FleetManager'
-import { BVLOSWizard }           from './components/portal/BVLOSWizard'
-import { TrajectoryViewer }      from './components/portal/TrajectoryViewer'
-import { APISettings }           from './components/portal/APISettings'
-import { EvidenceExportPanel }   from './components/portal/EvidenceExportPanel'
-import { GpsRecorderPage }       from './pages/GpsRecorderPage'
-import { SystemStatusBar }       from './components/portal/SystemStatusBar'
+import { FlightPlannerPage }    from './pages/drone/FlightPlannerPage'
+import { MyPermissionsPage }   from './pages/drone/MyPermissionsPage'
+import { TemplateLibraryPage } from './pages/drone/TemplateLibraryPage'
+import { NotificationsPage }  from './pages/drone/NotificationsPage'
+import { PAVerifyPage }        from './pages/drone/PAVerifyPage'
+import { FleetManagerPage }    from './pages/drone/FleetManagerPage'
+import { FlightAnalyticsPage } from './pages/drone/FlightAnalyticsPage'
+import { NotificationBell }   from './components/drone/NotificationBell'
 import { useAuth }               from './hooks/useAuth'
 
 import { T } from './theme'
@@ -30,47 +25,17 @@ type DomainTag = 'AIRCRAFT' | 'DRONE' | 'BOTH'
 interface NavItem { to: string; label: string; icon: string; domain: DomainTag }
 interface NavGroup { title: string; items: NavItem[] }
 
-const NAV_GROUPS: NavGroup[] = [
-  {
-    title: 'OPERATIONS',
-    items: [
-      { to: '/',                 label: 'Dashboard',     icon: '///', domain: 'BOTH' },
-      { to: '/file-flight-plan', label: 'File FPL',      icon: 'FPL', domain: 'AIRCRAFT' },
-      { to: '/file-drone-plan',  label: 'File Drone',    icon: 'DOP', domain: 'DRONE' },
-      { to: '/bvlos',            label: 'BVLOS Wizard',  icon: 'BVL', domain: 'DRONE' },
-    ],
-  },
-  {
-    title: 'PLANNING',
-    items: [
-      { to: '/route-builder',   label: 'Route Builder',  icon: 'RTE', domain: 'AIRCRAFT' },
-      { to: '/weight-balance',  label: 'W&B / Fuel',     icon: 'W&B', domain: 'AIRCRAFT' },
-      { to: '/charts',          label: 'Charts & eAIP',  icon: 'CHR', domain: 'BOTH' },
-      { to: '/notams',          label: 'NOTAMs',         icon: 'NTM', domain: 'BOTH' },
-      { to: '/trajectory',      label: 'Trajectory',     icon: 'TRJ', domain: 'DRONE' },
-    ],
-  },
-  {
-    title: 'FLEET & LOGS',
-    items: [
-      { to: '/fleet',           label: 'Fleet Manager',  icon: 'FLT', domain: 'DRONE' },
-      { to: '/log-upload',      label: 'Log Upload',     icon: 'LOG', domain: 'DRONE' },
-      { to: '/gps-recorder',   label: 'GPS Recorder',   icon: 'GPS', domain: 'DRONE' },
-    ],
-  },
-  {
-    title: 'COMPLIANCE',
-    items: [
-      { to: '/evidence',        label: 'Evidence Chain',  icon: 'EVC', domain: 'DRONE' },
-      { to: '/audit-export',    label: 'Audit Export',    icon: 'AUD', domain: 'DRONE' },
-    ],
-  },
-  {
-    title: 'SETTINGS',
-    items: [
-      { to: '/api-settings',    label: 'API Settings',   icon: 'API', domain: 'BOTH' },
-    ],
-  },
+const NAV_ITEMS = [
+  { to: '/',                 label: 'DASHBOARD',  icon: '///' },
+  { to: '/file-flight-plan', label: 'FILE FPL',   icon: 'FPL' },
+  { to: '/file-drone-plan',  label: 'FILE DRONE', icon: 'DOP' },
+  { to: '/flight-planner',   label: 'FLT PLANNER', icon: 'MAP' },
+  { to: '/drone/permissions',   label: 'MY PERMITS',     icon: 'PA' },
+  { to: '/drone/notifications', label: 'NOTIFICATIONS', icon: 'NTF' },
+  { to: '/drone/templates',     label: 'TEMPLATES',     icon: 'TPL' },
+  { to: '/drone/verify',        label: 'PA VERIFY',     icon: 'CHK' },
+  { to: '/drone/fleet',          label: 'FLEET MGR',     icon: 'FLT' },
+  { to: '/drone/analytics',     label: 'ANALYTICS',     icon: 'ANL' },
 ]
 
 function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
@@ -109,14 +74,8 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
         <span style={{ color: T.primary, fontWeight: 700, fontSize: '1rem' }}>
           {collapsed ? 'J' : 'JADS'}
         </span>
-        {!collapsed && <span style={{ fontSize: '0.6rem', color: T.muted }}>USER PORTAL v5.0</span>}
-        {!collapsed && domainLabel && (
-          <span style={{
-            fontSize: '0.5rem', fontWeight: 700, padding: '1px 6px',
-            borderRadius: '3px', color: '#fff', background: domainBadgeColor,
-            marginLeft: 'auto',
-          }}>{domainLabel}</span>
-        )}
+        {!collapsed && <span style={{ fontSize: '0.6rem', color: T.muted }}>USER PORTAL v4.0</span>}
+        <span style={{ marginLeft: 'auto' }}><NotificationBell /></span>
       </div>
 
       <div style={{ flex: 1, padding: '0.3rem 0', overflowY: 'auto' }}>
@@ -262,8 +221,14 @@ export default function App() {
         {/* Detail pages */}
         <Route path="/flight-plan/:id"      element={<ProtectedLayout><FlightPlanDetailPage /></ProtectedLayout>} />
         <Route path="/edit-flight-plan/:id" element={<ProtectedLayout><EditFlightPlanPage /></ProtectedLayout>} />
-        <Route path="/drone-plan/:id"       element={<ProtectedLayout><DronePlanDetailPage /></ProtectedLayout>} />
-
+        <Route path="/drone-plan/:id"      element={<ProtectedLayout><DronePlanDetailPage /></ProtectedLayout>} />
+        <Route path="/flight-planner"    element={<ProtectedLayout><FlightPlannerPage /></ProtectedLayout>} />
+        <Route path="/drone/permissions"   element={<ProtectedLayout><MyPermissionsPage /></ProtectedLayout>} />
+        <Route path="/drone/notifications" element={<ProtectedLayout><NotificationsPage /></ProtectedLayout>} />
+        <Route path="/drone/templates"     element={<ProtectedLayout><TemplateLibraryPage /></ProtectedLayout>} />
+        <Route path="/drone/verify"       element={<ProtectedLayout><PAVerifyPage /></ProtectedLayout>} />
+        <Route path="/drone/fleet"        element={<ProtectedLayout><FleetManagerPage /></ProtectedLayout>} />
+        <Route path="/drone/analytics"   element={<ProtectedLayout><FlightAnalyticsPage /></ProtectedLayout>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
