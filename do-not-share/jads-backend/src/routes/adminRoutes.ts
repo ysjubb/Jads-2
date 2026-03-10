@@ -538,8 +538,9 @@ router.post('/airspace/airac-import', requireAdminRole('PLATFORM_SUPER_ADMIN'), 
 router.post('/users/special', async (req, res) => {
   try {
     const { entityCode, serviceNumber, officialEmail, mobileNumber,
-            unitDesignation, role, authorisedCallsigns } = req.body
-    if (!entityCode || !serviceNumber || !officialEmail || !role) {
+            unitDesignation, role, authorisedCallsigns,
+            credentialDomain, issuingAuthority } = req.body
+    if (!entityCode || !serviceNumber || !officialEmail || !role || !credentialDomain || !issuingAuthority) {
       res.status(400).json({ error: 'MISSING_REQUIRED_FIELDS' }); return
     }
     // Entity scoping: non-superadmin can only create users in own entity
@@ -560,6 +561,7 @@ router.post('/users/special', async (req, res) => {
       provisionedBy: req.adminAuth!.adminUserId,
       entityCode, serviceNumber, officialEmail, mobileNumber: mobileNumber ?? '',
       unitDesignation: unitDesignation ?? '', role: role as any,
+      credentialDomain: credentialDomain as any, issuingAuthority: issuingAuthority as any,
       authorisedCallsigns: authorisedCallsigns ?? [],
       accountStatus: 'ACTIVE', reconfirmationStatus: 'CURRENT',
       lastReconfirmedAt: new Date(), nextReconfirmDueAt: new Date(Date.now() + 365 * 86400000),

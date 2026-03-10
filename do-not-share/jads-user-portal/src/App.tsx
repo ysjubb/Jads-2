@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom'
+import React, { useState, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom'
 import { LoginPage }             from './pages/LoginPage'
 import { DashboardPage }         from './pages/DashboardPage'
 import { FileFlightPlanPage }    from './pages/FileFlightPlanPage'
@@ -17,18 +17,13 @@ import { FlightAnalyticsPage } from './pages/drone/FlightAnalyticsPage'
 import { NotificationBell }   from './components/drone/NotificationBell'
 import { useAuth }               from './hooks/useAuth'
 
-// ── Theme Constants (blue-tinted variant for user portal) ─────────────────────
-export const T = {
-  bg:         '#050A08',
-  surface:    '#0A0E12',
-  border:     '#1A2030',
-  primary:    '#00AAFF',
-  amber:      '#FFB800',
-  red:        '#FF3B3B',
-  muted:      '#4A6A7A',
-  text:       '#b0c8d8',
-  textBright: '#d0e8f8',
-}
+import { T } from './theme'
+
+// ── Navigation grouped by section ─────────────────────────────────────────────
+// domain: 'AIRCRAFT' = aircraft-only, 'DRONE' = drone-only, 'BOTH' = visible to all
+type DomainTag = 'AIRCRAFT' | 'DRONE' | 'BOTH'
+interface NavItem { to: string; label: string; icon: string; domain: DomainTag }
+interface NavGroup { title: string; items: NavItem[] }
 
 const NAV_ITEMS = [
   { to: '/',                 label: 'DASHBOARD',  icon: '///' },
@@ -44,8 +39,22 @@ const NAV_ITEMS = [
 ]
 
 function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  const { logout } = useAuth()
-  const w = collapsed ? '52px' : '200px'
+  const navigate = useNavigate()
+  const { logout, credentialDomain, role } = useAuth()
+  const w = collapsed ? '52px' : '210px'
+
+  const handleSwitchDomain = () => {
+    logout()
+    navigate('/login', { replace: true })
+  }
+
+  // Super admins see everything; others see only their domain + BOTH
+  const isSuperAdmin = role === 'PLATFORM_SUPER_ADMIN'
+  const visibleItems = (items: NavItem[]) =>
+    items.filter(i => isSuperAdmin || i.domain === 'BOTH' || i.domain === credentialDomain)
+
+  const domainBadgeColor = credentialDomain === 'AIRCRAFT' ? '#40A0FF' : T.amber
+  const domainLabel = credentialDomain === 'AIRCRAFT' ? 'AIRCRAFT' : credentialDomain === 'DRONE' ? 'DRONE' : ''
 
   return (
     <nav style={{
@@ -60,6 +69,7 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
           borderBottom: `1px solid ${T.border}`, cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: '0.5rem',
           justifyContent: collapsed ? 'center' : 'flex-start',
+          flexWrap: 'wrap',
         }}>
         <span style={{ color: T.primary, fontWeight: 700, fontSize: '1rem' }}>
           {collapsed ? 'J' : 'JADS'}
@@ -68,27 +78,52 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
         <span style={{ marginLeft: 'auto' }}><NotificationBell /></span>
       </div>
 
-      <div style={{ flex: 1, padding: '0.5rem 0' }}>
-        {NAV_ITEMS.map(item => (
-          <NavLink key={item.to} to={item.to} end={item.to === '/'}
-            style={({ isActive }) => ({
-              display: 'flex', alignItems: 'center', gap: '0.6rem',
-              padding: collapsed ? '0.6rem 0' : '0.6rem 1rem',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              textDecoration: 'none', fontSize: '0.75rem', fontWeight: 500,
-              color: isActive ? T.primary : T.muted,
-              background: isActive ? T.primary + '10' : 'transparent',
-              borderLeft: isActive ? `2px solid ${T.primary}` : '2px solid transparent',
-              transition: 'all 0.15s',
-            })}>
-            <span style={{ fontSize: '0.65rem', fontWeight: 700, width: '24px', textAlign: 'center' }}>
-              {item.icon}
-            </span>
-            {!collapsed && <span>{item.label}</span>}
-          </NavLink>
-        ))}
+      <div style={{ flex: 1, padding: '0.3rem 0', overflowY: 'auto' }}>
+        {NAV_GROUPS.map(group => {
+          const items = visibleItems(group.items)
+          if (items.length === 0) return null
+          return (
+            <div key={group.title}>
+              {!collapsed && (
+                <div style={{
+                  padding: '0.5rem 1rem 0.2rem',
+                  fontSize: '0.5rem', fontWeight: 700, letterSpacing: '0.08em',
+                  color: T.muted, opacity: 0.6,
+                }}>
+                  {group.title}
+                </div>
+              )}
+              {items.map(item => (
+                <NavLink key={item.to} to={item.to} end={item.to === '/'}
+                  style={({ isActive }) => ({
+                    display: 'flex', alignItems: 'center', gap: '0.6rem',
+                    padding: collapsed ? '0.45rem 0' : '0.45rem 1rem',
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    textDecoration: 'none', fontSize: '0.7rem', fontWeight: 500,
+                    color: isActive ? T.primary : T.muted,
+                    background: isActive ? T.primary + '10' : 'transparent',
+                    borderLeft: isActive ? `2px solid ${T.primary}` : '2px solid transparent',
+                    transition: 'all 0.15s',
+                  })}>
+                  <span style={{ fontSize: '0.55rem', fontWeight: 700, width: '24px', textAlign: 'center' }}>
+                    {item.icon}
+                  </span>
+                  {!collapsed && <span>{item.label}</span>}
+                </NavLink>
+              ))}
+            </div>
+          )
+        })}
       </div>
 
+      <button onClick={handleSwitchDomain}
+        style={{
+          padding: '0.5rem', border: 'none', borderTop: `1px solid ${T.border}`,
+          background: 'transparent', color: T.amber, cursor: 'pointer',
+          fontSize: '0.6rem', fontWeight: 600,
+        }}>
+        {collapsed ? '⇄' : 'SWITCH DOMAIN'}
+      </button>
       <button onClick={logout}
         style={{
           padding: '0.75rem', border: 'none', borderTop: `1px solid ${T.border}`,
@@ -102,13 +137,23 @@ function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => 
 }
 
 function ProtectedLayout({ children }: { children: React.ReactNode }) {
-  const { token } = useAuth()
+  const { token, credentialDomain } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
+
+  useEffect(() => {
+    document.title = credentialDomain === 'AIRCRAFT' ? 'JADS Aircraft Portal'
+                   : credentialDomain === 'DRONE'    ? 'JADS Drone Portal'
+                   : 'JADS User Portal'
+  }, [credentialDomain])
+
   if (!token) return <Navigate to="/login" replace />
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: T.bg }}>
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
-      <main style={{ flex: 1, minHeight: '100vh', overflow: 'auto' }}>{children}</main>
+      <main style={{ flex: 1, minHeight: '100vh', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1 }}>{children}</div>
+        <SystemStatusBar />
+      </main>
     </div>
   )
 }
@@ -118,10 +163,33 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/"                    element={<ProtectedLayout><DashboardPage /></ProtectedLayout>} />
-        <Route path="/file-flight-plan"    element={<ProtectedLayout><FileFlightPlanPage /></ProtectedLayout>} />
-        <Route path="/file-drone-plan"     element={<ProtectedLayout><FileDronePlanPage /></ProtectedLayout>} />
-        <Route path="/flight-plan/:id"     element={<ProtectedLayout><FlightPlanDetailPage /></ProtectedLayout>} />
+
+        {/* Operations */}
+        <Route path="/"                     element={<ProtectedLayout><DashboardPage /></ProtectedLayout>} />
+        <Route path="/file-flight-plan"     element={<ProtectedLayout><FileFlightPlanPage /></ProtectedLayout>} />
+        <Route path="/file-drone-plan"      element={<ProtectedLayout><FileDronePlanPage /></ProtectedLayout>} />
+        <Route path="/bvlos"                element={<ProtectedLayout><BVLOSWizard /></ProtectedLayout>} />
+
+        {/* Planning */}
+        <Route path="/route-builder"        element={<ProtectedLayout><RouteBuilderPage /></ProtectedLayout>} />
+        <Route path="/weight-balance"       element={<ProtectedLayout><WeightBalancePage /></ProtectedLayout>} />
+        <Route path="/charts"               element={<ProtectedLayout><ChartsPage /></ProtectedLayout>} />
+        <Route path="/notams"               element={<ProtectedLayout><NOTAMPage /></ProtectedLayout>} />
+        <Route path="/trajectory"           element={<ProtectedLayout><TrajectoryViewer /></ProtectedLayout>} />
+
+        {/* Fleet & Logs */}
+        <Route path="/fleet"                element={<ProtectedLayout><FleetManager /></ProtectedLayout>} />
+        <Route path="/log-upload"           element={<ProtectedLayout><LogUploadPage /></ProtectedLayout>} />
+
+        {/* Compliance */}
+        <Route path="/evidence"             element={<ProtectedLayout><EvidencePage /></ProtectedLayout>} />
+        <Route path="/audit-export"         element={<ProtectedLayout><EvidenceExportPanel /></ProtectedLayout>} />
+
+        {/* Settings */}
+        <Route path="/api-settings"         element={<ProtectedLayout><APISettings /></ProtectedLayout>} />
+
+        {/* Detail pages */}
+        <Route path="/flight-plan/:id"      element={<ProtectedLayout><FlightPlanDetailPage /></ProtectedLayout>} />
         <Route path="/edit-flight-plan/:id" element={<ProtectedLayout><EditFlightPlanPage /></ProtectedLayout>} />
         <Route path="/drone-plan/:id"      element={<ProtectedLayout><DronePlanDetailPage /></ProtectedLayout>} />
         <Route path="/flight-planner"    element={<ProtectedLayout><FlightPlannerPage /></ProtectedLayout>} />

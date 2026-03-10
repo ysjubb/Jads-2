@@ -7,11 +7,12 @@ declare global {
   namespace Express {
     interface Request {
       auth?: {
-        userId:         string
-        role:           string
-        userType:       'CIVILIAN' | 'SPECIAL'
-        entityCode?:    string
-        specialUserId?: string
+        userId:            string
+        role:              string
+        userType:          'CIVILIAN' | 'SPECIAL'
+        entityCode?:       string
+        specialUserId?:    string
+        credentialDomain?: 'AIRCRAFT' | 'DRONE'
       }
       adminAuth?: {
         adminUserId: string
@@ -30,15 +31,35 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   try {
     const payload = jwt.verify(header.slice(7), env.JWT_SECRET) as Record<string, unknown>
     req.auth = {
-      userId:        payload.userId        as string,
-      role:          payload.role          as string,
-      userType:      payload.userType      as 'CIVILIAN' | 'SPECIAL',
-      entityCode:    payload.entityCode    as string | undefined,
-      specialUserId: payload.specialUserId as string | undefined,
+      userId:           payload.userId           as string,
+      role:             payload.role             as string,
+      userType:         payload.userType         as 'CIVILIAN' | 'SPECIAL',
+      entityCode:       payload.entityCode       as string | undefined,
+      specialUserId:    payload.specialUserId    as string | undefined,
+      credentialDomain: payload.credentialDomain as 'AIRCRAFT' | 'DRONE' | undefined,
     }
     next()
   } catch {
     res.status(401).json({ error: 'INVALID_OR_EXPIRED_TOKEN' })
+  }
+}
+
+// Enforce credential domain — AIRCRAFT users cannot access drone endpoints and vice versa.
+// PLATFORM_SUPER_ADMIN bypasses domain restrictions.
+export function requireDomain(domain: 'AIRCRAFT' | 'DRONE') {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.auth) { res.status(401).json({ error: 'UNAUTHENTICATED' }); return }
+    if (req.auth.role === 'PLATFORM_SUPER_ADMIN') { next(); return }
+    if (req.auth.credentialDomain !== domain) {
+      res.status(403).json({
+        error:    'DOMAIN_MISMATCH',
+        message:  `This endpoint requires ${domain} domain credentials`,
+        required: domain,
+        actual:   req.auth.credentialDomain ?? 'UNKNOWN',
+      })
+      return
+    }
+    next()
   }
 }
 
@@ -101,11 +122,12 @@ export function requireAuditAuth(req: Request, res: Response, next: NextFunction
   try {
     const payload = jwt.verify(token, env.JWT_SECRET) as Record<string, unknown>
     req.auth = {
-      userId:        payload.userId        as string,
-      role:          payload.role          as string,
-      userType:      payload.userType      as 'CIVILIAN' | 'SPECIAL',
-      entityCode:    payload.entityCode    as string | undefined,
-      specialUserId: payload.specialUserId as string | undefined,
+      userId:           payload.userId           as string,
+      role:             payload.role             as string,
+      userType:         payload.userType         as 'CIVILIAN' | 'SPECIAL',
+      entityCode:       payload.entityCode       as string | undefined,
+      specialUserId:    payload.specialUserId    as string | undefined,
+      credentialDomain: payload.credentialDomain as 'AIRCRAFT' | 'DRONE' | undefined,
     }
     next()
   } catch {

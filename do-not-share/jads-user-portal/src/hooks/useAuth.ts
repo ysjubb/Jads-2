@@ -1,11 +1,28 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import axios from 'axios'
 import { getToken, setToken, clearToken } from '../api/client'
 
 const API = '/api'
 
+type CredentialDomain = 'AIRCRAFT' | 'DRONE' | null
+
+function decodeJwtPayload(token: string | null): { credentialDomain: CredentialDomain; role: string | null } {
+  if (!token) return { credentialDomain: null, role: null }
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return {
+      credentialDomain: payload.credentialDomain ?? null,
+      role: payload.role ?? null,
+    }
+  } catch {
+    return { credentialDomain: null, role: null }
+  }
+}
+
 export function useAuth() {
   const [token, setTokenState] = useState<string | null>(() => getToken())
+
+  const { credentialDomain, role } = useMemo(() => decodeJwtPayload(token), [token])
   const [error, setError]      = useState<string | null>(null)
   const [loading, setLoading]  = useState(false)
   const [loginStep, setLoginStep] = useState<'IDLE' | 'OTP_SENT' | 'DONE'>('IDLE')
@@ -80,5 +97,5 @@ export function useAuth() {
     setPendingUserId(null)
   }, [])
 
-  return { token, error, loading, loginStep, pendingUserId, loginInitiate, loginComplete, loginSpecial, logout }
+  return { token, error, loading, loginStep, pendingUserId, credentialDomain, role, loginInitiate, loginComplete, loginSpecial, logout }
 }

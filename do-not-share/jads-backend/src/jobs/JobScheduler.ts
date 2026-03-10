@@ -9,7 +9,8 @@ import { MetarPollJob }       from './MetarPollJob'
 import { AdcFicPollJob }      from './AdcFicPollJob'
 import { AirspaceDataPollJob } from './AirspaceDataPollJob'
 import { AnnualReconfirmJob }  from './AnnualReconfirmJob'
-import { EvidenceLedgerJob }  from './EvidenceLedgerJob'
+import { EvidenceLedgerJob }    from './EvidenceLedgerJob'
+import { CredentialSyncJob }   from './CredentialSyncJob'
 import { createServiceLogger } from '../logger'
 
 const log = createServiceLogger('JobScheduler')
@@ -30,6 +31,7 @@ export class JobScheduler {
       adcFicPoll:      new AdcFicPollJob(prisma),
       annualReconfirm: new AnnualReconfirmJob(prisma),
       evidenceLedger:  new EvidenceLedgerJob(prisma),
+      credentialSync:  new CredentialSyncJob(prisma),
     }
   }
 

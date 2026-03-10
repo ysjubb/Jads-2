@@ -46,7 +46,7 @@ const log         = createServiceLogger('DroneRoutes')
 // Response 202: duplicate (safe retry — same missionId already accepted)
 // Response 409: replay attack (same missionId, different operator)
 // Response 422: chain verification failed
-router.post('/missions', requireAuth, missionUploadRateLimit, async (req, res) => {
+router.post('/missions', requireAuth, requireDomain('DRONE'), missionUploadRateLimit, async (req, res) => {
   try {
     const { userId, userType } = req.auth!
     const input = req.body as MissionSubmissionInput
@@ -140,7 +140,7 @@ router.post('/missions', requireAuth, missionUploadRateLimit, async (req, res) =
 
 // ── GET /api/drone/missions ───────────────────────────────────────────────────
 // List the authenticated operator's missions (paginated).
-router.get('/missions', requireAuth, async (req, res) => {
+router.get('/missions', requireAuth, requireDomain('DRONE'), async (req, res) => {
   try {
     const { userId } = req.auth!
     const page  = Math.max(1, parseInt((req.query.page  as string) ?? '1'))

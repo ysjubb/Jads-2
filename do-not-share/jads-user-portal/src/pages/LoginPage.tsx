@@ -1,9 +1,16 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { T } from '../App'
+import { T } from '../theme'
 
 export function LoginPage() {
-  const { error, loading, loginStep, pendingUserId, loginInitiate, loginComplete, loginSpecial } = useAuth()
+  const navigate = useNavigate()
+  const { token, error, loading, loginStep, pendingUserId, loginInitiate, loginComplete, loginSpecial } = useAuth()
+
+  // Redirect to dashboard once token is set (login succeeded)
+  useEffect(() => {
+    if (token) navigate('/', { replace: true })
+  }, [token, navigate])
   const [mode, setMode]       = useState<'CIVILIAN' | 'SPECIAL'>('CIVILIAN')
   const [identifier, setId]   = useState('')
   const [otp, setOtp]         = useState('')
@@ -64,7 +71,7 @@ export function LoginPage() {
         )}
 
         {mode === 'CIVILIAN' ? (
-          loginStep === 'IDLE' || loginStep === 'DONE' ? (
+          loginStep === 'IDLE' ? (
             <form onSubmit={handleCivilianStep1} style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
               <label style={{ fontSize: '0.7rem', color: T.muted }}>Email or Mobile Number</label>
               <input value={identifier} onChange={e => setId(e.target.value)} placeholder="+919800000001 or pilot@email.com" style={inputStyle} />

@@ -129,6 +129,31 @@ export type ManufacturerPushSource = typeof MANUFACTURER_PUSH_SOURCES[number]
 export const PUSH_TYPES = ['REAL_TIME', 'DEFERRED'] as const
 export type PushType = typeof PUSH_TYPES[number]
 
+// ── Credential Domain Separation ──────────────────────────────────────────────
+// Aircraft users: credentials from AAI or DGCA
+// Drone users: credentials from Digital Sky or DGCA
+// No single user ID may access both domains.
+export const CREDENTIAL_DOMAINS = ['AIRCRAFT', 'DRONE'] as const
+export type CredentialDomain = typeof CREDENTIAL_DOMAINS[number]
+
+export const ISSUING_AUTHORITIES = ['AAI', 'DGCA', 'DIGITAL_SKY'] as const
+export type IssuingAuthority = typeof ISSUING_AUTHORITIES[number]
+
+// Domain → allowed roles mapping
+export const DOMAIN_ROLE_MAP: Record<CredentialDomain, readonly string[]> = {
+  AIRCRAFT: ['PILOT', 'GOVT_PILOT'],
+  DRONE:    ['DRONE_OPERATOR', 'GOVT_DRONE_OPERATOR'],
+}
+
+// Domain → allowed issuing authorities
+export const DOMAIN_AUTHORITY_MAP: Record<CredentialDomain, readonly string[]> = {
+  AIRCRAFT: ['AAI', 'DGCA'],
+  DRONE:    ['DIGITAL_SKY', 'DGCA'],
+}
+
+// Blocked roles — cannot be assigned to new users
+export const BLOCKED_ROLES = ['PILOT_AND_DRONE'] as const
+
 // OTP config
 export const OTP_EXPIRY_MINUTES = 10
 export const OTP_MAX_ATTEMPTS   = 3

@@ -188,6 +188,17 @@ enum FlightPlanStatus {
   DEPARTED          // Aircraft departed — DEP message (Phase 2; not yet implemented)
 }
 
+enum CredentialDomain {
+  AIRCRAFT
+  DRONE
+}
+
+enum IssuingAuthority {
+  AAI
+  DGCA
+  DIGITAL_SKY
+}
+
 // ═══════════════════════════════════════════════
 // MODELS
 // ═══════════════════════════════════════════════
@@ -199,6 +210,10 @@ model CivilianUser {
   mobileNumber          String?                    @unique
   email                 String?
   role                  UserRole                   @default(PILOT)
+  credentialDomain      CredentialDomain
+  issuingAuthority      IssuingAuthority
+  credentialSyncedAt    DateTime?
+  credentialExternalId  String?
   dgcaLicenseNumber     String?
   dgcaLicenseExpiry     DateTime?
   pilotLicenceNumber    String?
@@ -233,6 +248,10 @@ model SpecialUser {
   unitDesignator        String
   entityCode            String
   role                  UserRole          @default(GOVT_DRONE_OPERATOR)
+  credentialDomain      CredentialDomain
+  issuingAuthority      IssuingAuthority
+  credentialSyncedAt    DateTime?
+  credentialExternalId  String?
   accountStatus         UserAccountStatus @default(ACTIVE)
   provisionedBy         String
   provisionedAt         DateTime          @default(now())
@@ -548,6 +567,18 @@ model DroneOperationPlan {
   submittedAt       DateTime?
   approvedAt        DateTime?
   approvedBy        String?
+  // Yellow-zone routing (populated by /drone/yellow-zone-route)
+  routingAuthority  String?
+  expeditedFlag     Boolean?
+  routedAt          DateTime?
+  approvalDueBy     DateTime?
+  // Digital Sky validation on submit
+  digitalSkyRegStatus String?                        // result from Digital Sky check
+  digitalSkyCheckAt   DateTime?
+  // Flight feedback (post-approval)
+  flightFeedback    String?                          // 'FLEW' | 'DID_NOT_FLY'
+  flightFeedbackAt  DateTime?
+  trackLogId        String?                          // → TrackLog if FLEW
 
   // ── Yellow-zone routing decision fields ──
   routingAuthority  String?                         // e.g. "AAI Delhi NOF", "IAF WAC", "NAVY ANC"

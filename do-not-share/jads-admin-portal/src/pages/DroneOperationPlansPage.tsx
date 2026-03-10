@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { useAdminAuth, adminAxios }           from '../hooks/useAdminAuth'
 import { T }                                   from '../theme'
 
@@ -30,6 +31,8 @@ interface DroneOperationPlan {
   submittedAt:       string | null
   approvedAt:        string | null
   approvedBy:        string | null
+  flightFeedback:    string | null
+  trackLogId:        string | null
 }
 
 // ── Status badge colours ───────────────────────────────────────────────────────
@@ -206,6 +209,7 @@ export function DroneOperationPlansPage() {
                 <th style={{ padding: '0.5rem' }}>Window</th>
                 <th style={{ padding: '0.5rem' }}>Status</th>
                 <th style={{ padding: '0.5rem' }}>Submitted</th>
+                <th style={{ padding: '0.5rem' }}>Feedback</th>
                 <th style={{ padding: '0.5rem' }}>Actions</th>
               </tr>
             </thead>
@@ -237,6 +241,32 @@ export function DroneOperationPlansPage() {
                     }}>{plan.status}</span>
                   </td>
                   <td style={{ padding: '0.4rem 0.5rem', fontSize: '0.65rem' }}>{fmtDate(plan.submittedAt)}</td>
+                  <td style={{ padding: '0.4rem 0.5rem' }}>
+                    {plan.flightFeedback === 'FLEW' ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{
+                          display: 'inline-block', padding: '2px 8px', borderRadius: '3px',
+                          fontSize: '0.65rem', fontWeight: 700,
+                          color: T.bg, background: T.primary,
+                        }}>FLEW</span>
+                        {plan.trackLogId && (
+                          <Link to={`/track-logs/${plan.trackLogId}`}
+                            onClick={e => e.stopPropagation()}
+                            style={{ color: T.primary, fontSize: '0.6rem', textDecoration: 'underline' }}>
+                            View Track
+                          </Link>
+                        )}
+                      </span>
+                    ) : plan.flightFeedback === 'DID_NOT_FLY' ? (
+                      <span style={{
+                        display: 'inline-block', padding: '2px 8px', borderRadius: '3px',
+                        fontSize: '0.65rem', fontWeight: 700,
+                        color: T.bg, background: T.amber,
+                      }}>DID NOT FLY</span>
+                    ) : (
+                      <span style={{ color: T.muted, fontSize: '0.65rem' }}>{'\u2014'}</span>
+                    )}
+                  </td>
                   <td style={{ padding: '0.4rem 0.5rem' }}>
                     <button onClick={(e) => { e.stopPropagation(); setSelected(plan) }}
                       style={{

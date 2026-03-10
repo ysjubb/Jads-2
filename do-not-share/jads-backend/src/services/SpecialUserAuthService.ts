@@ -16,7 +16,7 @@ import jwt              from 'jsonwebtoken'
 import crypto           from 'crypto'
 import { env }          from '../env'
 import { createServiceLogger } from '../logger'
-import { BCRYPT_ROUNDS, ENTITY_CODES } from '../constants'
+import { BCRYPT_ROUNDS, ENTITY_CODES, DOMAIN_ROLE_MAP, DOMAIN_AUTHORITY_MAP, BLOCKED_ROLES } from '../constants'
 
 const log = createServiceLogger('SpecialUserAuthService')
 
@@ -77,11 +77,12 @@ export class SpecialUserAuthService {
 
     const token = jwt.sign(
       {
-        userId:     user.id,
-        userType:   'SPECIAL',
-        entityCode: user.entityCode,
-        unitName:   user.unitName,
-        role:       user.role,
+        userId:           user.id,
+        userType:         'SPECIAL',
+        entityCode:       user.entityCode,
+        unitName:         user.unitName,
+        role:             user.role,
+        credentialDomain: user.credentialDomain,
       },
       env.JWT_SECRET,
       { expiresIn: `${SPECIAL_USER_SESSION_HOURS}h` }
@@ -143,17 +144,33 @@ export class SpecialUserAuthService {
   }
 
   async provisionUnit(
-    adminId:       string,
-    username:      string,
-    unitName:      string,
-    entityCode:    string,
-    unitType:      string,
-    baseLocation?: string,
-    role:          string = 'GOVT_DRONE_OPERATOR'
+    adminId:          string,
+    username:         string,
+    unitName:         string,
+    entityCode:       string,
+    unitType:         string,
+    baseLocation?:    string,
+    role:             string = 'GOVT_DRONE_OPERATOR',
+    credentialDomain: string = 'DRONE',
+    issuingAuthority: string = 'DGCA',
   ): Promise<ProvisionUnitResult> {
 
     if (!ENTITY_CODES.includes(entityCode as any)) {
       throw new Error(`INVALID_ENTITY_CODE: ${entityCode}`)
+    }
+
+    // Block PILOT_AND_DRONE
+    if ((BLOCKED_ROLES as readonly string[]).includes(role)) {
+      throw new Error('ROLE_NOT_ALLOWED_PILOT_AND_DRONE')
+    }
+
+    // Validate domain/role/authority consistency
+    const domain = credentialDomain as 'AIRCRAFT' | 'DRONE'
+    if (!DOMAIN_ROLE_MAP[domain]?.includes(role)) {
+      throw new Error('ROLE_DOMAIN_MISMATCH')
+    }
+    if (!DOMAIN_AUTHORITY_MAP[domain]?.includes(issuingAuthority)) {
+      throw new Error('AUTHORITY_DOMAIN_MISMATCH')
     }
 
     const existing = await this.prisma.specialUser.findUnique({ where: { username } })
@@ -171,6 +188,8 @@ export class SpecialUserAuthService {
       unitType,
       baseLocation,
       role:                role as any,
+      credentialDomain:    credentialDomain as any,
+      issuingAuthority:    issuingAuthority as any,
       credentialsIssuedAt: new Date(),
       forcePasswordChange: true,
       accountStatus:       'ACTIVE',

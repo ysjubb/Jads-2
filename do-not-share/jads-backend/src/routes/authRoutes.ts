@@ -17,12 +17,12 @@ const log          = createServiceLogger('AuthRoutes')
 // POST /api/auth/civilian/register/initiate
 router.post('/civilian/register/initiate', async (req, res) => {
   try {
-    const { email, mobileNumber, role, pilotLicenceNumber, uinNumber } = req.body
-    if (!email || !mobileNumber || !role) {
-      res.status(400).json({ error: 'MISSING_REQUIRED_FIELDS', required: ['email','mobileNumber','role'] })
+    const { email, mobileNumber, role, credentialDomain, issuingAuthority, pilotLicenceNumber, uinNumber } = req.body
+    if (!email || !mobileNumber || !role || !credentialDomain || !issuingAuthority) {
+      res.status(400).json({ error: 'MISSING_REQUIRED_FIELDS', required: ['email','mobileNumber','role','credentialDomain','issuingAuthority'] })
       return
     }
-    const result = await civilianAuth.initiateRegistration({ email, mobileNumber, role, pilotLicenceNumber, uinNumber })
+    const result = await civilianAuth.initiateRegistration({ email, mobileNumber, role, credentialDomain, issuingAuthority, pilotLicenceNumber, uinNumber })
     res.status(200).json({ success: true, ...result })
   } catch (e: unknown) {
     const code = e instanceof Error ? e.message : 'REGISTRATION_FAILED'
@@ -229,6 +229,7 @@ router.get('/me', requireAuth, async (req, res) => {
         where:  { id: userId },
         select: {
           id: true, email: true, mobileNumber: true, role: true,
+          credentialDomain: true, issuingAuthority: true,
           accountStatus: true, verificationStatus: true,
           aadhaarLast4: true, aadhaarNextDueAt: true,
           emailVerifiedAt: true, mobileVerifiedAt: true, aadhaarVerifiedAt: true,
@@ -244,6 +245,7 @@ router.get('/me', requireAuth, async (req, res) => {
         select: {
           id: true, username: true, unitName: true, entityCode: true,
           unitType: true, baseLocation: true, role: true,
+          credentialDomain: true, issuingAuthority: true,
           accountStatus: true, forcePasswordChange: true,
           credentialsIssuedAt: true, lastLoginAt: true,
         }

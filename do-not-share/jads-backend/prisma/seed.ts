@@ -5,8 +5,8 @@
 // Creates:
 //   - 1 Super Admin A (DGCA — drafter)
 //   - 1 Admin B (AAI — approver, for two-person rule demo)
-//   - 1 IAF unit account (special user — 28 Sqn IAF)
-//   - 1 Civilian pilot
+//   - 2 IAF unit accounts (1 DRONE domain, 1 AIRCRAFT domain)
+//   - 2 Civilians (1 AIRCRAFT pilot via AAI, 1 DRONE operator via Digital Sky)
 //   - 2 Airspace versions (1 ACTIVE YELLOW 400ft, 1 DRAFT RED IAF exercise)
 //   - 3 Drone missions (GREEN clean 50 recs, YELLOW violation 75 recs, REPLAY 30 recs)
 //   - 2 Manned flight plans (1 IFR FILED FL330 RVSM, 1 VFR FULLY_CLEARED FL080)
@@ -154,6 +154,11 @@ function generateTelemetryRecords(opts: {
 async function main() {
   console.log('🌱 Seeding JADS development database...')
 
+  // ── 0. Clean up all seeded data for idempotent re-runs ────────────
+  await prisma.notamRecord.deleteMany({})
+  await prisma.metarRecord.deleteMany({})
+  await prisma.auditLog.deleteMany({})
+
   // ── 1. Admin User A (DGCA Super Admin — drafter) ───────────────────
   const adminPassword = await hashPassword('Admin@JADS2024')
   const adminA = await prisma.adminUser.upsert({
@@ -182,40 +187,111 @@ async function main() {
   })
   console.log(`  ✓ Admin B: ${adminB.username}  password: AAI@Approve2024`)
 
-  // ── 2. Special User — 28 Sqn IAF ──────────────────────────────────
+  // ── 1c. Dedicated Auditor Users ──────────────────────────────────
+  const auditorPassword = await hashPassword('Auditor@JADS2024')
+  const dgcaAuditor = await prisma.adminUser.upsert({
+    where:  { username: 'dgca.auditor' },
+    update: {},
+    create: {
+      username:     'dgca.auditor',
+      passwordHash: auditorPassword,
+      role:         'DGCA_AUDITOR' as any,
+      entityCode:   'DGCA',
+    },
+  })
+  console.log(`  ✓ Auditor: ${dgcaAuditor.username}  password: Auditor@JADS2024`)
+
+  const iafAuditor = await prisma.adminUser.upsert({
+    where:  { username: 'iaf.auditor' },
+    update: {},
+    create: {
+      username:     'iaf.auditor',
+      passwordHash: auditorPassword,
+      role:         'IAF_AUDITOR' as any,
+      entityCode:   'IAF',
+    },
+  })
+  console.log(`  ✓ Auditor: ${iafAuditor.username}  password: Auditor@JADS2024`)
+
+  // ── 2. Special User — 28 Sqn IAF (DRONE domain) ──────────────────
   const unitPassword = await hashPassword('28SQN@Secure2024')
-  const specialUser = await prisma.specialUser.upsert({
+  const specialDroneUser = await prisma.specialUser.upsert({
     where:  { username: 'iaf.28sqn' },
     update: {},
     create: {
-      username:       'iaf.28sqn',
-      passwordHash:   unitPassword,
-      unitDesignator: '28 Sqn IAF',
-      entityCode:     'IAF',
-      role:           'GOVT_DRONE_OPERATOR',
-      provisionedBy:  adminA.id,
+      username:           'iaf.28sqn',
+      passwordHash:       unitPassword,
+      unitDesignator:     '28 Sqn IAF',
+      entityCode:         'IAF',
+      role:               'GOVT_DRONE_OPERATOR',
+      credentialDomain:   'DRONE',
+      issuingAuthority:   'DGCA',
+      provisionedBy:      adminA.id,
     },
   })
-  console.log(`  ✓ Special user: ${specialUser.username}  password: 28SQN@Secure2024`)
+  console.log(`  ✓ Special user (DRONE): ${specialDroneUser.username}  password: 28SQN@Secure2024`)
 
-  // ── 3. Civilian Pilot ──────────────────────────────────────────────
-  const civilian = await prisma.civilianUser.upsert({
+  // ── 2b. Special User — 28 Sqn IAF Pilot (AIRCRAFT domain) ───────
+  const pilotUnitPassword = await hashPassword('28SQN@Pilot2024')
+  const specialAircraftUser = await prisma.specialUser.upsert({
+    where:  { username: 'iaf.28sqn.pilot' },
+    update: {},
+    create: {
+      username:           'iaf.28sqn.pilot',
+      passwordHash:       pilotUnitPassword,
+      unitDesignator:     '28 Sqn IAF — Pilot Wing',
+      entityCode:         'IAF',
+      role:               'GOVT_PILOT',
+      credentialDomain:   'AIRCRAFT',
+      issuingAuthority:   'DGCA',
+      provisionedBy:      adminA.id,
+    },
+  })
+  console.log(`  ✓ Special user (AIRCRAFT): ${specialAircraftUser.username}  password: 28SQN@Pilot2024`)
+
+  // ── 3. Civilian Aircraft Pilot ───────────────────────────────────
+  const civilianAircraft = await prisma.civilianUser.upsert({
     where:  { mobileNumber: '9999000001' },
     update: {},
     create: {
-      aadhaarHash:        sha256('123456789012_demo'),
-      phone:              '9999000001',
-      mobileNumber:       '9999000001',
-      email:              'pilot.demo@jads.dev',
-      role:               'PILOT_AND_DRONE',
-      identityStatus:     'VERIFIED',
-      accountStatus:      'ACTIVE',
-      dgcaLicenseNumber:  'CPL/1234/2022',
-      dgcaLicenseExpiry:  new Date('2026-12-31'),
-      annualReconfirmDue: new Date('2025-03-01'),
+      aadhaarHash:          sha256('123456789012_demo'),
+      phone:                '9999000001',
+      mobileNumber:         '9999000001',
+      email:                'pilot.demo@jads.dev',
+      role:                 'PILOT',
+      credentialDomain:     'AIRCRAFT',
+      issuingAuthority:     'AAI',
+      credentialExternalId: 'AAI-CPL-2024-001',
+      identityStatus:       'VERIFIED',
+      accountStatus:        'ACTIVE',
+      dgcaLicenseNumber:    'CPL/1234/2022',
+      dgcaLicenseExpiry:    new Date('2026-12-31'),
+      annualReconfirmDue:   new Date('2025-03-01'),
     },
   })
-  console.log(`  ✓ Civilian pilot: ${civilian.phone}`)
+  console.log(`  ✓ Civilian AIRCRAFT pilot: ${civilianAircraft.phone}`)
+
+  // ── 3b. Civilian Drone Operator ──────────────────────────────────
+  const civilianDrone = await prisma.civilianUser.upsert({
+    where:  { mobileNumber: '9999000002' },
+    update: {},
+    create: {
+      aadhaarHash:          sha256('987654321012_demo'),
+      phone:                '9999000002',
+      mobileNumber:         '9999000002',
+      email:                'drone.operator@jads.dev',
+      role:                 'DRONE_OPERATOR',
+      credentialDomain:     'DRONE',
+      issuingAuthority:     'DIGITAL_SKY',
+      credentialExternalId: 'DSKY-RPL-2024-001',
+      identityStatus:       'VERIFIED',
+      accountStatus:        'ACTIVE',
+      uinNumber:            'UIN-DEMO-001',
+      pilotLicenceNumber:   'RPL/5678/2023',
+      annualReconfirmDue:   new Date('2025-06-01'),
+    },
+  })
+  console.log(`  ✓ Civilian DRONE operator: ${civilianDrone.phone}`)
 
   // ── 4. Airspace Versions ───────────────────────────────────────────
 
@@ -291,13 +367,19 @@ async function main() {
   console.log(`  ✓ Airspace version DRAFT (RED IAF exercise, awaiting approval): ${pendingZone.id}`)
 
   // ── 5. Drone Missions ──────────────────────────────────────────────
+  // Clear existing missions so seed is re-runnable
+  await prisma.bsa2023PartBDeclaration.deleteMany({})
+  await prisma.droneMissionOverride.deleteMany({})
+  await prisma.droneViolation.deleteMany({})
+  await prisma.droneTelemetryRecord.deleteMany({})
+  await prisma.droneMission.deleteMany({})
 
   // ── Mission A — GREEN Clean Mission ────────────────────────────────
   // ID: MISSION-GREEN-CLEAN-001, 50 records, no violations, civilian pilot
   const missionA = await prisma.droneMission.create({
     data: {
       missionId:            'MISSION-GREEN-CLEAN-001',
-      operatorId:           civilian.id,
+      operatorId:           civilianDrone.id,
       operatorType:         'CIVILIAN',
       deviceId:             'DRONE-DJI-001',
       deviceModel:          'DJI Mavic 3',
@@ -319,7 +401,7 @@ async function main() {
 
   // 50 telemetry records — Delhi FIR, alt ~100ft (30m), no violations
   const missionAIdBigInt = BigInt('1000000000001')
-  const operatorOpHash   = sha256(civilian.id).slice(0, 32)
+  const operatorOpHash   = sha256(civilianDrone.id).slice(0, 32)
   const { records: missionARecords } = generateTelemetryRecords({
     missionDbId:      missionA.id,
     count:            50,
@@ -344,7 +426,7 @@ async function main() {
   const missionB = await prisma.droneMission.create({
     data: {
       missionId:            'MISSION-YELLOW-VIOLATION-001',
-      operatorId:           specialUser.id,
+      operatorId:           specialDroneUser.id,
       operatorType:         'SPECIAL',
       deviceId:             'DRONE-IAF-028-01',
       deviceModel:          'Custom Quad — 28 Sqn',
@@ -366,7 +448,7 @@ async function main() {
 
   // 75 telemetry records — North Delhi corridor
   const missionBIdBigInt = BigInt('1000000000002')
-  const specialOpHash    = sha256(specialUser.id).slice(0, 32)
+  const specialOpHash    = sha256(specialDroneUser.id).slice(0, 32)
   const { records: missionBRecords } = generateTelemetryRecords({
     missionDbId:      missionB.id,
     count:            75,
@@ -426,7 +508,7 @@ async function main() {
   const missionC = await prisma.droneMission.create({
     data: {
       missionId:            'MISSION-REPLAY-ATTACK-001',
-      operatorId:           civilian.id,
+      operatorId:           civilianDrone.id,
       operatorType:         'CIVILIAN',
       deviceId:             'DRONE-DJI-002',
       deviceModel:          'DJI Mini 3',
@@ -537,11 +619,14 @@ async function main() {
   console.log(`  ✓ Mission C (REPLAY_ATTEMPT, 30 records, chain break at seq 15): ${missionC.missionId}`)
 
   // ── 6. Manned Flight Plans ─────────────────────────────────────────
+  // Clear existing flight plans and related records so seed is re-runnable
+  await prisma.adcRecord.deleteMany({})
+  await prisma.mannedFlightPlan.deleteMany({})
 
   // FPL1: VIDP→VIAL, IFR, GANDO DCT PAKER DCT, FL330, RVSM equipment W
   const fpl1 = await prisma.mannedFlightPlan.create({
     data: {
-      filedBy:       civilian.id,
+      filedBy:       civilianAircraft.id,
       filedByType:   'CIVILIAN',
       status:        'FILED',
       flightRules:   'IFR',
@@ -586,7 +671,7 @@ async function main() {
   // FPL2: VIGG→VIDP, VFR, DIRECT, F080, FULLY_CLEARED with ADC
   const fpl2 = await prisma.mannedFlightPlan.create({
     data: {
-      filedBy:       specialUser.id,
+      filedBy:       specialAircraftUser.id,
       filedByType:   'SPECIAL',
       status:        'FULLY_CLEARED',
       flightRules:   'VFR',
@@ -633,6 +718,55 @@ async function main() {
       remarks:      'ADC valid 3 hours from issue. Present to DEP ATC.',
     },
   })
+
+  // ── 6b. Drone Operation Plans ─────────────────────────────────────
+  await prisma.trackLog.deleteMany({})
+  await prisma.droneOperationPlan.deleteMany({})
+
+  const dop1 = await prisma.droneOperationPlan.create({
+    data: {
+      planId:            'DOP-2026-00001',
+      operatorId:        civilianDrone.id,
+      droneSerialNumber: 'DJI-M3E-001',
+      uinNumber:         'UIN-DEMO-001',
+      areaType:          'CIRCLE',
+      centerLatDeg:      28.6139,
+      centerLonDeg:      77.2090,
+      radiusM:           500,
+      maxAltitudeAglM:   120,
+      minAltitudeAglM:   0,
+      plannedStartUtc:   new Date(Date.now() + 86400000),
+      plannedEndUtc:     new Date(Date.now() + 90000000),
+      purpose:           'SURVEY',
+      status:            'SUBMITTED',
+      submittedAt:       new Date(),
+    },
+  })
+  console.log(`  ✓ Drone Plan 1 (SUBMITTED): ${dop1.planId}`)
+
+  const dop2 = await prisma.droneOperationPlan.create({
+    data: {
+      planId:            'DOP-2026-00002',
+      operatorId:        civilianDrone.id,
+      droneSerialNumber: 'DJI-M3E-001',
+      uinNumber:         'UIN-DEMO-001',
+      areaType:          'POLYGON',
+      areaGeoJson:       JSON.stringify({
+        type: 'Polygon',
+        coordinates: [[[77.15, 28.55], [77.25, 28.55], [77.25, 28.65], [77.15, 28.65], [77.15, 28.55]]],
+      }),
+      maxAltitudeAglM:   60,
+      minAltitudeAglM:   0,
+      plannedStartUtc:   new Date(Date.now() + 172800000),
+      plannedEndUtc:     new Date(Date.now() + 176400000),
+      purpose:           'PHOTOGRAPHY',
+      status:            'APPROVED',
+      submittedAt:       new Date(Date.now() - 86400000),
+      approvedAt:        new Date(Date.now() - 43200000),
+      approvedBy:        adminA.id,
+    },
+  })
+  console.log(`  ✓ Drone Plan 2 (APPROVED): ${dop2.planId}`)
 
   // ── 7. METAR VIDP ──────────────────────────────────────────────────
   await prisma.metarRecord.create({
@@ -714,7 +848,7 @@ async function main() {
         detailJson:   JSON.stringify({ versionNumber: 2, dataType: 'DRONE_ZONE', status: 'DRAFT', awaitingApproval: true }),
       },
       {
-        actorId:      specialUser.id,
+        actorId:      specialDroneUser.id,
         actorType:    'SPECIAL_USER',
         action:       'DRONE_MISSION_UPLOADED',
         resourceType: 'DroneMission',
@@ -736,15 +870,20 @@ async function main() {
   console.log(`  ✓ Audit log: 5 entries (zone create, zone approve, zone draft, mission upload, replay detect)`)
 
   console.log('\n✅ Seed complete. Summary:')
-  console.log('   Admin A login:      dgca.admin     / Admin@JADS2024     (drafter)')
-  console.log('   Admin B login:      aai.approver   / AAI@Approve2024    (approver)')
-  console.log('   IAF unit login:     iaf.28sqn      / 28SQN@Secure2024')
-  console.log('   Civilian phone OTP: 9999000001')
-  console.log('   Missions:           3 (1 clean/50rec, 1 violation/75rec, 1 replay/30rec)')
-  console.log('   Flight plans:       2 (1 IFR FILED FL330 RVSM, 1 VFR FULLY_CLEARED FL080)')
-  console.log('   Airspace:           1 ACTIVE (YELLOW 400ft), 1 DRAFT (RED IAF exercise)')
-  console.log('   METAR:              VIDP 320°/8kt 2800m 12/10 Q1018')
-  console.log('   NOTAM:              A0234/24 IAF exercise VIDF FIR')
+  console.log('   Admin A login:        dgca.admin       / Admin@JADS2024     (PLATFORM_SUPER_ADMIN)')
+  console.log('   Admin B login:        aai.approver     / AAI@Approve2024    (GOVT_ADMIN)')
+  console.log('   DGCA Auditor:         dgca.auditor     / Auditor@JADS2024   (DGCA_AUDITOR)')
+  console.log('   IAF Auditor:          iaf.auditor      / Auditor@JADS2024   (IAF_AUDITOR)')
+  console.log('   IAF drone unit:       iaf.28sqn        / 28SQN@Secure2024   (DRONE domain)')
+  console.log('   IAF aircraft unit:    iaf.28sqn.pilot  / 28SQN@Pilot2024    (AIRCRAFT domain)')
+  console.log('   Civilian AIRCRAFT:    9999000001 OTP   / from logs          (AAI)')
+  console.log('   Civilian DRONE:       9999000002 OTP   / from logs          (DIGITAL_SKY)')
+  console.log('   Missions:             3 (1 clean/50rec, 1 violation/75rec, 1 replay/30rec)')
+  console.log('   Flight plans:         2 (1 IFR FILED FL330 RVSM, 1 VFR FULLY_CLEARED FL080)')
+  console.log('   Drone Op Plans:       2 (1 SUBMITTED, 1 APPROVED)')
+  console.log('   Airspace:             1 ACTIVE (YELLOW 400ft), 1 DRAFT (RED IAF exercise)')
+  console.log('   METAR:                VIDP 320°/8kt 2800m 12/10 Q1018')
+  console.log('   NOTAM:                A0234/24 IAF exercise VIDF FIR')
   console.log('\n   Backend:  http://localhost:8080')
   console.log('   Admin:    http://localhost:5173')
   console.log('   Audit:    http://localhost:5174')
