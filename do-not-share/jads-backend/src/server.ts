@@ -17,6 +17,8 @@ import systemRoutes      from './routes/systemRoutes'
 import agentRoutes       from './routes/agentRoutes'
 import manufacturerRoutes from './routes/manufacturerRoutes'
 import droneOperationPlanRoutes from './routes/droneOperationPlanRoutes'
+import telemetryRoutes          from './routes/telemetryRoutes'
+import { initWsServer }         from './ws/wsServer'
 
 const app = express()
 
@@ -57,6 +59,7 @@ api.use('/system',       systemRoutes)
 api.use('/agents',       agentRoutes)
 api.use('/manufacturer', manufacturerRoutes)
 api.use('/drone-plans', droneOperationPlanRoutes)
+api.use('/missions',    telemetryRoutes)
 app.use('/api', api)
 
 app.use((_req, res) => {
@@ -83,8 +86,11 @@ if (require.main === module) {
   const prisma    = new PrismaClient()
   const scheduler = new JobScheduler(prisma)
 
-  app.listen(env.PORT, async () => {
+  const server = app.listen(env.PORT, async () => {
     rootLogger.info('server_started', { data: { port: env.PORT, version: env.JADS_VERSION } })
+
+    // ── T02: WebSocket server for live telemetry ──────────────────────────
+    initWsServer(server)
 
     // ── Defense 6: Audit log immutability triggers ───────────────────────
     // Idempotent — safe to call on every startup. Creates PostgreSQL

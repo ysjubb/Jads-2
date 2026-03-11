@@ -583,12 +583,6 @@ model DroneOperationPlan {
   flightFeedbackAt  DateTime?
   trackLogId        String?                          // → TrackLog if FLEW
 
-  // ── Yellow-zone routing decision fields ──
-  routingAuthority  String?                         // e.g. "AAI Delhi NOF", "IAF WAC", "NAVY ANC"
-  expeditedFlag     Boolean  @default(false)        // true if application qualifies for expedited processing
-  routedAt          DateTime?                       // when the routing decision was made
-  approvalDueBy     DateTime?                       // expected approval deadline based on processing days
-
   artefacts         PermissionArtefact[]
 
   @@index([operatorId])
@@ -1009,5 +1003,69 @@ model NotificationRecord {
   @@index([userId])
   @@index([type])
   @@index([read])
+  @@index([createdAt])
+}
+
+// ═══════════════════════════════════════════════
+// LIVE TELEMETRY — T01/T09/T10
+// ═══════════════════════════════════════════════
+
+// T01 — Live telemetry point ingested from field phone
+model TelemetryPoint {
+  id             String   @id @default(cuid())
+  missionId      String
+  uin            String
+  lat            Float
+  lon            Float
+  altAGL         Float
+  altMSL         Float
+  speedKmh       Float
+  headingDeg     Float
+  batteryPct     Float
+  satelliteCount Int
+  source         String
+  ts             BigInt
+  createdAt      DateTime @default(now())
+
+  @@index([missionId, ts])
+}
+
+// T09 — Geofence violation detected in real time
+model GeofenceViolation {
+  id               String   @id @default(cuid())
+  missionId        String
+  uin              String
+  violationType    String   // GEOFENCE_BREACH | ALTITUDE_VIOLATION | TIME_WINDOW_VIOLATION
+  severity         String   // LOW | MEDIUM | HIGH | CRITICAL
+  lat              Float
+  lon              Float
+  altAGL           Float
+  detailJson       String
+  evidenceHash     String   // SHA-256 hash for evidence chain
+  prevEvidenceHash String   // previous hash in chain
+  detectedAt       DateTime @default(now())
+
+  @@index([missionId])
+  @@index([detectedAt])
+}
+
+// T10 — Incident reports created by admin from violation alerts
+model IncidentReport {
+  id               String   @id @default(cuid())
+  violationId      String
+  missionId        String
+  uin              String
+  reportedBy       String   // admin user ID
+  description      String
+  severity         String   // LOW | MEDIUM | HIGH | CRITICAL
+  actionTaken      String?
+  status           String   @default("OPEN") // OPEN | UNDER_REVIEW | RESOLVED | CLOSED
+  assignedTo       String?
+  resolvedAt       DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([missionId])
+  @@index([status])
   @@index([createdAt])
 }
