@@ -6,6 +6,7 @@
 import type {
   IAfmluAdapter, AdcPullResult, AdcUpdateResult,
   AdcClearanceRequest, AdcClearanceResponse,
+  AdcConflictAlert,
 } from '../interfaces/IAfmluAdapter'
 
 const AS_OF = new Date().toISOString()
@@ -75,5 +76,10 @@ export class AfmluAdapterStub implements IAfmluAdapter {
 
   async acknowledgeAdcUpdate(_adcNumber: string, _acknowledged: boolean): Promise<void> {
     // Stub: no-op — live implementation sends acknowledgement to AFMLU
+  }
+
+  async pushConflictAlert(_afmluId: number, alert: AdcConflictAlert): Promise<{ acknowledged: boolean }> {
+    console.log(`[AfmluAdapterStub] conflict_alert_pushed | ${alert.severity} | drone=${alert.dronePlanId} flight=${alert.flightPlanId} callsign=${alert.callsign} | drone=${alert.droneAltitudeAglM.min}-${alert.droneAltitudeAglM.max}m AGL (${alert.droneAltitudeAmslFt.min}-${alert.droneAltitudeAmslFt.max}ft AMSL) vs flight=${alert.flightAltitudeAmslFt}ft AMSL | ground=${alert.groundElevationFt}ft | ${alert.overlapStartUtc} to ${alert.overlapEndUtc}`)
+    return { acknowledged: true }
   }
 }

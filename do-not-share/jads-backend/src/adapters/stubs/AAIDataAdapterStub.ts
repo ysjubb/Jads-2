@@ -6,6 +6,7 @@
 import type {
   IAAIDataAdapter, AerodromeInfo, AirspaceUpdate,
   FlightStatusReport, ComplianceReport,
+  AaiConflictAlert,
 } from '../interfaces/IAAIDataAdapter'
 
 // ── Stub aerodrome data ─────────────────────────────────────
@@ -192,6 +193,13 @@ export class AAIDataAdapterStub implements IAAIDataAdapter {
   async pushComplianceReport(_report: ComplianceReport): Promise<{ accepted: boolean; receiptId: string | null }> {
     // Stub: always accept with a stub receipt ID
     return { accepted: true, receiptId: `AAI-RCPT-STUB-${Date.now()}` }
+  }
+
+  // ── CONFLICT ALERTS ────────────────────────────────────
+
+  async pushConflictAlert(alert: AaiConflictAlert): Promise<{ accepted: boolean; receiptId: string | null }> {
+    console.log(`[AAIDataAdapterStub] conflict_alert_pushed | ${alert.severity} | aerodrome=${alert.nearestAerodrome} | drone=${alert.dronePlanId} flight=${alert.flightPlanId} callsign=${alert.callsign} | drone=${alert.droneAltitudeAglM.min}-${alert.droneAltitudeAglM.max}m AGL (${alert.droneAltitudeAmslFt.min}-${alert.droneAltitudeAmslFt.max}ft AMSL) vs flight=${alert.flightAltitudeAmslFt}ft AMSL | ground=${alert.groundElevationFt}ft | ${alert.overlapStartUtc} to ${alert.overlapEndUtc}`)
+    return { accepted: true, receiptId: `AAI-CONFLICT-STUB-${Date.now()}` }
   }
 
   // ── HEALTH ──────────────────────────────────────────────

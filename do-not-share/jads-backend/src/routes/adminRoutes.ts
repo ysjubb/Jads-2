@@ -10,12 +10,17 @@ import { BCRYPT_ROUNDS, ADMIN_SESSION_HOURS } from '../constants'
 import { SpecialUserAuthService } from '../services/SpecialUserAuthService'
 import { ClearanceService } from '../services/ClearanceService'
 import { decodeCanonical } from '../telemetry/telemetryDecoder'
+import { ConflictDetectionService } from '../services/ConflictDetectionService'
+import { AfmluAdapterStub }  from '../adapters/stubs/AfmluAdapterStub'
+import { FirAdapterStub }    from '../adapters/stubs/FirAdapterStub'
+import { AAIDataAdapterStub } from '../adapters/stubs/AAIDataAdapterStub'
 
 const router                = express.Router()
 const prisma                = new PrismaClient()
 const log                   = createServiceLogger('AdminRoutes')
 const specialUserAuthService = new SpecialUserAuthService(prisma)
 const clearanceService       = new ClearanceService(prisma)
+const conflictService        = new ConflictDetectionService(prisma, new AfmluAdapterStub(), new FirAdapterStub(), new AAIDataAdapterStub())
 
 // ── ADMIN LOGIN (no auth required) ────────────────────────────────────────
 
@@ -1073,7 +1078,16 @@ router.post('/drone-plans/:id/approve', requireAdminAuth, async (req, res) => {
     })
 
     log.info('drone_plan_approved', { data: { planId: plan.planId, approvedBy: req.adminAuth!.adminUserId } })
-    res.json(serializeForJson({ success: true, plan: updated }))
+
+    // Run fresh conflict check after approval so admin sees latest state
+    let conflictCheck = null
+    try {
+      conflictCheck = await conflictService.checkDronePlanConflicts(updated)
+    } catch (err) {
+      log.error('conflict_check_after_approve_failed', { data: { error: err instanceof Error ? err.message : String(err) } })
+    }
+
+    res.json(serializeForJson({ success: true, plan: updated, conflicts: conflictCheck }))
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     log.error('drone_plan_approve_error', { data: { error: msg } })
@@ -1117,6 +1131,20 @@ router.post('/drone-plans/:id/reject', requireAdminAuth, async (req, res) => {
     const msg = e instanceof Error ? e.message : String(e)
     log.error('drone_plan_reject_error', { data: { error: msg } })
     res.status(500).json({ error: 'DRONE_PLAN_REJECT_FAILED' })
+  }
+})
+
+// GET /api/admin/drone-plans/:id/conflicts — Live conflict check for any drone plan
+router.get('/drone-plans/:id/conflicts', requireAdminAuth, async (req, res) => {
+  try {
+    const plan = await prisma.droneOperationPlan.findUnique({ where: { id: req.params.id } })
+    if (!plan) { res.status(404).json({ error: 'DRONE_PLAN_NOT_FOUND' }); return }
+    const result = await conflictService.checkDronePlanConflicts(plan)
+    res.json(serializeForJson({ success: true, ...result }))
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('conflict_check_error', { data: { error: msg } })
+    res.status(500).json({ error: 'CONFLICT_CHECK_FAILED' })
   }
 })
 

@@ -5,6 +5,38 @@ import { T }                                   from '../theme'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
+interface AirspaceConflict {
+  severity:           'CRITICAL' | 'WARNING' | 'INFO'
+  code:               string
+  message:            string
+  overlapStartUtc:    string
+  overlapEndUtc:      string
+  conflictingPlanType: string
+  conflictingPlanId:  string
+  conflictingPlanDbId: string
+  droneAltitudeAglM:     { min: number; max: number }
+  droneAltitudeAmslFt:   { min: number; max: number }
+  flightAltitudeAmslFt:  number
+  flightAltitudeRef:     string
+  groundElevationFt:     number
+  elevationSource:       string
+  geographicOverlap:     string
+  separationKm:          number | null
+}
+
+interface ConflictCheckResult {
+  hasConflicts: boolean
+  conflicts:    AirspaceConflict[]
+  checkedAt:    string
+  summary: {
+    critical: number
+    warning:  number
+    info:     number
+    dronePlansChecked:  number
+    flightPlansChecked: number
+  }
+}
+
 interface DroneOperationPlan {
   id:                string
   planId:            string
@@ -54,6 +86,8 @@ export function DroneOperationPlansPage() {
   const [selected, setSelected] = useState<DroneOperationPlan | null>(null)
   const [rejectReason, setRejectReason] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [conflicts, setConflicts] = useState<ConflictCheckResult | null>(null)
+  const [conflictsLoading, setConflictsLoading] = useState(false)
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
 
@@ -72,6 +106,19 @@ export function DroneOperationPlansPage() {
   }
 
   useEffect(() => { fetchPlans() }, [token])
+
+  // Fetch conflicts when a SUBMITTED or APPROVED plan is selected
+  useEffect(() => {
+    if (!selected || !token) { setConflicts(null); return }
+    if (!['SUBMITTED', 'APPROVED'].includes(selected.status)) { setConflicts(null); return }
+    let cancelled = false
+    setConflictsLoading(true)
+    adminAxios(token).get(`/drone-plans/${selected.id}/conflicts`)
+      .then(({ data }) => { if (!cancelled) setConflicts(data) })
+      .catch(() => { if (!cancelled) setConflicts(null) })
+      .finally(() => { if (!cancelled) setConflictsLoading(false) })
+    return () => { cancelled = true }
+  }, [selected?.id, token])
 
   // Render Leaflet map when a plan is selected
   useEffect(() => {
@@ -328,6 +375,68 @@ export function DroneOperationPlansPage() {
               {selected.remarks && <Detail label="Remarks" value={selected.remarks} />}
               {selected.rejectionReason && <Detail label="Rejection Reason" value={selected.rejectionReason} color={T.red} />}
             </div>
+
+            {/* Conflict Panel */}
+            {conflictsLoading ? (
+              <div style={{ padding: '0.6rem', color: T.muted, fontSize: '0.75rem', borderTop: `1px solid ${T.border}`, marginBottom: '0.5rem' }}>
+                Checking airspace conflicts...
+              </div>
+            ) : conflicts && conflicts.hasConflicts ? (
+              <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: '0.8rem', marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: T.red, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  AIRSPACE CONFLICTS DETECTED
+                  <span style={{ fontSize: '0.65rem', color: T.muted, fontWeight: 400 }}>
+                    ({conflicts.summary.critical} critical, {conflicts.summary.warning} warning, {conflicts.summary.info} info)
+                    · checked {new Date(conflicts.checkedAt).toLocaleTimeString()}
+                    · {conflicts.summary.flightPlansChecked} flight plan(s) scanned
+                  </span>
+                </div>
+                {conflicts.conflicts.map((c, i) => {
+                  const severityColor = c.severity === 'CRITICAL' ? T.red : c.severity === 'WARNING' ? T.amber : T.muted
+                  return (
+                    <div key={i} style={{
+                      background: severityColor + '10', border: `1px solid ${severityColor}40`,
+                      borderRadius: '6px', padding: '0.6rem', marginBottom: '0.4rem', fontSize: '0.7rem',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.3rem' }}>
+                        <span style={{
+                          display: 'inline-block', padding: '1px 6px', borderRadius: '3px',
+                          fontSize: '0.6rem', fontWeight: 700, color: '#fff', background: severityColor,
+                        }}>{c.severity}</span>
+                        <span style={{ fontWeight: 600, color: T.textBright }}>Flight {c.conflictingPlanId}</span>
+                      </div>
+                      <div style={{ color: T.text, marginBottom: '0.3rem' }}>{c.message}</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem', fontSize: '0.65rem', color: T.muted }}>
+                        <div>
+                          <span style={{ color: T.amber }}>Drone: </span>
+                          {c.droneAltitudeAglM.min}–{c.droneAltitudeAglM.max}m AGL
+                          ({c.droneAltitudeAmslFt.min}–{c.droneAltitudeAmslFt.max}ft AMSL)
+                        </div>
+                        <div>
+                          <span style={{ color: T.primary }}>Flight: </span>
+                          {c.flightAltitudeRef} ({c.flightAltitudeAmslFt}ft AMSL)
+                        </div>
+                        <div>
+                          <span style={{ color: T.muted }}>Ground: </span>
+                          {c.groundElevationFt}ft — {c.elevationSource}
+                        </div>
+                        <div>
+                          <span style={{ color: T.muted }}>Time: </span>
+                          {new Date(c.overlapStartUtc).toLocaleString()} → {new Date(c.overlapEndUtc).toLocaleString()}
+                        </div>
+                      </div>
+                      {c.geographicOverlap && (
+                        <div style={{ fontSize: '0.65rem', color: T.muted, marginTop: '0.2rem' }}>{c.geographicOverlap}</div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : conflicts && !conflicts.hasConflicts ? (
+              <div style={{ padding: '0.5rem', fontSize: '0.7rem', color: T.primary, borderTop: `1px solid ${T.border}`, marginBottom: '0.5rem' }}>
+                No airspace conflicts detected · {conflicts.summary.flightPlansChecked} flight plan(s) scanned · checked {new Date(conflicts.checkedAt).toLocaleTimeString()}
+              </div>
+            ) : null}
 
             {/* Approve / Reject Actions */}
             {selected.status === 'SUBMITTED' && (

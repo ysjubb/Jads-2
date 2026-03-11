@@ -59,6 +59,23 @@ export interface AdcClearanceResponse {
   respondedAtUtc:         string
 }
 
+// ── Conflict alert (JADS → AFMLU) ──────────────────────────
+export interface AdcConflictAlert {
+  alertId:              string
+  dronePlanId:          string
+  flightPlanId:         string
+  callsign:             string
+  severity:             'CRITICAL' | 'WARNING'
+  droneAltitudeAglM:    { min: number; max: number }
+  droneAltitudeAmslFt:  { min: number; max: number }
+  flightAltitudeAmslFt: number
+  overlapStartUtc:      string
+  overlapEndUtc:        string
+  areaDescription:      string
+  groundElevationFt:    number
+  detectedAtUtc:        string
+}
+
 export interface IAfmluAdapter {
   // ── INBOUND (AFMLU → JADS) ─────────────────────────────────
   // Pull all current ADC records from an AFMLU.
@@ -73,4 +90,7 @@ export interface IAfmluAdapter {
 
   // Acknowledge receipt of an ADC zone update.
   acknowledgeAdcUpdate(adcNumber: string, acknowledged: boolean): Promise<void>
+
+  // Push an airspace conflict alert to AFMLU for coordination.
+  pushConflictAlert(afmluId: number, alert: AdcConflictAlert): Promise<{ acknowledged: boolean }>
 }
