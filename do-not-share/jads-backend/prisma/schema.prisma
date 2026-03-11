@@ -150,6 +150,21 @@ enum FlightType {
   X
 }
 
+// PA (Permission Artefact) lifecycle states per NPNT compliance
+enum PAStatus {
+  PENDING
+  APPROVED
+  DOWNLOADED
+  LOADED
+  ACTIVE
+  COMPLETED
+  LOG_UPLOADED
+  AUDIT_COMPLETE
+  EXPIRED
+  REJECTED
+  REVOKED
+}
+
 enum FlightPlanStatus {
   DRAFT
   VALIDATED
@@ -568,33 +583,63 @@ model DroneOperationPlan {
   flightFeedbackAt  DateTime?
   trackLogId        String?                          // → TrackLog if FLEW
 
+  // ── Yellow-zone routing decision fields ──
+  routingAuthority  String?                         // e.g. "AAI Delhi NOF", "IAF WAC", "NAVY ANC"
+  expeditedFlag     Boolean  @default(false)        // true if application qualifies for expedited processing
+  routedAt          DateTime?                       // when the routing decision was made
+  approvalDueBy     DateTime?                       // expected approval deadline based on processing days
+
+  artefacts         PermissionArtefact[]
+
   @@index([operatorId])
   @@index([status])
   @@index([plannedStartUtc, plannedEndUtc])
 }
 
-// ── Track Logs ───────────────────────────────────────────────────────────────
-// Web-uploaded flight track logs (DJI CSV, NPNT JSON).
-// Separate from DroneMission (which comes from the Android NPNT app).
-model TrackLog {
-  id                     String   @id @default(cuid())
-  operatorId             String                          // who uploaded
-  droneOperationPlanId   String?                         // optional link to DOP
-  droneSerialNumber      String
-  format                 String                          // 'DJI_AIRDATA' | 'DJI_PHANTOMHELP' | 'NPNT_JSON'
-  takeoffLat             Float?
-  takeoffLon             Float?
-  landingLat             Float?
-  landingLon             Float?
-  pathPointsJson         String                          // JSON array of {lat,lon,alt,timestampMs}
-  maxAltitudeM           Float    @default(0)
-  durationSec            Float    @default(0)
-  breachCount            Int      @default(0)
-  violationsJson         String?                         // JSON array of {type,lat,lon,alt,timestampMs,detail}
-  uploadedAt             DateTime @default(now())
+// ── Permission Artefact Lifecycle ────────────────────────────────────────────
+// Tracks the full lifecycle of a DGCA Permission Artefact (PA) from submission
+// through eGCA to download, verification, flight log upload, and archival.
+// Per NPNT (No Permission No Takeoff) compliance under DGCA UAS Rules 2021.
+model PermissionArtefact {
+  id                    String    @id @default(uuid())
+  applicationId         String    @unique                // eGCA application reference
+  planId                String                           // → DroneOperationPlan
+  permissionArtifactId  String?                          // eGCA-assigned PA identifier
+  txnId                 String?                          // eGCA transaction reference
+  uinNumber             String                           // drone UIN
+  pilotId               String                           // pilot business identifier
+  operatorId            String                           // operator who submitted
+  status                PAStatus                         // lifecycle state machine
+  primaryZone           String                           // GREEN | YELLOW | RED
+  flightStartTime       DateTime                         // planned start
+  flightEndTime         DateTime                         // planned end
+  geofencePolygon       Json                             // GeoJSON polygon boundary
+  maxAltitudeMeters     Int                              // ceiling in meters AGL
+  rawPaXml              Bytes?                           // encrypted PA XML content
+  paZipHash             String?                          // SHA-256 of downloaded PA ZIP
+  paFilePath            String?                          // Local storage path (legacy)
+  signatureValid        Boolean?                         // W3C XMLDSig RSA-SHA256 verification result
+  loadedToDroneAt       DateTime?                        // when PA was loaded to drone
+  flightLogUploadedAt   DateTime?                        // when flight log was uploaded
+  flightLogHash         String?                          // SHA-256 of uploaded flight log
+  violations            Json?                            // violation report from processFlightLog
+  submittedAt           DateTime                         // When submitted to eGCA
+  approvedAt            DateTime?                        // When eGCA approved
+  downloadedAt          DateTime?                        // When PA ZIP was downloaded
+  expiresAt             DateTime?                        // PA expiry time
+  completedAt           DateTime?                        // When flight cycle completed
+  archivedAt            DateTime?                        // When archived after expiry
+  revokedAt             DateTime?                        // When revoked
+  revokeReason          String?                          // Reason for revocation
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  plan                  DroneOperationPlan @relation(fields: [planId], references: [id])
 
+  @@index([status])
+  @@index([expiresAt])
+  @@index([planId])
   @@index([operatorId])
-  @@index([droneOperationPlanId])
+  @@index([uinNumber])
 }
 
 model DroneTelemetryRecord {
@@ -928,61 +973,41 @@ model Bsa2023PartBDeclaration {
 }
 
 // ═══════════════════════════════════════════════
-// JEPPESEN CHART DATA (one-way import)
+// NOTIFICATION ENGINE — in-app + email alerts
 // ═══════════════════════════════════════════════
 
-model JeppesenChart {
-  id            Int       @id @default(autoincrement())
-  chartId       String    @unique   // e.g. "VIDP-APPROACH-ILS-28R"
-  icaoCode      String
-  chartType     String              // APPROACH, SID, STAR, AIRPORT, ENROUTE
-  procedureName String
-  revision      String
-  effectiveDate DateTime
-  expiryDate    DateTime?
-  chartDataUrl  String?
-  waypointsJson String?
-  isActive      Boolean   @default(true)
-  lastFetchedAt DateTime
-
-  @@index([icaoCode])
-  @@index([chartType])
+enum NotificationType {
+  // N01–N05: Expiry alerts
+  EXPIRY_90_DAYS           // N01 — licence/UIN approaching expiry (90 days)
+  EXPIRY_60_DAYS           // N02 — 60 days to expiry
+  EXPIRY_30_DAYS           // N03 — 30 days to expiry
+  EXPIRY_7_DAYS            // N04 — 7 days to expiry (urgent)
+  EXPIRY_EXPIRED           // N05 — licence/UIN/PA has expired
+  // N06–N10: Permission lifecycle events
+  PERMISSION_SUBMITTED     // N06 — PA application submitted to eGCA
+  PERMISSION_APPROVED      // N07 — PA approved by authority
+  PERMISSION_REJECTED      // N08 — PA rejected by authority
+  PERMISSION_DOWNLOADED    // N09 — PA ZIP downloaded successfully
+  PERMISSION_REVOKED       // N10 — PA revoked post-approval
+  // N11–N13: Compliance & system events
+  VIOLATION_DETECTED       // N11 — airspace/geofence violation detected
+  COMPLIANCE_WARNING       // N12 — compliance issue (e.g. chain break)
+  SYSTEM_BROADCAST         // N13 — admin broadcast message
 }
 
-model Navaid {
-  id            Int       @id @default(autoincrement())
-  navaidId      String    @unique   // e.g. "DPN" (Delhi VOR)
-  type          String              // VOR, DME, NDB, ILS, VORTAC
-  name          String
-  lat           Float
-  lon           Float
-  frequency     String?
-  declination   Float?
-  icaoCode      String?             // associated aerodrome
-  firCode       String?
-  isActive      Boolean   @default(true)
-  lastFetchedAt DateTime
+model NotificationRecord {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  metadata  Json             @default("{}")
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  readAt    DateTime?
 
-  @@index([firCode])
-  @@index([icaoCode])
-}
-
-// ═══════════════════════════════════════════════
-// AAI AERODROME DATA (two-way sync)
-// ═══════════════════════════════════════════════
-
-model AerodromeInfo {
-  id             Int       @id @default(autoincrement())
-  icaoCode       String    @unique
-  iataCode       String?
-  name           String
-  city           String
-  runwaysJson    String              // JSON array of RunwayInfo
-  operatingHours String
-  elevationFt    Int
-  refLat         Float
-  refLon         Float
-  lastSyncedAt   DateTime
-
-  @@index([icaoCode])
+  @@index([userId])
+  @@index([type])
+  @@index([read])
+  @@index([createdAt])
 }

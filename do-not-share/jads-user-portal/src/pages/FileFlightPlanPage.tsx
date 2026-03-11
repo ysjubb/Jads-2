@@ -35,7 +35,7 @@ export function FileFlightPlanPage() {
       }
       const { data } = await userApi().post('/flight-plans', payload)
       if (data.success) {
-        navigate(`/flight-plan/${data.planId ?? data.id}`)
+        navigate(`/flight-plan/${data.flightPlanId ?? data.planId ?? data.id}`)
       } else {
         setError(data.error ?? 'Filing failed')
       }

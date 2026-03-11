@@ -10,17 +10,15 @@ import { BCRYPT_ROUNDS, ADMIN_SESSION_HOURS } from '../constants'
 import { SpecialUserAuthService } from '../services/SpecialUserAuthService'
 import { ClearanceService } from '../services/ClearanceService'
 import { decodeCanonical } from '../telemetry/telemetryDecoder'
-import { ConflictDetectionService } from '../services/ConflictDetectionService'
-import { AfmluAdapterStub }  from '../adapters/stubs/AfmluAdapterStub'
-import { FirAdapterStub }    from '../adapters/stubs/FirAdapterStub'
-import { AAIDataAdapterStub } from '../adapters/stubs/AAIDataAdapterStub'
+import { resolveEgcaAdapter, EgcaAdapterMock, EgcaAdapterImpl } from '../adapters/egca'
+import { DroneNotificationService } from '../services/DroneNotificationService'
 
 const router                = express.Router()
 const prisma                = new PrismaClient()
 const log                   = createServiceLogger('AdminRoutes')
 const specialUserAuthService = new SpecialUserAuthService(prisma)
 const clearanceService       = new ClearanceService(prisma)
-const conflictService        = new ConflictDetectionService(prisma, new AfmluAdapterStub(), new FirAdapterStub(), new AAIDataAdapterStub())
+const notifService           = new DroneNotificationService(prisma)
 
 // ── ADMIN LOGIN (no auth required) ────────────────────────────────────────
 
@@ -1134,47 +1132,830 @@ router.post('/drone-plans/:id/reject', requireAdminAuth, async (req, res) => {
   }
 })
 
-// GET /api/admin/drone-plans/:id/conflicts — Live conflict check for any drone plan
-router.get('/drone-plans/:id/conflicts', requireAdminAuth, async (req, res) => {
+// ── eGCA ADAPTER STATUS ─────────────────────────────────────────────────────
+
+// In-memory ring buffer for recent eGCA API calls (admin-only diagnostic)
+interface EgcaCallLogEntry {
+  timestamp: string
+  method:    string
+  path:      string
+  status:    number
+  latencyMs: number
+  error?:    string
+}
+
+const EGCA_CALL_LOG_MAX = 50
+const egcaCallLog: EgcaCallLogEntry[] = []
+
+/** Push a call log entry, evicting oldest if over capacity. */
+export function recordEgcaCall(entry: EgcaCallLogEntry): void {
+  egcaCallLog.push(entry)
+  if (egcaCallLog.length > EGCA_CALL_LOG_MAX) egcaCallLog.shift()
+}
+
+// GET /api/admin/egca-status — eGCA adapter integration diagnostics
+router.get('/egca-status', requireAdminAuth, async (req, res) => {
+  try {
+    const adapter = resolveEgcaAdapter()
+    const isMock  = adapter instanceof EgcaAdapterMock
+    const isLive  = adapter instanceof EgcaAdapterImpl
+
+    // ── Health ping ─────────────────────────────────────────────────────
+    let healthStatus: 'ONLINE' | 'DEGRADED' | 'OFFLINE' = 'OFFLINE'
+    let healthLatencyMs = 0
+    let healthError: string | undefined
+
+    const healthStart = Date.now()
+    try {
+      // For mock adapter, simulate a fast health check
+      if (isMock) {
+        healthLatencyMs = 12
+        healthStatus    = 'ONLINE'
+      } else {
+        // Live adapter: attempt auth check as health ping
+        // We use a lightweight approach — try to call the eGCA base URL /health
+        const https = await import('https')
+        const http  = await import('http')
+        const baseUrl = env.EGCA_API_BASE_URL
+
+        healthLatencyMs = await new Promise<number>((resolve, reject) => {
+          const start = Date.now()
+          const parsed = new URL(baseUrl + '/health')
+          const transport = parsed.protocol === 'https:' ? https : http
+
+          const req = transport.request({
+            method:   'GET',
+            hostname: parsed.hostname,
+            port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+            path:     parsed.pathname,
+            timeout:  10_000,
+            headers:  { 'User-Agent': 'JADS-Platform/4.0', 'Accept': 'application/json' },
+          }, (res) => {
+            res.on('data', () => {})
+            res.on('end', () => resolve(Date.now() - start))
+          })
+
+          req.on('timeout', () => { req.destroy(); reject(new Error('TIMEOUT')) })
+          req.on('error', (err) => reject(err))
+          req.end()
+        })
+
+        if (healthLatencyMs < 2_000) {
+          healthStatus = 'ONLINE'
+        } else {
+          healthStatus = 'DEGRADED'
+        }
+      }
+    } catch (err) {
+      healthLatencyMs = Date.now() - healthStart
+      healthStatus    = 'OFFLINE'
+      healthError     = err instanceof Error ? err.message : String(err)
+    }
+
+    // ── JWT token status ────────────────────────────────────────────────
+    let tokenStatus: {
+      hasToken:    boolean
+      expiresAt:   string | null
+      secondsLeft: number | null
+    } = { hasToken: false, expiresAt: null, secondsLeft: null }
+
+    if (isMock) {
+      // Mock adapter always has a "valid" token
+      const mockExpiry = new Date(Date.now() + 3600 * 1_000)
+      tokenStatus = {
+        hasToken:    true,
+        expiresAt:   mockExpiry.toISOString(),
+        secondsLeft: 3600,
+      }
+    } else if (isLive) {
+      // Access private fields via adapter state (safe cast for admin diagnostics)
+      const liveAdapter = adapter as any
+      if (liveAdapter.token && liveAdapter.expiresAt) {
+        const expiresAt   = liveAdapter.expiresAt as Date
+        const secondsLeft = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1_000))
+        tokenStatus = {
+          hasToken:    true,
+          expiresAt:   expiresAt.toISOString(),
+          secondsLeft,
+        }
+      }
+    }
+
+    // ── Recent call log ─────────────────────────────────────────────────
+    const recentCalls = egcaCallLog.slice(-5).reverse()
+
+    // ── Adapter version ─────────────────────────────────────────────────
+    const adapterMode = isMock ? 'MOCK' : isLive ? 'LIVE' : 'UNKNOWN'
+    const adapterVersion = `${env.JADS_VERSION}-${adapterMode}`
+
+    res.json({
+      health: {
+        status:    healthStatus,
+        latencyMs: healthLatencyMs,
+        error:     healthError ?? null,
+      },
+      token: tokenStatus,
+      recentCalls,
+      adapter: {
+        mode:    adapterMode,
+        version: adapterVersion,
+        baseUrl: isMock ? '(mock — no external calls)' : env.EGCA_API_BASE_URL,
+      },
+    })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('egca_status_error', { data: { error: msg } })
+    res.status(500).json({ error: 'EGCA_STATUS_FAILED' })
+  }
+})
+
+// POST /api/admin/egca-reconnect — Force re-authentication with eGCA
+router.post('/egca-reconnect', requireAdminAuth, async (req, res) => {
+  try {
+    const adapter = resolveEgcaAdapter()
+    const isMock  = adapter instanceof EgcaAdapterMock
+
+    const email    = env.EGCA_API_EMAIL
+    const password = env.EGCA_API_PASSWORD
+
+    const startMs = Date.now()
+    try {
+      const result = await adapter.authenticate(
+        email || 'admin@jads.gov.in',
+        password || 'mock-password',
+      )
+
+      const latencyMs = Date.now() - startMs
+
+      recordEgcaCall({
+        timestamp: new Date().toISOString(),
+        method:    'POST',
+        path:      '/auth/login',
+        status:    200,
+        latencyMs,
+      })
+
+      await prisma.auditLog.create({
+        data: {
+          actorType:    'ADMIN_USER',
+          actorId:      req.adminAuth!.adminUserId,
+          actorRole:    req.adminAuth!.adminRole,
+          action:       'egca_force_reconnect',
+          resourceType: 'egca_adapter',
+          resourceId:   'singleton',
+          detailJson:   JSON.stringify({ mode: isMock ? 'MOCK' : 'LIVE', latencyMs }),
+        },
+      })
+
+      log.info('egca_force_reconnect', {
+        data: { adminId: req.adminAuth!.adminUserId, mode: isMock ? 'MOCK' : 'LIVE', latencyMs },
+      })
+
+      res.json({
+        success:   true,
+        expiresAt: result.expiresAt.toISOString(),
+        latencyMs,
+      })
+    } catch (err) {
+      const latencyMs = Date.now() - startMs
+      const errMsg    = err instanceof Error ? err.message : String(err)
+
+      recordEgcaCall({
+        timestamp: new Date().toISOString(),
+        method:    'POST',
+        path:      '/auth/login',
+        status:    401,
+        latencyMs,
+        error:     errMsg,
+      })
+
+      res.status(502).json({ error: 'EGCA_RECONNECT_FAILED', detail: errMsg })
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('egca_reconnect_error', { data: { error: msg } })
+    res.status(500).json({ error: 'EGCA_RECONNECT_FAILED' })
+  }
+})
+
+// ── ZONE CONFLICT MONITOR (dashboard panel) ────────────────────────────────
+
+// GET /api/admin/zone-conflict-monitor — Aggregated data for the dashboard
+// Zone Conflict Monitor panel (PLATFORM_SUPER_ADMIN only).
+// Returns:
+//   - plans24h: drone operation plans from the last 24 hours with zone classification
+//   - conflictAlerts: plans in YELLOW/RED zones that were submitted without proper permissions
+//   - pendingYellowCount: count of SUBMITTED plans awaiting ATC approval in yellow zones
+router.get('/zone-conflict-monitor', requireAdminRole('PLATFORM_SUPER_ADMIN'), async (_req, res) => {
+  try {
+    const now          = new Date()
+    const twentyFourAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+
+    // ── 1. All plans submitted/created in last 24 hours ──────────────────
+    const recentPlans = await prisma.droneOperationPlan.findMany({
+      where: {
+        createdAt: { gte: twentyFourAgo },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    })
+
+    // ── 2. Classify each plan's zone ─────────────────────────────────────
+    const egca = resolveEgcaAdapter()
+
+    const plans24h = await Promise.all(recentPlans.map(async (plan) => {
+      // Build polygon for zone check
+      let polygon: { latitude: number; longitude: number }[] = []
+      if (plan.areaType === 'POLYGON' && plan.areaGeoJson) {
+        try {
+          const geo = JSON.parse(plan.areaGeoJson)
+          if (geo.type === 'Polygon' && Array.isArray(geo.coordinates?.[0])) {
+            polygon = geo.coordinates[0].map((c: number[]) => ({
+              latitude: c[1], longitude: c[0],
+            }))
+          }
+        } catch { /* skip bad GeoJSON */ }
+      } else if (plan.areaType === 'CIRCLE' && plan.centerLatDeg != null && plan.centerLonDeg != null) {
+        // Approximate circle as 8-point polygon for zone check
+        const r = (plan.radiusM ?? 500) / 111000 // approx deg
+        for (let i = 0; i < 8; i++) {
+          const angle = (i * Math.PI * 2) / 8
+          polygon.push({
+            latitude:  plan.centerLatDeg + r * Math.sin(angle),
+            longitude: plan.centerLonDeg + r * Math.cos(angle),
+          })
+        }
+      }
+
+      let zoneClassification: { zone: string; reasons: string[]; atcAuthority?: string } = {
+        zone: 'GREEN', reasons: ['No restricted zones detected'],
+      }
+      if (polygon.length >= 3) {
+        try {
+          zoneClassification = await egca.checkAirspaceZone(polygon)
+        } catch { /* default to GREEN on error */ }
+      }
+
+      return serializeForJson({
+        id:                plan.id,
+        planId:            plan.planId,
+        operatorId:        plan.operatorId,
+        droneSerialNumber: plan.droneSerialNumber,
+        uinNumber:         plan.uinNumber,
+        areaType:          plan.areaType,
+        areaGeoJson:       plan.areaGeoJson,
+        centerLatDeg:      plan.centerLatDeg,
+        centerLonDeg:      plan.centerLonDeg,
+        radiusM:           plan.radiusM,
+        maxAltitudeAglM:   plan.maxAltitudeAglM,
+        status:            plan.status,
+        purpose:           plan.purpose,
+        remarks:           plan.remarks,
+        rejectionReason:   plan.rejectionReason,
+        plannedStartUtc:   plan.plannedStartUtc,
+        plannedEndUtc:     plan.plannedEndUtc,
+        createdAt:         plan.createdAt,
+        submittedAt:       plan.submittedAt,
+        approvedAt:        plan.approvedAt,
+        approvedBy:        plan.approvedBy,
+        zoneClassification,
+      })
+    }))
+
+    // ── 3. Conflict alerts: YELLOW/RED plans that were SUBMITTED ─────────
+    const conflictAlerts = plans24h.filter((p: any) =>
+      p.zoneClassification.zone !== 'GREEN' && p.status === 'SUBMITTED'
+    )
+
+    // ── 4. Pending yellow zone count ─────────────────────────────────────
+    const pendingYellowCount = plans24h.filter((p: any) =>
+      p.zoneClassification.zone === 'YELLOW' && p.status === 'SUBMITTED'
+    ).length
+
+    res.json({
+      success: true,
+      plans24h,
+      conflictAlerts,
+      pendingYellowCount,
+      generatedAt: now.toISOString(),
+    })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('zone_conflict_monitor_error', { data: { error: msg } })
+    res.status(500).json({ error: 'ZONE_CONFLICT_MONITOR_FAILED' })
+  }
+})
+
+// ── ATC QUEUE — Yellow-zone applications awaiting ATC approval ───────────
+
+// GET /api/admin/atc-queue — Filterable list of yellow-zone SUBMITTED plans + performance stats
+router.get('/atc-queue', requireAdminRole('PLATFORM_SUPER_ADMIN'), async (req, res) => {
+  try {
+    const {
+      authority,       // filter by ATC authority string
+      expedited,       // 'true' or 'false'
+      overdue,         // 'true' — only past-due items
+      dateFrom,        // ISO date string
+      dateTo,          // ISO date string
+      page = '1',
+      limit = '50',
+    } = req.query
+
+    const skip = (parseInt(page as string) - 1) * parseInt(limit as string)
+    const take = parseInt(limit as string)
+
+    // ── 1. Fetch all SUBMITTED drone operation plans ─────────────────────
+    const where: Record<string, unknown> = { status: 'SUBMITTED' }
+    if (dateFrom || dateTo) {
+      where.submittedAt = {}
+      if (dateFrom) (where.submittedAt as any).gte = new Date(dateFrom as string)
+      if (dateTo)   (where.submittedAt as any).lte = new Date(dateTo as string)
+    }
+
+    const allSubmitted = await prisma.droneOperationPlan.findMany({
+      where,
+      orderBy: { submittedAt: 'asc' },
+      take: 500, // cap for zone classification
+    })
+
+    // ── 2. Classify zones via eGCA adapter ───────────────────────────────
+    const egca = resolveEgcaAdapter()
+    const now = new Date()
+    const SLA_DAYS = 7 // default SLA for ATC approval
+
+    const classifiedPlans = await Promise.all(allSubmitted.map(async (plan) => {
+      let polygon: { latitude: number; longitude: number }[] = []
+      if (plan.areaType === 'POLYGON' && plan.areaGeoJson) {
+        try {
+          const geo = JSON.parse(plan.areaGeoJson)
+          if (geo.type === 'Polygon' && Array.isArray(geo.coordinates?.[0])) {
+            polygon = geo.coordinates[0].map((c: number[]) => ({
+              latitude: c[1], longitude: c[0],
+            }))
+          }
+        } catch { /* skip bad GeoJSON */ }
+      } else if (plan.areaType === 'CIRCLE' && plan.centerLatDeg != null && plan.centerLonDeg != null) {
+        const r = (plan.radiusM ?? 500) / 111000
+        for (let i = 0; i < 8; i++) {
+          const angle = (i * Math.PI * 2) / 8
+          polygon.push({
+            latitude:  plan.centerLatDeg + r * Math.sin(angle),
+            longitude: plan.centerLonDeg + r * Math.cos(angle),
+          })
+        }
+      }
+
+      let zoneClassification: { zone: string; reasons: string[]; atcAuthority?: string } = {
+        zone: 'GREEN', reasons: ['No restricted zones detected'],
+      }
+      if (polygon.length >= 3) {
+        try {
+          zoneClassification = await egca.checkAirspaceZone(polygon)
+        } catch { /* default to GREEN on error */ }
+      }
+
+      // Compute SLA due date (7 days from submission)
+      const submittedDate = plan.submittedAt ? new Date(plan.submittedAt) : new Date(plan.createdAt)
+      const dueDate = new Date(submittedDate.getTime() + SLA_DAYS * 24 * 60 * 60 * 1000)
+      const daysRemaining = Math.ceil((dueDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
+
+      let slaStatus: 'ON_TIME' | 'DUE_SOON' | 'OVERDUE'
+      if (daysRemaining < 0) slaStatus = 'OVERDUE'
+      else if (daysRemaining <= 2) slaStatus = 'DUE_SOON'
+      else slaStatus = 'ON_TIME'
+
+      // Fetch pilot info
+      let pilotName = plan.operatorId.slice(0, 16)
+      try {
+        const user = await prisma.civilianUser.findUnique({
+          where: { id: plan.operatorId },
+          select: { email: true, mobileNumber: true },
+        })
+        if (user) pilotName = user.email ?? user.mobileNumber ?? plan.operatorId.slice(0, 16)
+      } catch { /* non-critical */ }
+
+      return {
+        id:                plan.id,
+        planId:            plan.planId,
+        operatorId:        plan.operatorId,
+        pilotName,
+        droneSerialNumber: plan.droneSerialNumber,
+        uinNumber:         plan.uinNumber,
+        areaType:          plan.areaType,
+        areaGeoJson:       plan.areaGeoJson,
+        centerLatDeg:      plan.centerLatDeg,
+        centerLonDeg:      plan.centerLonDeg,
+        radiusM:           plan.radiusM,
+        maxAltitudeAglM:   plan.maxAltitudeAglM,
+        minAltitudeAglM:   plan.minAltitudeAglM,
+        status:            plan.status,
+        purpose:           plan.purpose,
+        remarks:           plan.remarks,
+        rejectionReason:   plan.rejectionReason,
+        plannedStartUtc:   plan.plannedStartUtc,
+        plannedEndUtc:     plan.plannedEndUtc,
+        createdAt:         plan.createdAt,
+        submittedAt:       plan.submittedAt,
+        approvedAt:        plan.approvedAt,
+        approvedBy:        plan.approvedBy,
+        notifyEmail:       plan.notifyEmail,
+        notifyMobile:      plan.notifyMobile,
+        zoneClassification,
+        dueDate:           dueDate.toISOString(),
+        daysRemaining,
+        slaStatus,
+        expedited:         plan.purpose === 'EMERGENCY' || plan.purpose === 'SEARCH_AND_RESCUE',
+      }
+    }))
+
+    // ── 3. Filter to YELLOW zone only ─────────────────────────────────────
+    let yellowPlans = classifiedPlans.filter(p => p.zoneClassification.zone === 'YELLOW')
+
+    // Apply client-side filters
+    if (authority) {
+      yellowPlans = yellowPlans.filter(p =>
+        p.zoneClassification.atcAuthority?.toLowerCase().includes((authority as string).toLowerCase())
+      )
+    }
+    if (expedited === 'true') {
+      yellowPlans = yellowPlans.filter(p => p.expedited)
+    } else if (expedited === 'false') {
+      yellowPlans = yellowPlans.filter(p => !p.expedited)
+    }
+    if (overdue === 'true') {
+      yellowPlans = yellowPlans.filter(p => p.slaStatus === 'OVERDUE')
+    }
+
+    const total = yellowPlans.length
+    const overdueCount = yellowPlans.filter(p => p.slaStatus === 'OVERDUE').length
+    const dueSoonCount = yellowPlans.filter(p => p.slaStatus === 'DUE_SOON').length
+
+    // Paginate
+    const paginatedPlans = yellowPlans.slice(skip, skip + take)
+
+    // ── 4. Authority performance stats (last 90 days) ─────────────────────
+    const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+    const recentlyProcessed = await prisma.droneOperationPlan.findMany({
+      where: {
+        status: { in: ['APPROVED', 'REJECTED'] },
+        approvedAt: { gte: ninetyDaysAgo },
+      },
+      select: {
+        submittedAt: true,
+        approvedAt: true,
+        areaType: true,
+        areaGeoJson: true,
+        centerLatDeg: true,
+        centerLonDeg: true,
+        radiusM: true,
+      },
+      take: 500,
+    })
+
+    // Classify processed plans and compute avg days by authority
+    const authorityStats: Record<string, { totalDays: number; count: number }> = {}
+    for (const plan of recentlyProcessed) {
+      if (!plan.submittedAt || !plan.approvedAt) continue
+
+      let polygon: { latitude: number; longitude: number }[] = []
+      if (plan.areaType === 'POLYGON' && plan.areaGeoJson) {
+        try {
+          const geo = JSON.parse(plan.areaGeoJson)
+          if (geo.type === 'Polygon' && Array.isArray(geo.coordinates?.[0])) {
+            polygon = geo.coordinates[0].map((c: number[]) => ({
+              latitude: c[1], longitude: c[0],
+            }))
+          }
+        } catch { /* skip */ }
+      } else if (plan.areaType === 'CIRCLE' && plan.centerLatDeg != null && plan.centerLonDeg != null) {
+        const r = (plan.radiusM ?? 500) / 111000
+        for (let i = 0; i < 8; i++) {
+          const angle = (i * Math.PI * 2) / 8
+          polygon.push({
+            latitude:  plan.centerLatDeg + r * Math.sin(angle),
+            longitude: plan.centerLonDeg + r * Math.cos(angle),
+          })
+        }
+      }
+
+      let auth = 'Unknown'
+      if (polygon.length >= 3) {
+        try {
+          const zc = await egca.checkAirspaceZone(polygon)
+          if (zc.zone === 'YELLOW' && zc.atcAuthority) auth = zc.atcAuthority
+          else continue // not yellow zone — skip
+        } catch { continue }
+      } else { continue }
+
+      const days = (plan.approvedAt.getTime() - plan.submittedAt.getTime()) / (24 * 60 * 60 * 1000)
+      if (!authorityStats[auth]) authorityStats[auth] = { totalDays: 0, count: 0 }
+      authorityStats[auth].totalDays += days
+      authorityStats[auth].count += 1
+    }
+
+    const authorityPerformance = Object.entries(authorityStats).map(([authority, stats]) => ({
+      authority,
+      avgDays: Math.round((stats.totalDays / stats.count) * 10) / 10,
+      count: stats.count,
+    }))
+
+    // ── 5. Collect unique authorities for filter dropdown ─────────────────
+    const authorities = [...new Set(
+      classifiedPlans
+        .filter(p => p.zoneClassification.zone === 'YELLOW' && p.zoneClassification.atcAuthority)
+        .map(p => p.zoneClassification.atcAuthority!)
+    )]
+
+    res.json(serializeForJson({
+      success: true,
+      plans: paginatedPlans,
+      total,
+      overdueCount,
+      dueSoonCount,
+      authorities,
+      authorityPerformance,
+      generatedAt: now.toISOString(),
+    }))
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('atc_queue_error', { data: { error: msg } })
+    res.status(500).json({ error: 'ATC_QUEUE_FETCH_FAILED' })
+  }
+})
+
+// POST /api/admin/atc-queue/send-reminder — Bulk send reminders for overdue items
+router.post('/atc-queue/send-reminder', requireAdminRole('PLATFORM_SUPER_ADMIN'), async (req, res) => {
+  try {
+    const { planIds } = req.body
+    if (!Array.isArray(planIds) || planIds.length === 0) {
+      res.status(400).json({ error: 'PLAN_IDS_REQUIRED' }); return
+    }
+
+    // Log the reminder action (actual email/notification is a future integration)
+    const plans = await prisma.droneOperationPlan.findMany({
+      where: { id: { in: planIds }, status: 'SUBMITTED' },
+      select: { id: true, planId: true },
+    })
+
+    for (const plan of plans) {
+      await prisma.auditLog.create({
+        data: {
+          actorType: 'ADMIN',
+          actorId: req.adminAuth!.adminUserId,
+          actorRole: req.adminAuth!.adminRole,
+          action: 'ATC_REMINDER_SENT',
+          resourceType: 'drone_operation_plan',
+          resourceId: plan.id,
+          detailJson: JSON.stringify({
+            planId: plan.planId,
+            reminderType: 'OVERDUE_ATC_APPROVAL',
+            sentAt: new Date().toISOString(),
+          }),
+        },
+      })
+    }
+
+    log.info('atc_reminders_sent', {
+      data: {
+        planCount: plans.length,
+        planIds: plans.map(p => p.planId),
+        sentBy: req.adminAuth!.adminUserId,
+      },
+    })
+
+    res.json({
+      success: true,
+      remindersQueued: plans.length,
+      planIds: plans.map(p => p.planId),
+    })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('atc_reminder_error', { data: { error: msg } })
+    res.status(500).json({ error: 'ATC_REMINDER_FAILED' })
+  }
+})
+
+// GET /api/admin/atc-queue/:id — Detailed view of a single ATC queue item with timeline
+router.get('/atc-queue/:id', requireAdminRole('PLATFORM_SUPER_ADMIN'), async (req, res) => {
   try {
     const plan = await prisma.droneOperationPlan.findUnique({ where: { id: req.params.id } })
-    if (!plan) { res.status(404).json({ error: 'DRONE_PLAN_NOT_FOUND' }); return }
-    const result = await conflictService.checkDronePlanConflicts(plan)
-    res.json(serializeForJson({ success: true, ...result }))
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e)
-    log.error('conflict_check_error', { data: { error: msg } })
-    res.status(500).json({ error: 'CONFLICT_CHECK_FAILED' })
-  }
-})
+    if (!plan) { res.status(404).json({ error: 'PLAN_NOT_FOUND' }); return }
 
-// ── TRACK LOG MANAGEMENT ─────────────────────────────────────────────────
+    // Fetch pilot info
+    let pilotInfo: Record<string, unknown> = {}
+    try {
+      const user = await prisma.civilianUser.findUnique({
+        where: { id: plan.operatorId },
+        select: { id: true, email: true, mobileNumber: true, role: true, accountStatus: true },
+      })
+      if (user) pilotInfo = user
+    } catch { /* non-critical */ }
 
-// GET /api/admin/track-logs — List all track logs (most recent first)
-router.get('/track-logs', requireAdminAuth, async (_req, res) => {
-  try {
-    const trackLogs = await prisma.trackLog.findMany({
-      orderBy: { uploadedAt: 'desc' },
-      take: 100,
+    // Classify zone
+    const egca = resolveEgcaAdapter()
+    let polygon: { latitude: number; longitude: number }[] = []
+    if (plan.areaType === 'POLYGON' && plan.areaGeoJson) {
+      try {
+        const geo = JSON.parse(plan.areaGeoJson)
+        if (geo.type === 'Polygon' && Array.isArray(geo.coordinates?.[0])) {
+          polygon = geo.coordinates[0].map((c: number[]) => ({
+            latitude: c[1], longitude: c[0],
+          }))
+        }
+      } catch { /* skip */ }
+    } else if (plan.areaType === 'CIRCLE' && plan.centerLatDeg != null && plan.centerLonDeg != null) {
+      const r = (plan.radiusM ?? 500) / 111000
+      for (let i = 0; i < 8; i++) {
+        const angle = (i * Math.PI * 2) / 8
+        polygon.push({
+          latitude:  plan.centerLatDeg + r * Math.sin(angle),
+          longitude: plan.centerLonDeg + r * Math.cos(angle),
+        })
+      }
+    }
+
+    let zoneClassification: { zone: string; reasons: string[]; atcAuthority?: string } = {
+      zone: 'GREEN', reasons: ['No restricted zones detected'],
+    }
+    if (polygon.length >= 3) {
+      try {
+        zoneClassification = await egca.checkAirspaceZone(polygon)
+      } catch { /* default to GREEN */ }
+    }
+
+    // Build timeline from audit logs
+    const auditEvents = await prisma.auditLog.findMany({
+      where: {
+        resourceType: 'drone_operation_plan',
+        resourceId: plan.id,
+      },
+      orderBy: { timestamp: 'asc' },
+      select: {
+        action: true,
+        timestamp: true,
+        actorId: true,
+        actorType: true,
+        detailJson: true,
+      },
     })
-    res.json(serializeForJson({ success: true, trackLogs }))
+
+    const timeline = [
+      { event: 'CREATED', timestamp: plan.createdAt.toISOString(), actor: plan.operatorId },
+      ...(plan.submittedAt ? [{ event: 'SUBMITTED', timestamp: plan.submittedAt.toISOString(), actor: plan.operatorId }] : []),
+      ...(plan.approvedAt ? [{ event: 'APPROVED', timestamp: plan.approvedAt.toISOString(), actor: plan.approvedBy ?? 'Unknown' }] : []),
+      ...auditEvents.map(e => ({
+        event: e.action,
+        timestamp: e.timestamp.toISOString(),
+        actor: e.actorId,
+        detail: e.detailJson,
+      })),
+    ]
+
+    // SLA computation
+    const now = new Date()
+    const SLA_DAYS = 7
+    const submittedDate = plan.submittedAt ? new Date(plan.submittedAt) : new Date(plan.createdAt)
+    const dueDate = new Date(submittedDate.getTime() + SLA_DAYS * 24 * 60 * 60 * 1000)
+    const daysRemaining = Math.ceil((dueDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
+    let slaStatus: 'ON_TIME' | 'DUE_SOON' | 'OVERDUE'
+    if (daysRemaining < 0) slaStatus = 'OVERDUE'
+    else if (daysRemaining <= 2) slaStatus = 'DUE_SOON'
+    else slaStatus = 'ON_TIME'
+
+    res.json(serializeForJson({
+      success: true,
+      plan: {
+        ...plan,
+        zoneClassification,
+        pilotInfo,
+        dueDate: dueDate.toISOString(),
+        daysRemaining,
+        slaStatus,
+        expedited: plan.purpose === 'EMERGENCY' || plan.purpose === 'SEARCH_AND_RESCUE',
+      },
+      timeline,
+    }))
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
-    log.error('admin_track_logs_list_error', { data: { error: msg } })
-    res.status(500).json({ error: 'TRACK_LOGS_LIST_FAILED' })
+    log.error('atc_queue_detail_error', { data: { error: msg } })
+    res.status(500).json({ error: 'ATC_QUEUE_DETAIL_FAILED' })
   }
 })
 
-// GET /api/admin/track-logs/:id — Get single track log detail
-router.get('/track-logs/:id', requireAdminAuth, async (req, res) => {
+// ═══════════════════════════════════════════════════════════════════════════════
+// NOTIFICATION / ALERT MANAGEMENT ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── GET /api/admin/alert-configs ─────────────────────────────────────────────
+// Get all 13 alert type configurations.
+router.get('/alert-configs', requireAdminAuth, async (_req, res) => {
+  res.json({ success: true, configs: notifService.getAlertConfigs() })
+})
+
+// ── PUT /api/admin/alert-configs/:type ──────────────────────────────────────
+// Update an alert type's enabled/email/threshold settings.
+router.put('/alert-configs/:type', requireAdminAuth, async (req, res) => {
   try {
-    const trackLog = await prisma.trackLog.findUnique({ where: { id: req.params.id } })
-    if (!trackLog) { res.status(404).json({ error: 'TRACK_LOG_NOT_FOUND' }); return }
-    res.json(serializeForJson({ success: true, trackLog }))
+    const { enabled, emailEnabled, thresholdDays } = req.body
+    const updated = notifService.updateAlertConfig(
+      req.params.type as any,
+      { enabled, emailEnabled, thresholdDays }
+    )
+    if (!updated) {
+      res.status(404).json({ error: 'ALERT_TYPE_NOT_FOUND' })
+      return
+    }
+    res.json({ success: true, config: updated })
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e)
-    log.error('admin_track_log_detail_error', { data: { error: msg } })
-    res.status(500).json({ error: 'TRACK_LOG_FETCH_FAILED' })
+    res.status(500).json({ error: 'ALERT_CONFIG_UPDATE_FAILED' })
+  }
+})
+
+// ── POST /api/admin/broadcast ───────────────────────────────────────────────
+// Send a broadcast notification to multiple users.
+router.post('/broadcast', requireAdminAuth, async (req, res) => {
+  try {
+    const { title, body, recipients, category, region } = req.body
+    if (!title || !body) {
+      res.status(400).json({ error: 'MISSING_FIELDS', detail: 'title and body are required' })
+      return
+    }
+
+    let userIds: string[] = []
+
+    if (recipients === 'all') {
+      // Broadcast to all civilian users
+      const users = await prisma.civilianUser.findMany({ select: { id: true } })
+      userIds = users.map(u => u.id)
+    } else if (Array.isArray(recipients)) {
+      userIds = recipients
+    } else {
+      // Filter by role/category
+      const where: Record<string, unknown> = {}
+      if (category) where.role = category
+      const users = await prisma.civilianUser.findMany({ where, select: { id: true } })
+      userIds = users.map(u => u.id)
+    }
+
+    if (userIds.length === 0) {
+      res.json({ success: true, count: 0, message: 'No recipients matched' })
+      return
+    }
+
+    const result = await notifService.broadcast({ userIds, title, body })
+
+    await prisma.auditLog.create({
+      data: {
+        actorType:    'ADMIN_USER',
+        actorId:      req.adminAuth!.adminId,
+        action:       'BROADCAST_NOTIFICATION',
+        resourceType: 'notification',
+        detailJson:   JSON.stringify({ title, recipientCount: userIds.length }),
+      },
+    })
+
+    res.json({ success: true, ...result })
+  } catch (e: unknown) {
+    log.error('broadcast_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'BROADCAST_FAILED' })
+  }
+})
+
+// ── GET /api/admin/delivery-stats ───────────────────────────────────────────
+// Get notification delivery statistics.
+router.get('/delivery-stats', requireAdminAuth, async (_req, res) => {
+  try {
+    const stats = await notifService.getDeliveryStats()
+    res.json({ success: true, stats })
+  } catch (e: unknown) {
+    res.status(500).json({ error: 'DELIVERY_STATS_FAILED' })
+  }
+})
+
+// ── GET /api/admin/upcoming-expiries ────────────────────────────────────────
+// Get upcoming licence/UIN expiries for CSV export.
+router.get('/upcoming-expiries', requireAdminAuth, async (req, res) => {
+  try {
+    const withinDays = parseInt((req.query.days as string) ?? '90')
+    const expiries   = await notifService.getUpcomingExpiries(withinDays)
+
+    // If CSV format requested, generate and return CSV
+    if (req.query.format === 'csv') {
+      const header = 'User ID,Email,Phone,License Number,Expiry Date,Days Remaining,Role,Account Status'
+      const rows = expiries.map(e =>
+        [e.userId, e.email ?? '', e.phone ?? '', e.licenseNumber ?? '',
+         e.expiryDate ?? '', e.daysRemaining ?? '', e.role, e.accountStatus].join(',')
+      )
+      const csv = [header, ...rows].join('\n')
+      res.setHeader('Content-Type', 'text/csv')
+      res.setHeader('Content-Disposition', `attachment; filename="expiries-${withinDays}d.csv"`)
+      res.send(csv)
+      return
+    }
+
+    res.json({ success: true, expiries, count: expiries.length })
+  } catch (e: unknown) {
+    res.status(500).json({ error: 'UPCOMING_EXPIRIES_FAILED' })
   }
 })
 
