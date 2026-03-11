@@ -3,7 +3,8 @@
 //   P4B: RouteSemanticEngine   — route parsing, distances, TAS, magnetic track
 //   P4C: AltitudeComplianceEngine — semicircular rule, RVSM
 //   P4D: FirGeometryEngine     — FIR sequencing, EET per FIR
-//   P4E: AftnMessageBuilder + IAftnGateway — build and file AFTN message
+//   P4E: ConflictDetectionService — drone plan conflict check (warnings only)
+//   P4F: AftnMessageBuilder + IAftnGateway — build and file AFTN message
 //
 // Every write records permissionArtefactId for forensic replay.
 // Audit log written for every file attempt (success and failure).
@@ -24,6 +25,7 @@ import { AirspaceVersioningService } from './AirspaceVersioningService'
 import type { IAftnGateway }        from '../adapters/interfaces/IAftnGateway'
 import { serializeForJson }         from '../utils/bigintSerializer'
 import { getCruiseLevelString }      from './indiaAIP'
+import { ConflictDetectionService }  from './ConflictDetectionService'
 import { createServiceLogger }      from '../logger'
 
 const log = createServiceLogger('FlightPlanService')
@@ -33,6 +35,7 @@ export class FlightPlanService {
   private routeEngine:  RouteSemanticEngine
   private altEngine    = new AltitudeComplianceEngine()
   private firEngine    = new FirGeometryEngine()
+  private conflictEngine: ConflictDetectionService
   private msgBuilder   = new AftnMessageBuilder()
   private cnlBuilder   = new AftnCnlBuilder()
   private dlaBuilder   = new AftnDlaBuilder()
@@ -44,10 +47,11 @@ export class FlightPlanService {
     private readonly prisma:      PrismaClient,
     private readonly aftnGateway: IAftnGateway = new AftnGatewayStub()
   ) {
-    this.validator   = new OfplValidationService(this.prisma)
-    this.routeEngine = new RouteSemanticEngine(
+    this.validator      = new OfplValidationService(this.prisma)
+    this.routeEngine    = new RouteSemanticEngine(
       this.prisma, new AirspaceVersioningService(this.prisma))
-    this.notifySvc   = new FlightPlanNotificationService(this.prisma)
+    this.notifySvc      = new FlightPlanNotificationService(this.prisma)
+    this.conflictEngine = new ConflictDetectionService(this.prisma)
   }
 
   async createAndFilePlan(
@@ -115,6 +119,31 @@ export class FlightPlanService {
       input.destinationIcao
     )
 
+    // ── P4E: Conflict detection against active drone operations ─────────
+    const requestedFt = input.levelIndicator === 'F'
+      ? parseInt(input.levelValue) * 100
+      : input.levelIndicator === 'A'
+      ? parseInt(input.levelValue) * 100
+      : 9000
+    const cruisingLevelRef = input.levelIndicator === 'VFR' ? 'VFR'
+      : input.levelIndicator === 'F' ? `FL${input.levelValue}`
+      : `${input.levelIndicator}${input.levelValue}`
+
+    let droneConflicts: any[] = []
+    try {
+      const step5 = await this.conflictEngine.checkFlightPlanConflicts(
+        step2.legs, requestedFt, this.parseEobt(input.estimatedOffBlock),
+        step2.totalEet, input.callsign, cruisingLevelRef,
+      )
+      droneConflicts = step5.conflicts
+      // Add CRITICAL conflicts as warnings (non-blocking — flight still files)
+      for (const c of step5.conflicts.filter(c => c.severity === 'CRITICAL')) {
+        allWarnings.push({ field: 'route', code: c.code, message: c.message })
+      }
+    } catch (e) {
+      log.warn('p4e_conflict_check_failed', { data: { callsign: input.callsign, error: String(e) } })
+    }
+
     // Final check after all engines
     if (allErrors.length > 0) {
       await this.writeAuditLog(userId, userType, 'flight_plan_engines_failed', null, false,
@@ -127,11 +156,6 @@ export class FlightPlanService {
 
     // ── Build AFTN message ─────────────────────────────────────────────────
     const speedStr = `${input.speedIndicator}${input.speedValue}`
-    const requestedFt = input.levelIndicator === 'F'
-      ? parseInt(input.levelValue) * 100
-      : input.levelIndicator === 'A'
-      ? parseInt(input.levelValue) * 100
-      : 9000
     const levelStr = input.levelIndicator === 'VFR'
       ? 'VFR'
       : getCruiseLevelString(input.departureIcao, requestedFt)
@@ -194,6 +218,7 @@ export class FlightPlanService {
         validatedAtUtc:             new Date(),
         validationResultJson:       JSON.stringify({
           errors: allErrors, warnings: allWarnings,
+          droneConflicts,
           magneticTrackDeg:  step2.magneticTrackDeg,
           totalEet:   step2.totalEet,
           cruiseTasKts:      step2.cruiseTasKts,

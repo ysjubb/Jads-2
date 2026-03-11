@@ -53,6 +53,24 @@ export interface ComplianceReport {
   generatedAt:    string
 }
 
+// ── Conflict alert (JADS → AAI) ────────────────────────────
+export interface AaiConflictAlert {
+  alertId:              string
+  dronePlanId:          string
+  flightPlanId:         string
+  callsign:             string
+  nearestAerodrome:     string   // ICAO code
+  severity:             'CRITICAL' | 'WARNING'
+  droneAltitudeAglM:    { min: number; max: number }
+  droneAltitudeAmslFt:  { min: number; max: number }
+  flightAltitudeAmslFt: number
+  overlapStartUtc:      string
+  overlapEndUtc:        string
+  areaDescription:      string
+  groundElevationFt:    number
+  detectedAtUtc:        string
+}
+
 export interface IAAIDataAdapter {
   // ── INBOUND (AAI → JADS) ────────────────────────────────
   // Get operational info for a single aerodrome.
@@ -70,6 +88,10 @@ export interface IAAIDataAdapter {
 
   // Push a quarterly compliance report to AAI.
   pushComplianceReport(report: ComplianceReport): Promise<{ accepted: boolean; receiptId: string | null }>
+
+  // ── CONFLICT ALERTS ────────────────────────────────────
+  // Push an airspace conflict alert to AAI for coordination.
+  pushConflictAlert(alert: AaiConflictAlert): Promise<{ accepted: boolean; receiptId: string | null }>
 
   // ── HEALTH ──────────────────────────────────────────────
   ping(): Promise<{ connected: boolean; latencyMs: number }>

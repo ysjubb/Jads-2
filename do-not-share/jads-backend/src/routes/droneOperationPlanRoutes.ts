@@ -8,11 +8,16 @@ import { requireAuth, requireRole, requireDomain } from '../middleware/authMiddl
 import { serializeForJson }         from '../utils/bigintSerializer'
 import { createServiceLogger }      from '../logger'
 import { DigitalSkyAdapterStub }    from '../adapters/stubs/DigitalSkyAdapterStub'
+import { ConflictDetectionService } from '../services/ConflictDetectionService'
+import { AfmluAdapterStub }         from '../adapters/stubs/AfmluAdapterStub'
+import { FirAdapterStub }           from '../adapters/stubs/FirAdapterStub'
+import { AAIDataAdapterStub }       from '../adapters/stubs/AAIDataAdapterStub'
 
 const router = express.Router()
 const prisma = new PrismaClient()
 const log    = createServiceLogger('DroneOperationPlanRoutes')
 const digitalSkyAdapter = new DigitalSkyAdapterStub()
+const conflictService = new ConflictDetectionService(prisma, new AfmluAdapterStub(), new FirAdapterStub(), new AAIDataAdapterStub())
 
 // Roles allowed to file drone operation plans
 const DOP_ROLES = ['DRONE_OPERATOR', 'GOVT_DRONE_OPERATOR', 'PLATFORM_SUPER_ADMIN']
@@ -234,6 +239,16 @@ router.post('/:id/submit', requireAuth, requireDomain('DRONE'), async (req, res)
       }
     }
 
+    // Conflict detection — non-blocking. Check against active flight plans.
+    let conflictCheck: any = { hasConflicts: false, conflicts: [], checkedAt: new Date().toISOString(), summary: { critical: 0, warning: 0, info: 0, dronePlansChecked: 0, flightPlansChecked: 0 } }
+    try {
+      conflictCheck = await conflictService.checkDronePlanConflicts(plan)
+      log.info('conflict_check_done', { data: { planId: plan.planId, critical: conflictCheck.summary.critical, warning: conflictCheck.summary.warning } })
+    } catch (cErr: unknown) {
+      const cMsg = cErr instanceof Error ? cErr.message : String(cErr)
+      log.warn('conflict_check_failed', { data: { planId: plan.planId, error: cMsg } })
+    }
+
     const updated = await prisma.droneOperationPlan.update({
       where: { id: req.params.id },
       data: { status: 'SUBMITTED', submittedAt: new Date() },
@@ -243,12 +258,12 @@ router.post('/:id/submit', requireAuth, requireDomain('DRONE'), async (req, res)
       data: {
         actorType: 'USER', actorId: req.auth!.userId, actorRole: req.auth!.role,
         action: 'DRONE_PLAN_SUBMITTED', resourceType: 'drone_operation_plan', resourceId: plan.id,
-        detailJson: JSON.stringify({ planId: plan.planId, digitalSkyValidation }),
+        detailJson: JSON.stringify({ planId: plan.planId, digitalSkyValidation, conflictCheck: conflictCheck.summary }),
       }
     })
 
     log.info('drone_plan_submitted', { data: { planId: plan.planId } })
-    res.json(serializeForJson({ success: true, plan: updated, digitalSkyValidation }))
+    res.json(serializeForJson({ success: true, plan: updated, digitalSkyValidation, conflictCheck }))
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     log.error('drone_plan_submit_error', { data: { error: msg } })

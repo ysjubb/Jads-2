@@ -4,6 +4,29 @@ import { userApi } from '../api/client'
 import { T } from '../theme'
 import { LogUploadWidget } from '../components/portal/LogUploadWidget'
 
+interface AirspaceConflict {
+  severity:           'CRITICAL' | 'WARNING' | 'INFO'
+  code:               string
+  message:            string
+  overlapStartUtc:    string
+  overlapEndUtc:      string
+  conflictingPlanId:  string
+  droneAltitudeAglM:     { min: number; max: number }
+  droneAltitudeAmslFt:   { min: number; max: number }
+  flightAltitudeAmslFt:  number
+  flightAltitudeRef:     string
+  groundElevationFt:     number
+  elevationSource:       string
+  geographicOverlap:     string
+}
+
+interface ConflictCheckResult {
+  hasConflicts: boolean
+  conflicts:    AirspaceConflict[]
+  checkedAt:    string
+  summary: { critical: number; warning: number; info: number; flightPlansChecked: number }
+}
+
 const STATUS_COLOR: Record<string, string> = {
   DRAFT: T.muted, SUBMITTED: T.amber, APPROVED: T.primary, REJECTED: T.red, CANCELLED: '#888',
 }
@@ -16,6 +39,7 @@ export function DronePlanDetailPage() {
   const [actionLoading, setActionLoading] = useState(false)
   const [showLogUpload, setShowLogUpload] = useState(false)
   const [feedbackLoading, setFeedbackLoading] = useState(false)
+  const [conflicts, setConflicts] = useState<ConflictCheckResult | null>(null)
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
 
@@ -73,7 +97,8 @@ export function DronePlanDetailPage() {
   const handleSubmit = async () => {
     setActionLoading(true)
     try {
-      await userApi().post(`/drone-plans/${id}/submit`)
+      const submitRes = await userApi().post(`/drone-plans/${id}/submit`)
+      if (submitRes.data?.conflictCheck) setConflicts(submitRes.data.conflictCheck)
       const { data } = await userApi().get(`/drone-plans/${id}`)
       setPlan(data.plan)
     } catch (e: any) {
@@ -157,6 +182,46 @@ export function DronePlanDetailPage() {
         {plan.remarks && <Detail label="Remarks" value={plan.remarks} />}
         {plan.rejectionReason && <Detail label="Rejection Reason" value={plan.rejectionReason} color={T.red} />}
       </div>
+
+      {/* Conflict Warnings */}
+      {conflicts && conflicts.hasConflicts && (
+        <div style={{
+          background: T.red + '10', border: `1px solid ${T.red}30`, borderRadius: '6px',
+          padding: '0.8rem', marginBottom: '1rem',
+        }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: T.red, marginBottom: '0.5rem' }}>
+            AIRSPACE CONFLICT WARNINGS
+            <span style={{ fontSize: '0.65rem', color: T.muted, fontWeight: 400, marginLeft: '0.5rem' }}>
+              {conflicts.summary.critical} critical, {conflicts.summary.warning} warning
+            </span>
+          </div>
+          {conflicts.conflicts.map((c, i) => {
+            const sColor = c.severity === 'CRITICAL' ? T.red : c.severity === 'WARNING' ? T.amber : T.muted
+            return (
+              <div key={i} style={{
+                background: T.surface, border: `1px solid ${sColor}40`, borderRadius: '4px',
+                padding: '0.5rem', marginBottom: '0.3rem', fontSize: '0.7rem',
+              }}>
+                <span style={{
+                  display: 'inline-block', padding: '1px 6px', borderRadius: '3px',
+                  fontSize: '0.6rem', fontWeight: 700, color: '#fff', background: sColor, marginRight: '0.4rem',
+                }}>{c.severity}</span>
+                <span style={{ fontWeight: 600, color: T.textBright }}>Flight {c.conflictingPlanId}</span>
+                <div style={{ color: T.text, marginTop: '0.2rem' }}>{c.message}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.2rem', fontSize: '0.65rem', color: T.muted, marginTop: '0.2rem' }}>
+                  <div>Drone: {c.droneAltitudeAglM.min}–{c.droneAltitudeAglM.max}m AGL ({c.droneAltitudeAmslFt.min}–{c.droneAltitudeAmslFt.max}ft AMSL)</div>
+                  <div>Flight: {c.flightAltitudeRef} ({c.flightAltitudeAmslFt}ft AMSL)</div>
+                  <div>Time: {new Date(c.overlapStartUtc).toLocaleString()} → {new Date(c.overlapEndUtc).toLocaleString()}</div>
+                  <div>Ground: {c.groundElevationFt}ft — {c.elevationSource}</div>
+                </div>
+              </div>
+            )
+          })}
+          <div style={{ fontSize: '0.6rem', color: T.muted, marginTop: '0.3rem' }}>
+            Your plan has been submitted. These conflicts are advisory — review with your operations team.
+          </div>
+        </div>
+      )}
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: '0.8rem' }}>

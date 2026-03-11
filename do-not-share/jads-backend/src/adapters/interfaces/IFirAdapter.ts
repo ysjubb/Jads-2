@@ -46,6 +46,24 @@ export interface FicClearanceResponse {
   respondedAtUtc:         string
 }
 
+// ── Conflict alert (JADS → FIR) ────────────────────────────
+export interface FicConflictAlert {
+  alertId:              string
+  dronePlanId:          string
+  flightPlanId:         string
+  callsign:             string
+  firCode:              string
+  severity:             'CRITICAL' | 'WARNING'
+  droneAltitudeAglM:    { min: number; max: number }
+  droneAltitudeAmslFt:  { min: number; max: number }
+  flightAltitudeAmslFt: number
+  overlapStartUtc:      string
+  overlapEndUtc:        string
+  areaDescription:      string
+  groundElevationFt:    number
+  detectedAtUtc:        string
+}
+
 export interface IFirAdapter {
   // ── INBOUND (FIR → JADS) ───────────────────────────────────
   // Pull all active FIC records for a FIR.
@@ -60,4 +78,7 @@ export interface IFirAdapter {
 
   // Acknowledge receipt of a FIC record update.
   acknowledgeFicUpdate(ficNumber: string, acknowledged: boolean): Promise<void>
+
+  // Push an airspace conflict alert to FIR office for coordination.
+  pushConflictAlert(alert: FicConflictAlert): Promise<{ acknowledged: boolean }>
 }

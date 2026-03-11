@@ -1076,7 +1076,16 @@ router.post('/drone-plans/:id/approve', requireAdminAuth, async (req, res) => {
     })
 
     log.info('drone_plan_approved', { data: { planId: plan.planId, approvedBy: req.adminAuth!.adminUserId } })
-    res.json(serializeForJson({ success: true, plan: updated }))
+
+    // Run fresh conflict check after approval so admin sees latest state
+    let conflictCheck = null
+    try {
+      conflictCheck = await conflictService.checkDronePlanConflicts(updated)
+    } catch (err) {
+      log.error('conflict_check_after_approve_failed', { data: { error: err instanceof Error ? err.message : String(err) } })
+    }
+
+    res.json(serializeForJson({ success: true, plan: updated, conflicts: conflictCheck }))
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     log.error('drone_plan_approve_error', { data: { error: msg } })

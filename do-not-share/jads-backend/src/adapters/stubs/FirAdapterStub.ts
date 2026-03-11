@@ -6,6 +6,7 @@
 import type {
   IFirAdapter, FicPullResult, FicUpdateResult,
   FicClearanceRequest, FicClearanceResponse,
+  FicConflictAlert,
 } from '../interfaces/IFirAdapter'
 
 const AS_OF = new Date().toISOString()
@@ -68,5 +69,10 @@ export class FirAdapterStub implements IFirAdapter {
 
   async acknowledgeFicUpdate(_ficNumber: string, _acknowledged: boolean): Promise<void> {
     // Stub: no-op — live implementation sends acknowledgement to FIR office
+  }
+
+  async pushConflictAlert(alert: FicConflictAlert): Promise<{ acknowledged: boolean }> {
+    console.log(`[FirAdapterStub] conflict_alert_pushed | ${alert.severity} | FIR=${alert.firCode} | drone=${alert.dronePlanId} flight=${alert.flightPlanId} callsign=${alert.callsign} | drone=${alert.droneAltitudeAglM.min}-${alert.droneAltitudeAglM.max}m AGL (${alert.droneAltitudeAmslFt.min}-${alert.droneAltitudeAmslFt.max}ft AMSL) vs flight=${alert.flightAltitudeAmslFt}ft AMSL | ground=${alert.groundElevationFt}ft | ${alert.overlapStartUtc} to ${alert.overlapEndUtc}`)
+    return { acknowledged: true }
   }
 }
