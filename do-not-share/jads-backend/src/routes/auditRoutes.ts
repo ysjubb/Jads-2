@@ -801,4 +801,146 @@ router.get('/zone-compliance/authority-latency',
   }
 )
 
+// ═══════════════════════════════════════════════════════════════════════
+// T10/T11 — Incident Report endpoints
+// ═══════════════════════════════════════════════════════════════════════
+
+// POST /api/audit/incidents — create incident from violation alert
+router.post('/incidents',
+  requireAuditAuth,
+  requireRole([...AUDITOR_ROLES, 'GOVT_ADMIN']),
+  async (req, res) => {
+    try {
+      const { violationId, missionId, uin, description, severity } = req.body
+      const reportedBy = req.auth?.userId || 'unknown'
+
+      const incident = await prisma.incidentReport.create({
+        data: { violationId, missionId, uin, reportedBy, description, severity },
+      })
+      res.status(201).json(incident)
+    } catch (e) {
+      res.status(500).json({ error: 'INCIDENT_CREATE_FAILED', detail: e instanceof Error ? e.message : String(e) })
+    }
+  }
+)
+
+// GET /api/audit/incidents — list with filters
+router.get('/incidents',
+  requireAuditAuth,
+  requireRole(AUDITOR_ROLES),
+  async (req, res) => {
+    try {
+      const { severity, status, uin } = req.query
+      const where: Record<string, unknown> = {}
+      if (severity) where.severity = severity
+      if (status) where.status = status
+      if (uin) where.uin = { contains: uin as string }
+
+      const incidents = await prisma.incidentReport.findMany({
+        where: where as any,
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      })
+      res.json(incidents)
+    } catch (e) {
+      res.status(500).json({ error: 'INCIDENT_LIST_FAILED' })
+    }
+  }
+)
+
+// GET /api/audit/incidents/:id — single incident with violation detail
+router.get('/incidents/:id',
+  requireAuditAuth,
+  requireRole(AUDITOR_ROLES),
+  async (req, res) => {
+    try {
+      const incident = await prisma.incidentReport.findUnique({
+        where: { id: req.params.id },
+      })
+      if (!incident) { res.status(404).json({ error: 'INCIDENT_NOT_FOUND' }); return }
+
+      // Fetch linked violation
+      const violation = await prisma.geofenceViolation.findFirst({
+        where: { id: incident.violationId },
+      })
+
+      res.json({ ...incident, violation })
+    } catch (e) {
+      res.status(500).json({ error: 'INCIDENT_FETCH_FAILED' })
+    }
+  }
+)
+
+// PUT /api/audit/incidents/:id/status — update status
+router.put('/incidents/:id/status',
+  requireAuditAuth,
+  requireRole(AUDITOR_ROLES),
+  async (req, res) => {
+    try {
+      const { status } = req.body
+      const validStatuses = ['OPEN', 'UNDER_REVIEW', 'RESOLVED', 'CLOSED']
+      if (!validStatuses.includes(status)) {
+        res.status(400).json({ error: 'INVALID_STATUS', valid: validStatuses })
+        return
+      }
+
+      const updated = await prisma.incidentReport.update({
+        where: { id: req.params.id },
+        data: {
+          status,
+          ...(status === 'RESOLVED' ? { resolvedAt: new Date() } : {}),
+        },
+      })
+      res.json(updated)
+    } catch (e) {
+      res.status(500).json({ error: 'INCIDENT_STATUS_UPDATE_FAILED' })
+    }
+  }
+)
+
+// POST /api/audit/incidents/:id/assign — assign to auditor
+router.post('/incidents/:id/assign',
+  requireAuditAuth,
+  requireRole(AUDITOR_ROLES),
+  async (req, res) => {
+    try {
+      const { assignedTo } = req.body
+      const updated = await prisma.incidentReport.update({
+        where: { id: req.params.id },
+        data: { assignedTo },
+      })
+      res.json(updated)
+    } catch (e) {
+      res.status(500).json({ error: 'INCIDENT_ASSIGN_FAILED' })
+    }
+  }
+)
+
+// POST /api/audit/access-log — immutable access audit trail
+router.post('/access-log',
+  requireAuditAuth,
+  requireRole(AUDITOR_ROLES),
+  async (req, res) => {
+    try {
+      const { incidentId, action, ts } = req.body
+      const auditorId = req.auth?.userId || 'unknown'
+
+      await prisma.auditLog.create({
+        data: {
+          actorId: auditorId,
+          actorType: 'AUDITOR',
+          actorRole: req.auth?.role,
+          action: `EVIDENCE_${action}`,
+          resourceType: 'IncidentReport',
+          resourceId: incidentId,
+          detailJson: JSON.stringify({ incidentId, action, ts }),
+        },
+      })
+      res.json({ logged: true })
+    } catch (e) {
+      res.status(500).json({ error: 'ACCESS_LOG_FAILED' })
+    }
+  }
+)
+
 export default router

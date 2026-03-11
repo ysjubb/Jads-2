@@ -10,6 +10,8 @@ import { ZoneCompliancePage } from './pages/audit/ZoneCompliancePage'
 import { CategoryCompliancePage } from './pages/audit/CategoryCompliancePage'
 import { ComplianceScorecardPage } from './pages/audit/ComplianceScorecardPage'
 import { AnomalyDetectionPage } from './pages/audit/AnomalyDetectionPage'
+import { IncidentQueue }     from './components/IncidentQueue'
+import { ViolationEvidenceViewer } from './components/ViolationEvidenceViewer'
 import { useAuditAuth }      from './hooks/useAuditAuth'
 import { EgcaSyncBadge }     from './components/EgcaSyncBadge'
 
@@ -33,6 +35,7 @@ const NAV_ITEMS = [
   { to: '/category-compliance', label: 'Category Trends', icon: 'M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14H5v-2h7v2zm5-4H5v-2h12v2zm0-4H5V7h12v2z' },
   { to: '/compliance-scorecard', label: 'Scorecard', icon: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z' },
   { to: '/anomaly-detection', label: 'Anomalies', icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z' },
+  { to: '/incidents', label: 'Incidents', icon: 'M12 2L1 21h22L12 2zm0 4l7.53 13H4.47L12 6zm-1 8h2v2h-2v-2zm0-6h2v4h-2V8z' },
 ]
 
 function SidebarNav() {
@@ -188,6 +191,12 @@ export default function App() {
         } />
         <Route path="/anomaly-detection" element={
           <Protected><Layout><AnomalyDetectionPage /></Layout></Protected>
+        } />
+        <Route path="/incidents" element={
+          <Protected><Layout><IncidentQueue /></Layout></Protected>
+        } />
+        <Route path="/incidents/:id" element={
+          <Protected><Layout><ViolationEvidenceViewer /></Layout></Protected>
         } />
         <Route path="*" element={<Navigate to="/missions" replace />} />
       </Routes>

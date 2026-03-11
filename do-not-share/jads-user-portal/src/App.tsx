@@ -15,6 +15,7 @@ import { PAVerifyPage }        from './pages/drone/PAVerifyPage'
 import { FleetManagerPage }    from './pages/drone/FleetManagerPage'
 import { FlightAnalyticsPage } from './pages/drone/FlightAnalyticsPage'
 import { NotificationBell }   from './components/drone/NotificationBell'
+import { LiveMissionMonitor }     from './components/portal/LiveMissionMonitor'
 import { useAuth }               from './hooks/useAuth'
 
 import { T } from './theme'
@@ -36,6 +37,7 @@ const NAV_ITEMS = [
   { to: '/drone/verify',        label: 'PA VERIFY',     icon: 'CHK' },
   { to: '/drone/fleet',          label: 'FLEET MGR',     icon: 'FLT' },
   { to: '/drone/analytics',     label: 'ANALYTICS',     icon: 'ANL' },
+  { to: '/live-monitor',         label: 'LIVE MONITOR',  icon: 'LIV' },
 ]
 
 function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
@@ -229,6 +231,7 @@ export default function App() {
         <Route path="/drone/verify"       element={<ProtectedLayout><PAVerifyPage /></ProtectedLayout>} />
         <Route path="/drone/fleet"        element={<ProtectedLayout><FleetManagerPage /></ProtectedLayout>} />
         <Route path="/drone/analytics"   element={<ProtectedLayout><FlightAnalyticsPage /></ProtectedLayout>} />
+        <Route path="/live-monitor"      element={<ProtectedLayout><LiveMissionMonitor /></ProtectedLayout>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
