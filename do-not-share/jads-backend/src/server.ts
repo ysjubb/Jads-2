@@ -19,13 +19,20 @@ import manufacturerRoutes from './routes/manufacturerRoutes'
 import droneOperationPlanRoutes from './routes/droneOperationPlanRoutes'
 import telemetryRoutes          from './routes/telemetryRoutes'
 import { initWsServer }         from './ws/wsServer'
+import { DEMO_CONFIG, getDemoCorsOrigins } from './config/demoConfig'
 
 const app = express()
 
 app.use(helmet())
+
+const productionOrigins = getDemoCorsOrigins([
+  'https://admin.jads.gov.in',
+  'https://audit.jads.gov.in',
+])
+
 app.use(cors({
-  origin:         env.NODE_ENV === 'production'
-    ? ['https://admin.jads.gov.in', 'https://audit.jads.gov.in']
+  origin:         env.NODE_ENV === 'production' && !DEMO_CONFIG.enabled
+    ? productionOrigins
     : true,
   methods:        ['GET', 'POST', 'PUT', 'PATCH'],  // No DELETE — platform invariant
   allowedHeaders: ['Content-Type', 'Authorization', 'X-JADS-Version'],
@@ -40,7 +47,15 @@ app.use((req, _res, next) => {
 
 // Health — no version header required
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', version: env.JADS_VERSION, timestamp: new Date().toISOString() })
+  res.json({
+    status:    'ok',
+    version:   env.JADS_VERSION,
+    timestamp: new Date().toISOString(),
+    demo:      DEMO_CONFIG.enabled,
+    ...(DEMO_CONFIG.enabled && DEMO_CONFIG.publicUrl
+      ? { publicUrl: DEMO_CONFIG.publicUrl, wsUrl: DEMO_CONFIG.wsUrl }
+      : {}),
+  })
 })
 
 // All /api routes require X-JADS-Version: 4.0
