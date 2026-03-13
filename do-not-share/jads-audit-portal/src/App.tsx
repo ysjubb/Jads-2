@@ -6,6 +6,7 @@ import { MissionDetailPage } from './pages/MissionDetailPage'
 import { FlightPlansPage }       from './pages/FlightPlansPage'
 import { FlightPlanDetailPage } from './pages/FlightPlanDetailPage'
 import { ViolationsPage }    from './pages/ViolationsPage'
+import { ForensicTimeline }  from './pages/ForensicTimeline'
 import { ZoneCompliancePage } from './pages/audit/ZoneCompliancePage'
 import { CategoryCompliancePage } from './pages/audit/CategoryCompliancePage'
 import { ComplianceScorecardPage } from './pages/audit/ComplianceScorecardPage'
@@ -36,6 +37,7 @@ const NAV_ITEMS = [
   { to: '/compliance-scorecard', label: 'Scorecard', icon: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z' },
   { to: '/anomaly-detection', label: 'Anomalies', icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z' },
   { to: '/incidents', label: 'Incidents', icon: 'M12 2L1 21h22L12 2zm0 4l7.53 13H4.47L12 6zm-1 8h2v2h-2v-2zm0-6h2v4h-2V8z' },
+  { to: '/forensic-timeline', label: 'Timeline', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
 ]
 
 function SidebarNav() {
@@ -197,6 +199,9 @@ export default function App() {
         } />
         <Route path="/incidents/:id" element={
           <Protected><Layout><ViolationEvidenceViewer /></Layout></Protected>
+        } />
+        <Route path="/forensic-timeline" element={
+          <Protected><Layout><ForensicTimeline /></Layout></Protected>
         } />
         <Route path="*" element={<Navigate to="/missions" replace />} />
       </Routes>

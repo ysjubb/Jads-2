@@ -18,6 +18,7 @@ import { FleetOverviewPage }   from './pages/drone/FleetOverviewPage'
 import { NationalAnalyticsPage } from './pages/drone/NationalAnalyticsPage'
 import { SystemPage }       from './pages/SystemPage'
 import { ViolationAlertDashboard } from './components/ViolationAlertDashboard'
+import { ViolationDashboard }     from './pages/ViolationDashboard'
 import { useAdminAuth }     from './hooks/useAdminAuth'
 import { T }                from './theme'
 export { T }                from './theme'
@@ -39,6 +40,7 @@ const NAV_ITEMS = [
   { to: '/fleet-overview',      label: 'FLEET OVW',      icon: 'FLO' },
   { to: '/national-analytics',  label: 'NATL ANALYTICS', icon: 'NAT' },
   { to: '/violation-alerts',     label: 'LIVE ALERTS',    icon: 'VIO' },
+  { to: '/violation-dashboard', label: 'VIOLATIONS',     icon: 'VDH' },
   { to: '/system',              label: 'SYSTEM',         icon: 'SYS' },
 ]
 
@@ -132,6 +134,7 @@ export default function App() {
         <Route path="/fleet-overview"      element={<ProtectedLayout><FleetOverviewPage /></ProtectedLayout>} />
         <Route path="/national-analytics" element={<ProtectedLayout><NationalAnalyticsPage /></ProtectedLayout>} />
         <Route path="/violation-alerts" element={<ProtectedLayout><ViolationAlertDashboard /></ProtectedLayout>} />
+        <Route path="/violation-dashboard" element={<ProtectedLayout><ViolationDashboard /></ProtectedLayout>} />
         <Route path="/system"      element={<ProtectedLayout><SystemPage /></ProtectedLayout>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -7,6 +7,7 @@ import { FileDronePlanPage }     from './pages/FileDronePlanPage'
 import { FlightPlanDetailPage }  from './pages/FlightPlanDetailPage'
 import { EditFlightPlanPage }    from './pages/EditFlightPlanPage'
 import { DronePlanDetailPage }   from './pages/DronePlanDetailPage'
+import { PreFlightBriefing }    from './pages/PreFlightBriefing'
 import { useAuth }               from './hooks/useAuth'
 import { T }                     from './theme'
 
@@ -117,6 +118,8 @@ export default function App() {
         <Route path="/flight-plan/:id"     element={<ProtectedLayout><FlightPlanDetailPage /></ProtectedLayout>} />
         <Route path="/edit-flight-plan/:id" element={<ProtectedLayout><EditFlightPlanPage /></ProtectedLayout>} />
         <Route path="/drone-plan/:id"      element={<ProtectedLayout><DronePlanDetailPage /></ProtectedLayout>} />
+
+        <Route path="/briefing/:id"    element={<ProtectedLayout><PreFlightBriefing /></ProtectedLayout>} />
 
         {/* Portal routes */}
         <Route path="/airspace"    element={<ProtectedLayout><AirspaceMap /></ProtectedLayout>} />

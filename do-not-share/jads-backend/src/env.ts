@@ -49,6 +49,18 @@ export const env = {
   EGCA_API_PASSWORD:    optionalEnv('EGCA_API_PASSWORD', ''),
   USE_LIVE_ADAPTERS:    optionalEnv('USE_LIVE_ADAPTERS', 'false') === 'true',
 
+  // AAI Online Flight Plan portal (OFPL) — https://ofpl.aai.aero
+  // Requires institutional registration with AAI.
+  OFPL_BASE_URL:       optionalEnv('OFPL_BASE_URL', ''),
+  OFPL_USERNAME:       optionalEnv('OFPL_USERNAME', ''),
+  OFPL_PASSWORD:       optionalEnv('OFPL_PASSWORD', ''),
+
+  // ICAO NOTAM API — requires ICAO data services registration
+  ICAO_API_KEY:        optionalEnv('ICAO_API_KEY', ''),
+
+  // Notamify API (fallback NOTAM source) — https://notamify.com
+  NOTAMIFY_API_KEY:    optionalEnv('NOTAMIFY_API_KEY', ''),
+
   // Jeppesen NavData (ONE_WAY import — licensed chart and navaid data)
   JEPPESEN_BASE_URL:   optionalEnv('JEPPESEN_BASE_URL', ''),
   JEPPESEN_API_KEY:    optionalEnv('JEPPESEN_API_KEY', ''),

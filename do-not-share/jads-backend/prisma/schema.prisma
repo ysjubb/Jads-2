@@ -1108,3 +1108,55 @@ model OperatorMission {
   @@index([status])
   @@index([uin])
 }
+
+// ═══════════════════════════════════════════════
+// AircraftFlightPlan — OFPL-sourced data + deconfliction-aware FPL records
+// Coexists with MannedFlightPlan: different source systems, different purposes.
+// MannedFlightPlan = filed through JADS /api/flight-plans (5-stage pipeline).
+// AircraftFlightPlan = synced from AAI OFPL or filed via /api/fpl for deconfliction.
+// ═══════════════════════════════════════════════
+
+enum AircraftFPLStatus {
+  DRAFT
+  FILED
+  ACTIVE
+  CLOSED
+  CANCELLED
+}
+
+enum AircraftFPLSource {
+  JADS       // Filed directly through JADS
+  OFPL_SYNC  // Synced from AAI OFPL portal
+}
+
+model AircraftFlightPlan {
+  id                  String               @id @default(cuid())
+  externalFplId       String?              @unique  // AAI OFPL system identifier (null if filed via JADS)
+  callsign            String
+  aircraftType        String
+  departure           String               // ICAO aerodrome code
+  destination         String               // ICAO aerodrome code
+  eobt                DateTime             // Estimated Off-Block Time
+  eet                 Int                  // Estimated Elapsed Time in minutes
+  route               String               // ICAO route string
+  cruisingLevel       String               // e.g. 'FL310', 'A080'
+  flightRules         String               @default("IFR") // IFR | VFR | Y | Z
+  altDest             String?              // Alternate destination ICAO
+  picName             String               // Pilot in Command
+  remarks             String?              // Item 18 / remarks
+  status              AircraftFPLStatus    @default(DRAFT)
+  sourceType          AircraftFPLSource    @default(JADS)
+  conflictFlags       Json?                // Array of ConflictAdvisory objects
+  notamBriefingJson   Json?                // NOTAM snapshot at filing time
+  metarAtFiling       Json?                // METAR snapshot at filing time
+  hashChainEntry      String?              // SHA-256 hash for integrity
+  filedByUserId       String?
+  filedAt             DateTime?
+  activatedAt         DateTime?
+  closedAt            DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([departure, eobt])
+  @@index([callsign])
+}
