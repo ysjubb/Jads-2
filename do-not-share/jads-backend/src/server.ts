@@ -17,6 +17,8 @@ import systemRoutes      from './routes/systemRoutes'
 import agentRoutes       from './routes/agentRoutes'
 import manufacturerRoutes from './routes/manufacturerRoutes'
 import droneOperationPlanRoutes from './routes/droneOperationPlanRoutes'
+import verificationRoutes       from './routes/verificationRoutes'
+import demoRoutes               from './routes/demoRoutes'
 
 const app = express()
 
@@ -57,6 +59,8 @@ api.use('/system',       systemRoutes)
 api.use('/agents',       agentRoutes)
 api.use('/manufacturer', manufacturerRoutes)
 api.use('/drone-plans', droneOperationPlanRoutes)
+api.use('/verify',      verificationRoutes)
+api.use('/demo',        demoRoutes)
 app.use('/api', api)
 
 app.use((_req, res) => {
