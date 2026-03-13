@@ -1,68 +1,94 @@
-import type { ICAOFlightPlan } from '../types/flightPlan'
-import { userApi } from '../api/client'
+import type { FlightPlan, DroneMission } from '../types/flightPlan';
+import type { ComplianceResult } from '../types/compliance';
+import { userApi } from '../api/client';
 
-export interface ValidationResult {
-  valid: boolean
-  errors: { field: string; message: string }[]
-  warnings: { field: string; message: string }[]
+export async function createFlightPlan(plan: Partial<FlightPlan>): Promise<FlightPlan> {
+  const { data } = await userApi().post<FlightPlan>('/api/flight-plans', plan);
+  return data;
 }
 
-export function validateFlightPlan(fpl: Partial<ICAOFlightPlan>): ValidationResult {
-  const errors: { field: string; message: string }[] = []
-  const warnings: { field: string; message: string }[] = []
-
-  // Field 7 — Aircraft ID
-  if (!fpl.aircraftId || fpl.aircraftId.length === 0) {
-    errors.push({ field: '7', message: 'Aircraft identification is required' })
-  } else if (fpl.aircraftId.length > 7) {
-    errors.push({ field: '7', message: 'Max 7 alphanumeric characters' })
-  }
-
-  // Field 8
-  if (!fpl.flightRules) errors.push({ field: '8a', message: 'Flight rules required' })
-  if (!fpl.flightType) errors.push({ field: '8b', message: 'Type of flight required' })
-
-  // Field 9
-  if (!fpl.aircraftType) errors.push({ field: '9a', message: 'Aircraft type required' })
-
-  // Field 13
-  if (!fpl.departureAerodrome) errors.push({ field: '13a', message: 'Departure aerodrome required' })
-  if (!fpl.eobt) errors.push({ field: '13b', message: 'EOBT required' })
-
-  // Field 15
-  if (!fpl.route) warnings.push({ field: '15', message: 'Route not specified' })
-
-  // Field 16
-  if (!fpl.destinationAerodrome) errors.push({ field: '16a', message: 'Destination aerodrome required' })
-  if (!fpl.eet) warnings.push({ field: '16b', message: 'EET not specified' })
-
-  return { valid: errors.length === 0, errors, warnings }
+export async function getFlightPlans(): Promise<FlightPlan[]> {
+  const { data } = await userApi().get<FlightPlan[]>('/api/flight-plans');
+  return data;
 }
 
-export function formatFPLString(fpl: ICAOFlightPlan): string {
-  const f7 = fpl.aircraftId
-  const f8 = `${fpl.flightRules}${fpl.flightType}`
-  const f9 = `${fpl.aircraftType}/${fpl.wakeTurbulence}`
-  const f10a = fpl.equipment.join('')
-  const f10b = fpl.ssr + (fpl.adsb.length ? fpl.adsb.join('') : '')
-  const f13 = `${fpl.departureAerodrome}${fpl.eobt}`
-  const f15 = `${fpl.cruisingSpeed}${fpl.cruisingLevel} ${fpl.route}`
-  const f16 = `${fpl.destinationAerodrome}${fpl.eet}${fpl.alternate1 ? ' ' + fpl.alternate1 : ''}${fpl.alternate2 ? ' ' + fpl.alternate2 : ''}`
-
-  const f18parts: string[] = []
-  for (const [key, val] of Object.entries(fpl.field18)) {
-    if (val) f18parts.push(`${key}/${val}`)
-  }
-  const f18 = f18parts.join(' ') || '0'
-
-  return `(FPL-${f7}-${f8}\n-${f9}-${f10a}/${f10b}\n-${f13}-${f15}\n-${f16}-${f18})`
+export async function getFlightPlan(id: string): Promise<FlightPlan> {
+  const { data } = await userApi().get<FlightPlan>(`/api/flight-plans/${id}`);
+  return data;
 }
 
-export async function submitToAAI(fpl: ICAOFlightPlan): Promise<{ ackId: string; status: string }> {
-  try {
-    const { data } = await userApi().post('/fpl/submit', fpl)
-    return data
-  } catch {
-    return { ackId: `ACK-${Date.now()}`, status: 'SUBMITTED' }
+export async function updateFlightPlan(id: string, updates: Partial<FlightPlan>): Promise<FlightPlan> {
+  const { data } = await userApi().put<FlightPlan>(`/api/flight-plans/${id}`, updates);
+  return data;
+}
+
+export function validateFlightPlan(plan: FlightPlan): ComplianceResult[] {
+  const results: ComplianceResult[] = [];
+
+  // CALLSIGN_FORMAT: 2-7 alphanumeric uppercase
+  if (!/^[A-Z0-9]{2,7}$/.test(plan.callsign.replace(/-/g, ''))) {
+    results.push({ ruleId: 'CALLSIGN_FORMAT', status: 'FAIL', message: 'Callsign must be 2-7 alphanumeric characters (hyphens stripped)' });
+  } else {
+    results.push({ ruleId: 'CALLSIGN_FORMAT', status: 'PASS', message: 'Callsign format valid' });
   }
+
+  // AERODROME_CODES: valid 4-letter ICAO
+  const icaoRe = /^[A-Z]{4}$/;
+  if (!icaoRe.test(plan.departureAerodrome)) {
+    results.push({ ruleId: 'AERODROME_CODES', status: 'FAIL', message: `Departure ${plan.departureAerodrome} is not a valid ICAO code` });
+  } else if (!icaoRe.test(plan.destinationAerodrome)) {
+    results.push({ ruleId: 'AERODROME_CODES', status: 'FAIL', message: `Destination ${plan.destinationAerodrome} is not a valid ICAO code` });
+  } else {
+    results.push({ ruleId: 'AERODROME_CODES', status: 'PASS', message: 'Aerodrome codes valid' });
+  }
+
+  // EOBT_VALIDITY: HHMM format, valid time
+  if (!/^\d{4}$/.test(plan.eobt)) {
+    results.push({ ruleId: 'EOBT_VALIDITY', status: 'FAIL', message: 'EOBT must be in HHMM format' });
+  } else {
+    const hh = parseInt(plan.eobt.slice(0, 2));
+    const mm = parseInt(plan.eobt.slice(2, 4));
+    if (hh > 23 || mm > 59) {
+      results.push({ ruleId: 'EOBT_VALIDITY', status: 'FAIL', message: `EOBT ${plan.eobt} is not a valid time` });
+    } else {
+      results.push({ ruleId: 'EOBT_VALIDITY', status: 'PASS', message: 'EOBT valid' });
+    }
+  }
+
+  // EET_PLAUSIBILITY: HHMM format
+  if (!/^\d{4}$/.test(plan.totalEET)) {
+    results.push({ ruleId: 'EET_PLAUSIBILITY', status: 'FAIL', message: 'EET must be in HHMM format' });
+  } else {
+    results.push({ ruleId: 'EET_PLAUSIBILITY', status: 'PASS', message: 'EET format valid' });
+  }
+
+  // MILITARY_FIELD8: IFC prefix must have type M
+  if (plan.callsign.startsWith('IFC') && plan.flightType !== 'M') {
+    results.push({ ruleId: 'MILITARY_FIELD8', status: 'FAIL', message: 'IFC callsign requires flight type M (military)' });
+  } else {
+    results.push({ ruleId: 'MILITARY_FIELD8', status: 'PASS', message: 'Flight type consistent with callsign' });
+  }
+
+  // RVSM_EQUIPMENT: FL290-FL410 requires W in equipment
+  const flMatch = plan.cruisingLevel.match(/^F(\d{3})$/);
+  if (flMatch) {
+    const fl = parseInt(flMatch[1]);
+    if (fl >= 290 && fl <= 410 && !plan.equipment.includes('W')) {
+      results.push({ ruleId: 'RVSM_EQUIPMENT', status: 'FAIL', message: `FL${fl} requires RVSM approval (W in Field 10)` });
+    } else {
+      results.push({ ruleId: 'RVSM_EQUIPMENT', status: 'PASS', message: 'RVSM equipment check passed' });
+    }
+  }
+
+  return results;
+}
+
+export async function createDroneMission(mission: Partial<DroneMission>): Promise<DroneMission> {
+  const { data } = await userApi().post<DroneMission>('/api/drone-plans', mission);
+  return data;
+}
+
+export async function getDroneMissions(): Promise<DroneMission[]> {
+  const { data } = await userApi().get<DroneMission[]>('/api/drone-plans');
+  return data;
 }

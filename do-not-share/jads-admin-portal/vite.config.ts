@@ -11,7 +11,7 @@ export default defineConfig({
       // This means the frontend always calls /api/... (no hardcoded port)
       // and Vite handles the proxy transparently in dev.
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8081',
         changeOrigin: true,
       },
     },

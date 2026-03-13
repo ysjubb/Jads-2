@@ -17,24 +17,15 @@ import systemRoutes      from './routes/systemRoutes'
 import agentRoutes       from './routes/agentRoutes'
 import manufacturerRoutes from './routes/manufacturerRoutes'
 import droneOperationPlanRoutes from './routes/droneOperationPlanRoutes'
-import telemetryRoutes          from './routes/telemetryRoutes'
-import operatorRoutes           from './routes/operatorRoutes'
-import missionOpsRoutes         from './routes/missionOpsRoutes'
-import { initWsServer }         from './ws/wsServer'
-import { DEMO_CONFIG, getDemoCorsOrigins } from './config/demoConfig'
+import verificationRoutes       from './routes/verificationRoutes'
+import demoRoutes               from './routes/demoRoutes'
 
 const app = express()
 
 app.use(helmet())
-
-const productionOrigins = getDemoCorsOrigins([
-  'https://admin.jads.gov.in',
-  'https://audit.jads.gov.in',
-])
-
 app.use(cors({
-  origin:         env.NODE_ENV === 'production' && !DEMO_CONFIG.enabled
-    ? productionOrigins
+  origin:         env.NODE_ENV === 'production'
+    ? ['https://admin.jads.gov.in', 'https://audit.jads.gov.in']
     : true,
   methods:        ['GET', 'POST', 'PUT', 'PATCH'],  // No DELETE — platform invariant
   allowedHeaders: ['Content-Type', 'Authorization', 'X-JADS-Version'],
@@ -49,15 +40,7 @@ app.use((req, _res, next) => {
 
 // Health — no version header required
 app.get('/health', (_req, res) => {
-  res.json({
-    status:    'ok',
-    version:   env.JADS_VERSION,
-    timestamp: new Date().toISOString(),
-    demo:      DEMO_CONFIG.enabled,
-    ...(DEMO_CONFIG.enabled && DEMO_CONFIG.publicUrl
-      ? { publicUrl: DEMO_CONFIG.publicUrl, wsUrl: DEMO_CONFIG.wsUrl }
-      : {}),
-  })
+  res.json({ status: 'ok', version: env.JADS_VERSION, timestamp: new Date().toISOString() })
 })
 
 // All /api routes require X-JADS-Version: 4.0
@@ -76,9 +59,8 @@ api.use('/system',       systemRoutes)
 api.use('/agents',       agentRoutes)
 api.use('/manufacturer', manufacturerRoutes)
 api.use('/drone-plans', droneOperationPlanRoutes)
-api.use('/missions',     telemetryRoutes)
-api.use('/operators',    operatorRoutes)
-api.use('/mission-ops',  missionOpsRoutes)
+api.use('/verify',      verificationRoutes)
+api.use('/demo',        demoRoutes)
 app.use('/api', api)
 
 app.use((_req, res) => {
@@ -105,11 +87,8 @@ if (require.main === module) {
   const prisma    = new PrismaClient()
   const scheduler = new JobScheduler(prisma)
 
-  const server = app.listen(env.PORT, async () => {
+  app.listen(env.PORT, async () => {
     rootLogger.info('server_started', { data: { port: env.PORT, version: env.JADS_VERSION } })
-
-    // ── T02: WebSocket server for live telemetry ──────────────────────────
-    initWsServer(server)
 
     // ── Defense 6: Audit log immutability triggers ───────────────────────
     // Idempotent — safe to call on every startup. Creates PostgreSQL

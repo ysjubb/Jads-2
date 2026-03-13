@@ -1,50 +1,42 @@
-import React, { useState, useEffect } from 'react'
-import { T } from '../../theme'
-import { getCurrentAIRACCycle } from '../../services/chartService'
+import React from 'react';
+import { T } from '../../theme';
 
-interface APIStatus {
-  name: string
-  status: 'ONLINE' | 'OFFLINE' | 'UNKNOWN'
-  lastChecked?: Date
+export interface SystemStatus {
+  backend: 'UP' | 'DOWN' | 'DEGRADED';
+  digitalSky: 'UP' | 'DOWN' | 'DEGRADED';
+  npntGateway: 'UP' | 'DOWN' | 'DEGRADED';
 }
 
-export function SystemStatusBar() {
-  const [statuses, setStatuses] = useState<APIStatus[]>([
-    { name: 'Digital Sky', status: 'UNKNOWN' },
-    { name: 'AAI AIM', status: 'UNKNOWN' },
-    { name: 'Jeppesen', status: 'UNKNOWN' },
-  ])
-  const cycle = getCurrentAIRACCycle()
+const STATUS_COLORS = { UP: '#22c55e', DOWN: '#ef4444', DEGRADED: '#eab308' };
 
-  useEffect(() => {
-    const check = () => {
-      // In production, HEAD requests to each endpoint
-      setStatuses([
-        { name: 'Digital Sky', status: 'ONLINE', lastChecked: new Date() },
-        { name: 'AAI AIM', status: 'ONLINE', lastChecked: new Date() },
-        { name: 'Jeppesen', status: 'OFFLINE', lastChecked: new Date() },
-      ])
-    }
-    check()
-    const interval = setInterval(check, 300000) // 5 min
-    return () => clearInterval(interval)
-  }, [])
+/**
+ * Compact status bar showing backend, DigitalSky, and NPNT gateway status.
+ */
+export function SystemStatusBar({ status }: { status?: SystemStatus }) {
+  const s = status ?? { backend: 'UP', digitalSky: 'UP', npntGateway: 'UP' };
 
-  const statusColor = (s: APIStatus['status']) =>
-    s === 'ONLINE' ? '#00C864' : s === 'OFFLINE' ? T.red : T.muted
+  const items: { label: string; value: 'UP' | 'DOWN' | 'DEGRADED' }[] = [
+    { label: 'Backend', value: s.backend },
+    { label: 'DigitalSky', value: s.digitalSky },
+    { label: 'NPNT Gateway', value: s.npntGateway },
+  ];
 
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.3rem 1rem',
-      background: T.surface, borderBottom: `1px solid ${T.border}`, fontSize: '0.6rem',
+      display: 'flex', gap: '1rem', padding: '0.4rem 0.8rem',
+      background: T.surface, borderBottom: `1px solid ${T.border}`,
+      fontSize: '0.6rem',
     }}>
-      {statuses.map(s => (
-        <span key={s.name} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: statusColor(s.status) }}>
-          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: statusColor(s.status), display: 'inline-block' }} />
-          {s.name}: {s.status}
+      {items.map(item => (
+        <span key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: STATUS_COLORS[item.value],
+          }} />
+          <span style={{ color: T.muted }}>{item.label}</span>
+          <span style={{ color: STATUS_COLORS[item.value], fontWeight: 600 }}>{item.value}</span>
         </span>
       ))}
-      <span style={{ color: T.primary, marginLeft: 'auto' }}>AIRAC: {cycle.cycleNumber}</span>
     </div>
-  )
+  );
 }

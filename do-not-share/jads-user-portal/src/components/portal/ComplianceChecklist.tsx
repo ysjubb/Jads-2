@@ -1,110 +1,152 @@
-import React, { useState } from 'react'
-import { T } from '../../theme'
-import type { ComplianceReport, ComplianceItem, ComplianceStatus } from '../../services/complianceEngine'
+import React, { useState } from 'react';
+import { T } from '../../theme';
+import { runDroneCompliance, runAircraftCompliance } from '../../services/complianceEngine';
+import { DRONE_RULES, AIRCRAFT_RULES } from '../../data/complianceRules';
+import type { ComplianceResult, OverallStatus } from '../../types/compliance';
 
-const STATUS_STYLE: Record<ComplianceStatus, { color: string; icon: string }> = {
-  PASS: { color: '#00C864', icon: 'PASS' },
-  FAIL: { color: T.red, icon: 'FAIL' },
-  WARN: { color: T.amber, icon: 'WARN' },
-  PENDING: { color: T.muted, icon: '...' },
-}
+const STATUS_COLORS: Record<string, string> = {
+  PASS: '#22c55e', FAIL: '#ef4444', WARNING: '#eab308', NOT_APPLICABLE: T.muted,
+};
 
-interface ComplianceChecklistProps {
-  report: ComplianceReport
-  role: 'PILOT' | 'DRONE_OPERATOR' | 'DISPATCHER' | 'ADMIN'
-  onProceed?: () => void
-  onCancel?: () => void
-}
+const OVERALL_COLORS: Record<OverallStatus, string> = {
+  COMPLIANT: '#22c55e', NON_COMPLIANT: '#ef4444', WARNINGS: '#eab308',
+};
 
-export function ComplianceChecklist({ report, role, onProceed, onCancel }: ComplianceChecklistProps) {
-  const [warnAcknowledged, setWarnAcknowledged] = useState<Set<string>>(new Set())
+/**
+ * Compliance checklist — run drone or aircraft compliance checks
+ * against DGCA/ICAO rules and display results.
+ */
+export function ComplianceChecklist() {
+  const [mode, setMode] = useState<'DRONE' | 'AIRCRAFT'>('DRONE');
+  const [results, setResults] = useState<ComplianceResult[]>([]);
+  const [overall, setOverall] = useState<OverallStatus | null>(null);
 
-  // Pilot/operator can override WARN items; ADMIN cannot override operational decisions
-  const canOverride = role === 'PILOT' || role === 'DRONE_OPERATOR' || role === 'DISPATCHER'
-  const allWarnsAcked = report.items
-    .filter(i => i.status === 'WARN')
-    .every(i => warnAcknowledged.has(i.ruleId))
-  const canProceed = report.failCount === 0 && (report.warnCount === 0 || allWarnsAcked)
+  const handleRunDrone = () => {
+    // Demo run with sample DroneMission
+    const report = runDroneCompliance({
+      id: 'demo-drone-001',
+      droneUIN: 'UA-12345678',
+      pilotRPL: 'RPL-DEMO-001',
+      missionType: 'VLOS',
+      operationZone: {
+        id: 'zone-demo', name: 'Demo Green Zone', type: 'GREEN',
+        boundary: [], altitudeFloor: 0, altitudeCeiling: 400,
+      },
+      altitude: 100,
+      startTime: new Date().toISOString(),
+      endTime: new Date(Date.now() + 3600000).toISOString(),
+      npntRequired: true,
+      status: 'PLANNED',
+    });
+    setResults(report.results);
+    setOverall(report.overallStatus);
+  };
+
+  const handleRunAircraft = () => {
+    const report = runAircraftCompliance({
+      id: 'demo-fpl-001',
+      callsign: 'VTABC',
+      aircraftType: 'B738',
+      departureAerodrome: 'VIDP',
+      destinationAerodrome: 'VABB',
+      route: 'AGRAS UR460 GUDUM',
+      cruisingLevel: 'F350',
+      cruisingSpeed: 'N0450',
+      eobt: '0930',
+      totalEET: '0145',
+      flightRules: 'I',
+      flightType: 'S',
+      equipment: 'SDFGHIRWY/LB1',
+      surveillance: 'B1',
+      field18Remarks: '',
+      status: 'DRAFT',
+    });
+    setResults(report.results);
+    setOverall(report.overallStatus);
+  };
+
+  const rules = mode === 'DRONE' ? DRONE_RULES : AIRCRAFT_RULES;
 
   return (
-    <div style={{ padding: '1rem', background: T.surface, border: `1px solid ${T.border}`, borderRadius: '6px' }}>
-      <h3 style={{ color: T.textBright, fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-        Pre-Flight Compliance Check
-      </h3>
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', fontSize: '0.65rem' }}>
-        <span style={{ color: '#00C864' }}>Pass: {report.passCount}</span>
-        <span style={{ color: T.amber }}>Warn: {report.warnCount}</span>
-        <span style={{ color: T.red }}>Fail: {report.failCount}</span>
-      </div>
+    <div>
+      <h2 style={{ color: T.textBright, fontSize: '0.9rem', marginBottom: '0.8rem' }}>Compliance Engine</h2>
 
-      {report.items.map(item => {
-        const s = STATUS_STYLE[item.status]
-        const isWarn = item.status === 'WARN'
-        const isAcked = warnAcknowledged.has(item.ruleId)
-
-        return (
-          <div key={item.ruleId} style={{
-            display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
-            padding: '0.4rem 0', borderBottom: `1px solid ${T.border}`,
-          }}>
-            <span style={{
-              fontSize: '0.6rem', fontWeight: 700, color: s.color,
-              minWidth: '35px', textAlign: 'center',
-            }}>{s.icon}</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.7rem', color: T.textBright }}>
-                {item.label}
-                {item.category && <span style={{ color: T.muted, fontSize: '0.55rem', marginLeft: '0.5rem' }}>({item.category})</span>}
-              </div>
-              <div style={{ fontSize: '0.6rem', color: T.muted }}>{item.detail}</div>
-              {item.status === 'FAIL' && item.fixGuidance && (
-                <div style={{ fontSize: '0.55rem', color: T.red, marginTop: '0.15rem' }}>Fix: {item.fixGuidance}</div>
-              )}
-              {item.dgcaReference && (
-                <div style={{ fontSize: '0.5rem', color: T.muted }}>Ref: {item.dgcaReference}</div>
-              )}
-            </div>
-            {isWarn && canOverride && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.55rem', color: T.amber }}>
-                <input type="checkbox" checked={isAcked}
-                  onChange={e => {
-                    setWarnAcknowledged(s => {
-                      const next = new Set(s)
-                      e.target.checked ? next.add(item.ruleId) : next.delete(item.ruleId)
-                      return next
-                    })
-                  }} />
-                Acknowledge
-              </label>
-            )}
-          </div>
-        )
-      })}
-
-      <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-        {onCancel && (
-          <button onClick={onCancel} style={{
-            padding: '0.4rem 1rem', background: 'transparent', border: `1px solid ${T.border}`,
-            borderRadius: '4px', color: T.muted, cursor: 'pointer', fontSize: '0.7rem', fontFamily: 'inherit',
-          }}>Cancel</button>
-        )}
-        {onProceed && (
-          <button onClick={onProceed} disabled={!canProceed} style={{
-            padding: '0.4rem 1rem', background: canProceed ? T.primary : T.muted,
-            border: 'none', borderRadius: '4px', color: '#fff',
-            cursor: canProceed ? 'pointer' : 'default', fontSize: '0.7rem', fontWeight: 600, fontFamily: 'inherit',
-          }}>
-            {report.failCount > 0 ? 'Cannot Proceed (Fix Failures)' :
-             !allWarnsAcked ? 'Acknowledge Warnings to Proceed' : 'Proceed — Submit to Approving Authority'}
+      {/* Mode toggle */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+        {(['DRONE', 'AIRCRAFT'] as const).map(m => (
+          <button
+            key={m}
+            onClick={() => { setMode(m); setResults([]); setOverall(null); }}
+            style={{
+              padding: '0.4rem 0.8rem', borderRadius: '4px', fontSize: '0.7rem', cursor: 'pointer',
+              background: mode === m ? T.primary + '25' : 'transparent',
+              border: `1px solid ${mode === m ? T.primary : T.border}`,
+              color: mode === m ? T.primary : T.muted,
+            }}
+          >
+            {m}
           </button>
-        )}
+        ))}
       </div>
 
-      <p style={{ fontSize: '0.5rem', color: T.muted, marginTop: '0.5rem', fontStyle: 'italic' }}>
-        {canOverride
-          ? 'As filing authority, you may acknowledge WARN items. Approving authority makes the final decision.'
-          : 'Only the filing pilot/operator can acknowledge warnings.'}
-      </p>
+      {/* Rules list */}
+      <div style={{ marginBottom: '1rem' }}>
+        <span style={{ color: T.muted, fontSize: '0.65rem' }}>{rules.length} rules loaded</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginTop: '0.4rem' }}>
+          {rules.map(r => {
+            const result = results.find(res => res.ruleId === r.id);
+            return (
+              <div key={r.id} style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.6rem',
+                background: T.surface, border: `1px solid ${T.border}`, borderRadius: '4px',
+              }}>
+                {result ? (
+                  <span style={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: STATUS_COLORS[result.status], flexShrink: 0,
+                  }} />
+                ) : (
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', border: `1px solid ${T.muted}`, flexShrink: 0 }} />
+                )}
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: T.textBright, fontSize: '0.7rem' }}>{r.name}</div>
+                  <div style={{ color: T.muted, fontSize: '0.6rem' }}>{r.regulation}</div>
+                </div>
+                <span style={{
+                  fontSize: '0.55rem', padding: '1px 4px', borderRadius: '2px',
+                  color: r.severity === 'CRITICAL' ? T.red : r.severity === 'HIGH' ? T.amber : T.muted,
+                  background: (r.severity === 'CRITICAL' ? T.red : r.severity === 'HIGH' ? T.amber : T.muted) + '15',
+                }}>
+                  {r.severity}
+                </span>
+                {result && <span style={{ color: STATUS_COLORS[result.status], fontSize: '0.6rem', fontWeight: 600 }}>{result.status}</span>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Run button */}
+      <button
+        onClick={mode === 'DRONE' ? handleRunDrone : handleRunAircraft}
+        style={{
+          background: T.primary + '20', border: `1px solid ${T.primary}40`, borderRadius: '4px',
+          color: T.primary, padding: '0.5rem 1.2rem', fontSize: '0.75rem', cursor: 'pointer',
+        }}
+      >
+        Run {mode} Compliance Check
+      </button>
+
+      {/* Overall status */}
+      {overall && (
+        <div style={{
+          marginTop: '0.8rem', padding: '0.5rem 0.8rem', borderRadius: '4px',
+          background: OVERALL_COLORS[overall] + '15', border: `1px solid ${OVERALL_COLORS[overall]}40`,
+          color: OVERALL_COLORS[overall], fontSize: '0.8rem', fontWeight: 700,
+        }}>
+          {overall}
+        </div>
+      )}
     </div>
-  )
+  );
 }

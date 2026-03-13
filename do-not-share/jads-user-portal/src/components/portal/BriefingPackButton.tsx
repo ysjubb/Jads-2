@@ -1,113 +1,62 @@
-import React, { useState } from 'react'
-import { T } from '../../theme'
-import { generateBriefingPack, formatBriefingText } from '../../services/briefingPackService'
-import type { BriefingPack } from '../../services/briefingPackService'
-import type { ICAOFlightPlan } from '../../types/flightPlan'
+import React, { useState } from 'react';
+import { T } from '../../theme';
+import { formatNotamBriefing } from '../../services/notamService';
+import { getCurrentAIRACCycle } from '../../services/chartService';
+import { getActiveNotams } from '../../data/sampleNotams';
 
-interface BriefingPackButtonProps {
-  flightPlan: Partial<ICAOFlightPlan>
-}
+/**
+ * One-click pre-flight briefing pack generator.
+ * Compiles NOTAMs, AIRAC status, and weather placeholder into a single briefing.
+ */
+export function BriefingPackButton({ route, departure }: { route?: string; departure?: string }) {
+  const [generated, setGenerated] = useState(false);
 
-const SEV_COLOR = { INFO: T.primary, CAUTION: T.amber, WARNING: T.red }
+  const handleGenerate = () => {
+    const notams = departure
+      ? getActiveNotams().filter(n => n.icaoLocation === departure)
+      : getActiveNotams();
+    const { cycle } = getCurrentAIRACCycle();
+    const notamBriefing = formatNotamBriefing(notams);
 
-export function BriefingPackButton({ flightPlan }: BriefingPackButtonProps) {
-  const [pack, setPack] = useState<BriefingPack | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [showModal, setShowModal] = useState(false)
+    const briefing = [
+      `=== PRE-FLIGHT BRIEFING PACK ===`,
+      `Generated: ${new Date().toISOString()}`,
+      `AIRAC Cycle: ${cycle}`,
+      route ? `Route: ${route}` : '',
+      departure ? `Departure: ${departure}` : '',
+      '',
+      notamBriefing,
+      '',
+      '=== WEATHER ===',
+      'METAR/TAF: Check current weather from authorized source.',
+      '',
+      '=== END BRIEFING PACK ===',
+    ].filter(Boolean).join('\n');
 
-  const generate = async () => {
-    setLoading(true)
-    const p = await generateBriefingPack(flightPlan)
-    setPack(p)
-    setLoading(false)
-    setShowModal(true)
-  }
-
-  const downloadText = () => {
-    if (!pack) return
-    const text = formatBriefingText(pack)
-    const blob = new Blob([text], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `briefing-${pack.flightRef}.txt`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+    // Download as text file
+    const blob = new Blob([briefing], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `briefing-${departure ?? 'pack'}-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setGenerated(true);
+    setTimeout(() => setGenerated(false), 3000);
+  };
 
   return (
-    <>
-      <button
-        onClick={generate}
-        disabled={loading}
-        style={{
-          padding: '6px 14px', fontSize: '0.7rem', fontWeight: 600,
-          background: T.primary + '20', color: T.primary,
-          border: `1px solid ${T.primary}40`, borderRadius: '3px', cursor: 'pointer',
-        }}
-      >
-        {loading ? 'Generating...' : 'Generate Briefing Pack'}
-      </button>
-
-      {showModal && pack && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 9999,
-          background: 'rgba(0,0,0,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setShowModal(false)}>
-          <div
-            style={{
-              background: T.surface, border: `1px solid ${T.border}`,
-              borderRadius: '6px', padding: '1.5rem', maxWidth: '650px',
-              width: '90%', maxHeight: '80vh', overflow: 'auto',
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ color: T.textBright, fontSize: '0.9rem', margin: 0 }}>
-                Pre-Flight Briefing Pack
-              </h3>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={downloadText} style={{
-                  padding: '4px 10px', fontSize: '0.6rem', background: T.primary + '20',
-                  color: T.primary, border: `1px solid ${T.primary}40`, borderRadius: '3px', cursor: 'pointer',
-                }}>
-                  Download TXT
-                </button>
-                <button onClick={() => setShowModal(false)} style={{
-                  padding: '4px 10px', fontSize: '0.6rem', background: T.red + '20',
-                  color: T.red, border: `1px solid ${T.red}40`, borderRadius: '3px', cursor: 'pointer',
-                }}>
-                  Close
-                </button>
-              </div>
-            </div>
-
-            <div style={{ fontSize: '0.65rem', color: T.muted, marginBottom: '0.75rem' }}>
-              Flight: {pack.flightRef} | Generated: {new Date(pack.generatedAt).toUTCString()}
-              {' | '}
-              Status: <span style={{
-                color: pack.complianceStatus === 'PASS' ? T.primary : pack.complianceStatus === 'WARN' ? T.amber : T.red,
-                fontWeight: 700,
-              }}>{pack.complianceStatus}</span>
-            </div>
-
-            {pack.sections.map((s, i) => (
-              <div key={i} style={{
-                padding: '0.5rem', marginBottom: '0.4rem',
-                background: T.bg, border: `1px solid ${T.border}`,
-                borderLeft: `3px solid ${SEV_COLOR[s.severity]}`,
-                borderRadius: '3px',
-              }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 600, color: SEV_COLOR[s.severity], marginBottom: '3px' }}>
-                  {s.title}
-                </div>
-                <div style={{ fontSize: '0.65rem', color: T.text }}>{s.content}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </>
-  )
+    <button
+      onClick={handleGenerate}
+      style={{
+        background: generated ? '#22c55e20' : T.primary + '20',
+        border: `1px solid ${generated ? '#22c55e40' : T.primary + '40'}`,
+        borderRadius: '4px', color: generated ? '#22c55e' : T.primary,
+        padding: '0.5rem 1rem', fontSize: '0.75rem', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: '0.4rem',
+      }}
+    >
+      {generated ? 'Downloaded' : 'Generate Briefing Pack'}
+    </button>
+  );
 }

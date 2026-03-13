@@ -39,6 +39,10 @@ async function main() {
       elevationFt:          entry.elevation,
       name:                 entry.name,
       firCode:              deriveFir(entry.icao),
+      latDeg:               entry.latDeg,
+      lonDeg:               entry.lonDeg,
+      latitudeDeg:          entry.latDeg,
+      longitudeDeg:         entry.lonDeg,
     }
 
     if (existing) {

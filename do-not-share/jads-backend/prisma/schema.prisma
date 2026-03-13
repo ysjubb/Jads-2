@@ -523,6 +523,13 @@ model DroneMission {
   uinNumber               String?             // UIN for micro+ categories
   npntExempt              Boolean             @default(false) // true for nano drones
 
+  // ── Record count validation (CC-1-01) ──
+  expectedRecordCount     Int?                // declared by device at upload; null for legacy missions
+
+  // ── CRL freshness metadata (C1-04) ──
+  crlArchivedAtUtcMs      String?             // timestamp when CRL was captured at upload
+  crlThisUpdateUtcMs      String?             // CRL thisUpdate field (RFC 5280) parsed at upload
+
   // ── Phase 1 PQC (ML-DSA-65, FIPS 204) ──
   pqcPublicKeyHex         String?             // ML-DSA-65 public key for hybrid verification
 

@@ -1,153 +1,82 @@
-import React, { useState, useMemo } from 'react'
-import { T } from '../../theme'
-import { AIRCRAFT_PERFORMANCE, getPerformance } from '../../data/performanceData'
-import type { AircraftPerformance } from '../../data/performanceData'
+import React, { useState } from 'react';
+import { T } from '../../theme';
 
-interface WeightBalanceProps {
-  aircraftType?: string
-  onResult?: (result: WBResult) => void
+interface WBEntry {
+  label: string;
+  weight: number;
+  arm: number;
 }
 
-interface WBResult {
-  oew: number
-  payload: number
-  zfw: number
-  fuelOnBoard: number
-  tow: number
-  landingWeight: number
-  towExceeded: boolean
-  ldgExceeded: boolean
-  zfwExceeded: boolean
-  cgInEnvelope: boolean
-}
+/**
+ * Simple weight & balance calculator.
+ * Computes total weight, CG position, and moment.
+ */
+export function WeightBalance() {
+  const [entries, setEntries] = useState<WBEntry[]>([
+    { label: 'Empty Weight', weight: 0, arm: 0 },
+    { label: 'Fuel', weight: 0, arm: 0 },
+    { label: 'Pilot', weight: 0, arm: 0 },
+    { label: 'Payload', weight: 0, arm: 0 },
+  ]);
 
-export function WeightBalance({ aircraftType, onResult }: WeightBalanceProps) {
-  const [selectedType, setSelectedType] = useState(aircraftType ?? 'A320')
-  const [paxCount, setPaxCount] = useState(150)
-  const [paxAvgKg, setPaxAvgKg] = useState(82)
-  const [cargoKg, setCargoKg] = useState(2000)
-  const [fuelKg, setFuelKg] = useState(12000)
-  const [burnoffKg, setBurnoffKg] = useState(8000)
+  const updateEntry = (idx: number, field: keyof WBEntry, value: string) => {
+    setEntries(prev => prev.map((e, i) =>
+      i === idx ? { ...e, [field]: field === 'label' ? value : parseFloat(value) || 0 } : e
+    ));
+  };
 
-  const perf = useMemo(() => getPerformance(selectedType), [selectedType])
+  const totalWeight = entries.reduce((s, e) => s + e.weight, 0);
+  const totalMoment = entries.reduce((s, e) => s + e.weight * e.arm, 0);
+  const cg = totalWeight > 0 ? totalMoment / totalWeight : 0;
 
-  const result = useMemo((): WBResult | null => {
-    if (!perf) return null
-    const oew = perf.operatingEmptyWeight
-    const payload = (paxCount * paxAvgKg) + cargoKg
-    const zfw = oew + payload
-    const tow = zfw + fuelKg
-    const landingWeight = tow - burnoffKg
-
-    const r: WBResult = {
-      oew,
-      payload,
-      zfw,
-      fuelOnBoard: fuelKg,
-      tow,
-      landingWeight,
-      towExceeded: tow > perf.maxTakeoffWeight,
-      ldgExceeded: landingWeight > perf.maxLandingWeight,
-      zfwExceeded: zfw > perf.maxZeroFuelWeight,
-      cgInEnvelope: true, // simplified
-    }
-    onResult?.(r)
-    return r
-  }, [perf, paxCount, paxAvgKg, cargoKg, fuelKg, burnoffKg, onResult])
-
-  const row = (label: string, value: number | string, limit?: number, exceeded?: boolean) => (
-    <div style={{
-      display: 'flex', justifyContent: 'space-between', padding: '4px 0',
-      borderBottom: `1px solid ${T.border}08`, fontSize: '0.7rem',
-    }}>
-      <span style={{ color: T.muted }}>{label}</span>
-      <span style={{ color: exceeded ? T.red : T.textBright, fontWeight: exceeded ? 700 : 400 }}>
-        {typeof value === 'number' ? value.toLocaleString() + ' kg' : value}
-        {limit ? <span style={{ color: T.muted, fontSize: '0.6rem' }}> / {limit.toLocaleString()}</span> : ''}
-        {exceeded && ' EXCEEDED'}
-      </span>
-    </div>
-  )
+  const inputStyle: React.CSSProperties = {
+    background: T.bg, border: `1px solid ${T.border}`, borderRadius: '3px',
+    color: T.textBright, padding: '0.3rem 0.5rem', fontSize: '0.7rem', width: '100%',
+  };
 
   return (
-    <div style={{
-      background: T.surface, border: `1px solid ${T.border}`,
-      borderRadius: '4px', padding: '1rem',
-    }}>
-      <h3 style={{ color: T.textBright, fontSize: '0.85rem', margin: '0 0 0.75rem' }}>
-        Weight & Balance
-      </h3>
-      <p style={{ color: T.muted, fontSize: '0.6rem', marginBottom: '0.75rem' }}>
-        Filing authority controls all W&B data. No admin override.
-      </p>
+    <div>
+      <h2 style={{ color: T.textBright, fontSize: '0.9rem', marginBottom: '0.8rem' }}>Weight & Balance</h2>
 
-      {/* Aircraft selector */}
-      <div style={{ marginBottom: '0.75rem' }}>
-        <label style={{ color: T.muted, fontSize: '0.65rem', display: 'block', marginBottom: '2px' }}>Aircraft Type</label>
-        <select
-          value={selectedType}
-          onChange={e => setSelectedType(e.target.value)}
-          style={{
-            width: '100%', padding: '6px', background: T.bg, color: T.textBright,
-            border: `1px solid ${T.border}`, borderRadius: '3px', fontSize: '0.7rem',
-          }}
-        >
-          {AIRCRAFT_PERFORMANCE.map(a => (
-            <option key={a.icaoType} value={a.icaoType}>{a.icaoType} — {a.name}</option>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.7rem', marginBottom: '0.8rem' }}>
+        <thead>
+          <tr style={{ borderBottom: `1px solid ${T.border}`, color: T.muted }}>
+            <th style={{ padding: '0.3rem', textAlign: 'left' }}>Item</th>
+            <th style={{ padding: '0.3rem', textAlign: 'right' }}>Weight (kg)</th>
+            <th style={{ padding: '0.3rem', textAlign: 'right' }}>Arm (m)</th>
+            <th style={{ padding: '0.3rem', textAlign: 'right' }}>Moment</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((e, i) => (
+            <tr key={i} style={{ borderBottom: `1px solid ${T.border}10` }}>
+              <td style={{ padding: '0.3rem' }}>
+                <input style={inputStyle} value={e.label} onChange={ev => updateEntry(i, 'label', ev.target.value)} />
+              </td>
+              <td style={{ padding: '0.3rem' }}>
+                <input style={{ ...inputStyle, textAlign: 'right' }} type="number" value={e.weight || ''} onChange={ev => updateEntry(i, 'weight', ev.target.value)} />
+              </td>
+              <td style={{ padding: '0.3rem' }}>
+                <input style={{ ...inputStyle, textAlign: 'right' }} type="number" value={e.arm || ''} onChange={ev => updateEntry(i, 'arm', ev.target.value)} />
+              </td>
+              <td style={{ padding: '0.3rem', textAlign: 'right', color: T.text }}>{(e.weight * e.arm).toFixed(1)}</td>
+            </tr>
           ))}
-        </select>
+        </tbody>
+        <tfoot>
+          <tr style={{ borderTop: `1px solid ${T.border}` }}>
+            <td style={{ padding: '0.3rem', color: T.textBright, fontWeight: 600 }}>Total</td>
+            <td style={{ padding: '0.3rem', textAlign: 'right', color: T.primary, fontWeight: 600 }}>{totalWeight.toFixed(1)}</td>
+            <td style={{ padding: '0.3rem', textAlign: 'right', color: T.muted }}></td>
+            <td style={{ padding: '0.3rem', textAlign: 'right', color: T.primary, fontWeight: 600 }}>{totalMoment.toFixed(1)}</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: '4px', padding: '0.6rem' }}>
+        <span style={{ color: T.muted, fontSize: '0.65rem' }}>CG Position: </span>
+        <span style={{ color: T.primary, fontSize: '0.8rem', fontWeight: 700 }}>{cg.toFixed(3)}m</span>
       </div>
-
-      {/* Input fields */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
-        {[
-          { label: 'Passengers', value: paxCount, set: setPaxCount, min: 0, max: 500 },
-          { label: 'Avg Pax Weight (kg)', value: paxAvgKg, set: setPaxAvgKg, min: 50, max: 120 },
-          { label: 'Cargo (kg)', value: cargoKg, set: setCargoKg, min: 0, max: 50000 },
-          { label: 'Fuel on Board (kg)', value: fuelKg, set: setFuelKg, min: 0, max: perf?.maxFuelCapacity ?? 30000 },
-          { label: 'Fuel Burnoff (kg)', value: burnoffKg, set: setBurnoffKg, min: 0, max: fuelKg },
-        ].map(f => (
-          <div key={f.label}>
-            <label style={{ color: T.muted, fontSize: '0.6rem', display: 'block', marginBottom: '2px' }}>{f.label}</label>
-            <input
-              type="number"
-              value={f.value}
-              onChange={e => f.set(Number(e.target.value))}
-              min={f.min}
-              max={f.max}
-              style={{
-                width: '100%', padding: '5px', background: T.bg, color: T.textBright,
-                border: `1px solid ${T.border}`, borderRadius: '3px', fontSize: '0.7rem',
-              }}
-            />
-          </div>
-        ))}
-      </div>
-
-      {/* Results */}
-      {result && perf && (
-        <div style={{
-          background: T.bg, border: `1px solid ${T.border}`,
-          borderRadius: '3px', padding: '0.5rem',
-        }}>
-          {row('Operating Empty Weight', result.oew)}
-          {row('Payload (Pax + Cargo)', result.payload)}
-          {row('Zero Fuel Weight', result.zfw, perf.maxZeroFuelWeight, result.zfwExceeded)}
-          {row('Fuel on Board', result.fuelOnBoard, perf.maxFuelCapacity)}
-          {row('Takeoff Weight', result.tow, perf.maxTakeoffWeight, result.towExceeded)}
-          {row('Landing Weight', result.landingWeight, perf.maxLandingWeight, result.ldgExceeded)}
-
-          {(result.towExceeded || result.ldgExceeded || result.zfwExceeded) && (
-            <div style={{
-              marginTop: '0.5rem', padding: '6px', background: T.red + '15',
-              border: `1px solid ${T.red}40`, borderRadius: '3px',
-              color: T.red, fontSize: '0.65rem', fontWeight: 600,
-            }}>
-              WEIGHT LIMIT EXCEEDED — Reduce payload or fuel before filing.
-            </div>
-          )}
-        </div>
-      )}
     </div>
-  )
+  );
 }

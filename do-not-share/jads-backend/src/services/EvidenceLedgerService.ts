@@ -108,6 +108,25 @@ export class EvidenceLedgerService {
     return crypto.randomBytes(8)
   }
 
+  /**
+   * Copy a Buffer or Uint8Array into a fresh ArrayBuffer.
+   *
+   * Node.js pools Buffer allocations, so `buf.buffer` may return an
+   * oversized ArrayBuffer shared across multiple Buffers — and TypeScript
+   * types it as `ArrayBuffer | SharedArrayBuffer`.  asn1js.fromBER()
+   * expects `ArrayBuffer | ArrayBufferView`, so the SharedArrayBuffer
+   * union member is rejected by the compiler.
+   *
+   * This method allocates a correctly-sized ArrayBuffer and copies the
+   * source bytes into it, guaranteeing a plain ArrayBuffer with no
+   * SharedArrayBuffer ambiguity and no excess bytes from pooled allocation.
+   */
+  private static toArrayBuffer(data: Uint8Array): ArrayBuffer {
+    const ab = new ArrayBuffer(data.byteLength)
+    new Uint8Array(ab).set(data)
+    return ab
+  }
+
   // ─── RFC 3161 TimeStampReq builder ───────────────────────────────────
 
   private buildTsRequest(hashHex: string): Buffer {
@@ -198,10 +217,7 @@ export class EvidenceLedgerService {
     serialNumber: string
   } {
     try {
-      const arrayBuffer = responseBuffer.buffer.slice(
-        responseBuffer.byteOffset,
-        responseBuffer.byteOffset + responseBuffer.byteLength
-      )
+      const arrayBuffer = EvidenceLedgerService.toArrayBuffer(responseBuffer)
       const asn1 = asn1js.fromBER(arrayBuffer)
       if (asn1.offset === -1) {
         throw new Error('Invalid ASN.1 data')
@@ -223,16 +239,9 @@ export class EvidenceLedgerService {
         throw new Error('TSA response missing timeStampToken')
       }
       const contentInfo = tsResp.valueBlock.value[1]
-      const tokenStart = contentInfo.valueBeforeDecode
-        ? contentInfo.valueBeforeDecode.byteOffset
-        : (contentInfo as any).valueBeforeDecodeView
-          ? (contentInfo as any).valueBeforeDecodeView.byteOffset
-          : 0
-
       // Get raw DER of the ContentInfo
-      let tokenDer: Buffer
       const contentBER = contentInfo.toBER(false)
-      tokenDer = Buffer.from(contentBER)
+      const tokenDer = Buffer.from(contentBER)
 
       // Navigate into ContentInfo → SignedData → encapContentInfo → eContent → TSTInfo
       const ciSeq = contentInfo as asn1js.Sequence
@@ -248,10 +257,7 @@ export class EvidenceLedgerService {
 
       // Parse TSTInfo from eContent
       const tstInfoBuf = eContentOctet.valueBlock.valueHexView
-      const tstInfoAsn1 = asn1js.fromBER(tstInfoBuf.buffer.slice(
-        tstInfoBuf.byteOffset,
-        tstInfoBuf.byteOffset + tstInfoBuf.byteLength
-      ))
+      const tstInfoAsn1 = asn1js.fromBER(EvidenceLedgerService.toArrayBuffer(tstInfoBuf))
       const tstInfo = tstInfoAsn1.result as asn1js.Sequence
 
       // TSTInfo: version, policy, messageImprint, serialNumber, genTime, ...
@@ -379,10 +385,7 @@ export class EvidenceLedgerService {
       const tokenDer = Buffer.from(row.rfc3161TimestampToken, 'base64')
 
       // Parse the ContentInfo (TimeStampToken) to extract TSTInfo
-      const arrayBuffer = tokenDer.buffer.slice(
-        tokenDer.byteOffset,
-        tokenDer.byteOffset + tokenDer.byteLength
-      )
+      const arrayBuffer = EvidenceLedgerService.toArrayBuffer(tokenDer)
       const asn1 = asn1js.fromBER(arrayBuffer)
       if (asn1.offset === -1) {
         return { verified: false, reason: 'INVALID_ASN1' }
@@ -397,10 +400,7 @@ export class EvidenceLedgerService {
       const eContentOctet = eContentWrapped.valueBlock.value[0] as asn1js.OctetString
 
       const tstInfoBuf = eContentOctet.valueBlock.valueHexView
-      const tstInfoAsn1 = asn1js.fromBER(tstInfoBuf.buffer.slice(
-        tstInfoBuf.byteOffset,
-        tstInfoBuf.byteOffset + tstInfoBuf.byteLength
-      ))
+      const tstInfoAsn1 = asn1js.fromBER(EvidenceLedgerService.toArrayBuffer(tstInfoBuf))
       const tstInfo = tstInfoAsn1.result as asn1js.Sequence
 
       // TSTInfo: version, policy, messageImprint, serialNumber, genTime

@@ -1,83 +1,45 @@
-export type FlightRules = 'I' | 'V' | 'Y' | 'Z'
-export type FlightType = 'S' | 'N' | 'G' | 'M' | 'X'
-export type WakeTurbulence = 'J' | 'H' | 'M' | 'L'
+import type { AirspaceZone } from './airspace';
 
-export type EquipmentCode = 'S' | 'G' | 'R' | 'D' | 'O' | 'Z' | 'W'
-export type SSRCode = 'N' | 'A' | 'C' | 'S'
-export type ADSBCode = 'B1' | 'B2' | 'U1' | 'U2' | 'V1' | 'V2'
+export type FlightRules = 'I' | 'V' | 'Y' | 'Z';
+export type FlightType = 'S' | 'N' | 'G' | 'M' | 'X';
+export type FlightPlanStatus = 'DRAFT' | 'FILED' | 'APPROVED' | 'REJECTED';
+export type MissionType = 'VLOS' | 'EVLOS' | 'BVLOS';
+export type DroneMissionStatus = 'PLANNED' | 'APPROVED' | 'IN_FLIGHT' | 'COMPLETED';
 
-export type Field18Key = 'PBN' | 'STS' | 'REG' | 'EET' | 'RMK' | 'OPR' | 'PER' | 'CODE' | 'SEL' | 'DOF' | 'DEP' | 'DEST' | 'ALTN'
-
-export interface ICAOFlightPlan {
-  // Field 7
-  aircraftId: string
-  callsignType: 'FORMAT_A' | 'FORMAT_C' | 'NUMERIC' | 'ZZZZ'
-  resolvedTelephony?: string
-  // Field 8
-  flightRules: FlightRules
-  flightType: FlightType
-  // Field 9
-  aircraftType: string
-  wakeTurbulence: WakeTurbulence
-  // Field 10
-  equipment: EquipmentCode[]
-  ssr: SSRCode
-  adsb: ADSBCode[]
-  // Field 13
-  departureAerodrome: string
-  eobt: string // HHMM
-  // Field 15
-  route: string
-  cruisingSpeed: string
-  cruisingLevel: string
-  // Field 16
-  destinationAerodrome: string
-  eet: string // HHMM
-  alternate1: string
-  alternate2: string
-  // Field 18
-  field18: Record<Field18Key, string>
-  // Field 19
-  endurance: string // HHMM
-  personsOnBoard: number
-  eltType: string
-  pilotName: string
-  pilotContact: string
-  organization: string
+export interface FlightPlan {
+  id: string;
+  callsign: string;
+  aircraftType: string;
+  /** ICAO 4-character code */
+  departureAerodrome: string;
+  /** ICAO 4-character code */
+  destinationAerodrome: string;
+  alternateAerodrome?: string;
+  route: string;
+  cruisingLevel: string;
+  cruisingSpeed: string;
+  /** HHMM format */
+  eobt: string;
+  /** HHMM format */
+  totalEET: string;
+  flightRules: FlightRules;
+  flightType: FlightType;
+  equipment: string;
+  surveillance: string;
+  field18Remarks: string;
+  status: FlightPlanStatus;
 }
 
-export interface CallsignResolution {
-  type: 'FORMAT_A' | 'FORMAT_C' | 'NUMERIC' | 'ZZZZ'
-  transmitted: string
-  telephony?: string
-  airline?: string
-  isDefunct?: boolean
-  defunctNote?: string
-  warning?: string
-  field18Remark?: string
-}
-
-export interface AerodromeInfo {
-  icao: string
-  name: string
-  city: string
-  lat: number
-  lon: number
-  elevation: number
-  fir: string
-}
-
-export interface AircraftTypeInfo {
-  icao: string
-  name: string
-  wake: WakeTurbulence
-}
-
-export interface AirlineInfo {
-  icao3ld: string
-  name: string
-  telephony: string
-  country: string
-  defunct?: boolean
-  defunctNote?: string
+export interface DroneMission {
+  id: string;
+  droneUIN: string;
+  pilotRPL: string;
+  missionType: MissionType;
+  operationZone: AirspaceZone;
+  /** Meters AGL */
+  altitude: number;
+  startTime: string;
+  endTime: string;
+  npntRequired: boolean;
+  status: DroneMissionStatus;
 }

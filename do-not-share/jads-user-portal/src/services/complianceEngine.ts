@@ -1,206 +1,194 @@
-import type { ICAOFlightPlan } from '../types/flightPlan'
-import { findAircraftType, findAerodrome, findAirline } from '../data/icaoData'
-import { getCurrentAIRACCycle } from './chartService'
+import type { ComplianceReport, ComplianceResult } from '../types/compliance';
+import type { DroneMission, FlightPlan } from '../types/flightPlan';
+import { DRONE_RULES, AIRCRAFT_RULES } from '../data/complianceRules';
 
-export type ComplianceStatus = 'PASS' | 'FAIL' | 'WARN' | 'PENDING'
+export function runDroneCompliance(mission: DroneMission): ComplianceReport {
+  const results: ComplianceResult[] = [];
 
-export interface ComplianceItem {
-  ruleId: string
-  category: string
-  label: string
-  status: ComplianceStatus
-  detail: string
-  dgcaReference?: string
-  fixGuidance?: string
-}
-
-export interface ComplianceReport {
-  items: ComplianceItem[]
-  overallStatus: ComplianceStatus
-  failCount: number
-  warnCount: number
-  passCount: number
-}
-
-// ── Drone Pre-Flight Compliance ────────────────────────────────────────────────
-// Pilot/operator has override on WARN items (not ADMIN)
-export function checkDroneCompliance(params: {
-  droneCategory: string
-  zoneType: string
-  uaopExpiry: string
-  rplValid: boolean
-  npntLevel: number
-  maxAltAGL: number
-  insuranceValid: boolean
-  bvlosEnabled: boolean
-  bvlosAuthExists: boolean
-  proximityOk: boolean
-}): ComplianceReport {
-  const items: ComplianceItem[] = []
-
-  // ZONE_ELIGIBILITY
-  const zoneOk = params.zoneType !== 'RED' && !(params.droneCategory === 'NANO' && params.zoneType !== 'GREEN')
-  items.push({
-    ruleId: 'ZONE_ELIGIBILITY', category: 'Airspace', label: 'Zone Eligibility',
-    status: zoneOk ? 'PASS' : 'FAIL',
-    detail: zoneOk ? `${params.droneCategory} drone allowed in ${params.zoneType} zone` : `${params.droneCategory} drone NOT allowed in ${params.zoneType} zone`,
-    dgcaReference: 'Drone Rules 2021 Rule 12',
-    fixGuidance: 'Select a compatible airspace zone for your drone category',
-  })
-
-  // UAOP_VALIDITY
-  const uaopDays = Math.floor((new Date(params.uaopExpiry).getTime() - Date.now()) / 86400000)
-  items.push({
-    ruleId: 'UAOP_VALIDITY', category: 'Licensing', label: 'UAOP Validity',
-    status: uaopDays < 0 ? 'FAIL' : uaopDays < 30 ? 'WARN' : 'PASS',
-    detail: uaopDays < 0 ? 'UAOP expired' : `UAOP valid (${uaopDays} days remaining)`,
-    dgcaReference: 'Drone Rules 2021 Rule 10',
-    fixGuidance: 'Renew UAOP before expiry',
-  })
-
-  // RPL_CURRENCY
-  items.push({
-    ruleId: 'RPL_CURRENCY', category: 'Licensing', label: 'RPL Currency',
-    status: params.rplValid ? 'PASS' : 'FAIL',
-    detail: params.rplValid ? 'Remote Pilot Licence current' : 'RPL expired or not found',
-    dgcaReference: 'Drone Rules 2021 Rule 11',
-  })
-
-  // NPNT_HARDWARE
-  const npntOk = params.npntLevel >= 2 || params.zoneType === 'GREEN'
-  items.push({
-    ruleId: 'NPNT_HARDWARE', category: 'Equipment', label: 'NPNT Hardware',
-    status: npntOk ? 'PASS' : 'FAIL',
-    detail: npntOk ? `NPNT Level ${params.npntLevel} compliant` : 'NPNT v2 required for Yellow zone operations',
-    dgcaReference: 'DGCA CAR Section 7 Series X Part I',
-  })
-
-  // ALTITUDE_LIMIT
-  const altLimit = params.zoneType === 'GREEN' ? 400 : 200
-  items.push({
-    ruleId: 'ALTITUDE_LIMIT', category: 'Operations', label: 'Altitude Limit',
-    status: params.maxAltAGL <= altLimit ? 'PASS' : 'WARN',
-    detail: `Max ${params.maxAltAGL}ft vs limit ${altLimit}ft for ${params.zoneType} zone`,
-    dgcaReference: 'Drone Rules 2021 Rule 36',
-  })
-
-  // INSURANCE_STATUS
-  items.push({
-    ruleId: 'INSURANCE_STATUS', category: 'Legal', label: 'Insurance Status',
-    status: params.insuranceValid ? 'PASS' : 'FAIL',
-    detail: params.insuranceValid ? 'Third-party liability insurance valid' : 'Insurance required per Rule 38',
-    dgcaReference: 'Drone Rules 2021 Rule 38',
-  })
-
-  // BVLOS_APPROVAL
-  if (params.bvlosEnabled) {
-    items.push({
-      ruleId: 'BVLOS_APPROVAL', category: 'Operations', label: 'BVLOS Authorization',
-      status: params.bvlosAuthExists ? 'PASS' : 'FAIL',
-      detail: params.bvlosAuthExists ? 'DGCA BVLOS authorization on file' : 'BVLOS requires DGCA authorization letter',
-      dgcaReference: 'Drone Rules 2021 Rule 26',
-    })
+  // ZONE_ELIGIBILITY — Drone Rules 2021, Rule 18
+  if (mission.operationZone.type === 'RED') {
+    results.push({ ruleId: 'ZONE_ELIGIBILITY', status: 'FAIL', message: 'RED zone — no operations permitted without DGCA exemption' });
+  } else if (mission.operationZone.type === 'YELLOW') {
+    results.push({ ruleId: 'ZONE_ELIGIBILITY', status: 'WARNING', message: 'YELLOW zone — prior permission required from relevant authority' });
+  } else {
+    results.push({ ruleId: 'ZONE_ELIGIBILITY', status: 'PASS', message: 'GREEN zone — operations permitted' });
   }
 
-  // RESTRICTED_PROXIMITY
-  items.push({
-    ruleId: 'RESTRICTED_PROXIMITY', category: 'Safety', label: 'Restricted Proximity',
-    status: params.proximityOk ? 'PASS' : 'FAIL',
-    detail: params.proximityOk ? 'Clear of restricted proximity zones' : 'Too close to airport/border/military base',
-    dgcaReference: 'Drone Rules 2021 Rule 36.1',
-  })
+  // UAOP_VALIDITY — Rule 11
+  // In production, would check against backend; for now validate field presence
+  results.push({
+    ruleId: 'UAOP_VALIDITY',
+    status: mission.droneUIN ? 'PASS' : 'FAIL',
+    message: mission.droneUIN ? 'Drone UIN registered' : 'Drone UIN required for UAOP verification',
+  });
 
-  return buildReport(items)
-}
+  // RPL_CURRENCY — Rule 12
+  results.push({
+    ruleId: 'RPL_CURRENCY',
+    status: mission.pilotRPL ? 'PASS' : 'FAIL',
+    message: mission.pilotRPL ? 'Remote pilot license provided' : 'Valid Remote Pilot License required',
+  });
 
-// ── Aircraft Flight Plan Compliance ────────────────────────────────────────────
-// Filing authority controls submission; approving authority has final say
-export function checkFlightPlanCompliance(fpl: Partial<ICAOFlightPlan>): ComplianceReport {
-  const items: ComplianceItem[] = []
+  // NPNT_HARDWARE — CAR Section 3 Series X Part I
+  results.push({
+    ruleId: 'NPNT_HARDWARE',
+    status: mission.npntRequired ? 'WARNING' : 'PASS',
+    message: mission.npntRequired ? 'NPNT compliance must be verified on drone hardware' : 'NPNT not required for this category',
+  });
 
-  // CALLSIGN_FORMAT
-  const csOk = !!fpl.aircraftId && fpl.aircraftId.length <= 7 && /^[A-Z0-9]+$/.test(fpl.aircraftId)
-  items.push({
-    ruleId: 'CALLSIGN_FORMAT', category: 'Field 7', label: 'Callsign Format',
-    status: csOk ? 'PASS' : 'FAIL',
-    detail: csOk ? `Callsign "${fpl.aircraftId}" valid` : 'Max 7 alphanumeric, no hyphens in transmitted Field 7',
-    dgcaReference: 'ICAO Doc 4444 Para 4.4.1',
-  })
-
-  // AIRCRAFT_TYPE
-  const acType = fpl.aircraftType ? findAircraftType(fpl.aircraftType) : null
-  items.push({
-    ruleId: 'AIRCRAFT_TYPE', category: 'Field 9', label: 'Aircraft Type',
-    status: acType ? 'PASS' : fpl.aircraftType ? 'WARN' : 'FAIL',
-    detail: acType ? `${acType.name} (${acType.wake})` : fpl.aircraftType ? 'Type not in Doc 8643 database' : 'Aircraft type required',
-    dgcaReference: 'ICAO Doc 8643',
-  })
-
-  // MILITARY_FIELD8
-  if (fpl.aircraftId?.toUpperCase().startsWith('IFC')) {
-    items.push({
-      ruleId: 'MILITARY_FIELD8', category: 'Field 8', label: 'Military Type Check',
-      status: fpl.flightType === 'M' ? 'PASS' : 'FAIL',
-      detail: fpl.flightType === 'M' ? 'IFC callsign with Military type' : 'IFC callsign requires Flight Type = M',
-    })
+  // ALTITUDE_LIMIT — Rule 36: 400ft AGL = 121.92m
+  const maxAltMeters = 121.92;
+  if (mission.altitude > maxAltMeters) {
+    results.push({ ruleId: 'ALTITUDE_LIMIT', status: 'FAIL', message: `Altitude ${mission.altitude}m exceeds 400ft AGL (${maxAltMeters}m) limit`, details: 'Drone Rules 2021 Rule 36' });
+  } else {
+    results.push({ ruleId: 'ALTITUDE_LIMIT', status: 'PASS', message: `Altitude ${mission.altitude}m within 400ft AGL limit` });
   }
 
-  // AERODROME_CODES
-  const depOk = fpl.departureAerodrome ? /^[A-Z]{4}$/.test(fpl.departureAerodrome) : false
-  const destOk = fpl.destinationAerodrome ? /^[A-Z]{4}$/.test(fpl.destinationAerodrome) : false
-  items.push({
-    ruleId: 'AERODROME_CODES', category: 'Fields 13/16', label: 'Aerodrome Codes',
-    status: depOk && destOk ? 'PASS' : 'FAIL',
-    detail: `DEP: ${fpl.departureAerodrome || 'missing'}, DEST: ${fpl.destinationAerodrome || 'missing'}`,
-    dgcaReference: 'ICAO Doc 7910',
-  })
-
-  // EOBT_VALIDITY
-  items.push({
-    ruleId: 'EOBT_VALIDITY', category: 'Field 13', label: 'EOBT Validity',
-    status: fpl.eobt ? 'PASS' : 'FAIL',
-    detail: fpl.eobt ? `EOBT: ${fpl.eobt}` : 'EOBT required',
-    dgcaReference: 'ICAO Doc 4444',
-  })
-
-  // ROUTE_VALIDITY
-  items.push({
-    ruleId: 'ROUTE_VALIDITY', category: 'Field 15', label: 'Route',
-    status: fpl.route ? 'PASS' : 'WARN',
-    detail: fpl.route ? 'Route specified' : 'No route entered',
-    dgcaReference: 'ICAO Doc 4444 Para 4.4.1.4',
-  })
-
-  // AIRAC_CURRENCY
-  const cycle = getCurrentAIRACCycle()
-  const daysLeft = Math.ceil((cycle.expiryDate.getTime() - Date.now()) / 86400000)
-  items.push({
-    ruleId: 'AIRAC_CURRENCY', category: 'NavData', label: 'AIRAC Currency',
-    status: daysLeft > 3 ? 'PASS' : daysLeft > 0 ? 'WARN' : 'FAIL',
-    detail: `AIRAC ${cycle.cycleNumber} — ${daysLeft > 0 ? `${daysLeft} days remaining` : 'EXPIRED'}`,
-  })
-
-  // EQUIPMENT_CONSISTENCY - RVSM
-  const hasRVSM = fpl.equipment?.includes('W')
-  const flInRVSM = fpl.cruisingLevel && /^F(29[0-9]|[34]\d{2}|410)$/.test(fpl.cruisingLevel)
-  if (flInRVSM && !hasRVSM) {
-    items.push({
-      ruleId: 'RVSM_EQUIPMENT', category: 'Field 10', label: 'RVSM Equipment',
-      status: 'WARN',
-      detail: 'FL290-FL410 requires RVSM (W) in Field 10',
-    })
+  // RESTRICTED_PROXIMITY — Schedule III
+  if (mission.operationZone.restrictions && mission.operationZone.restrictions.length > 0) {
+    results.push({ ruleId: 'RESTRICTED_PROXIMITY', status: 'WARNING', message: `Zone has restrictions: ${mission.operationZone.restrictions.join(', ')}` });
+  } else {
+    results.push({ ruleId: 'RESTRICTED_PROXIMITY', status: 'PASS', message: 'No proximity restrictions in selected zone' });
   }
 
-  return buildReport(items)
-}
+  // INSURANCE_STATUS — Rule 42
+  results.push({
+    ruleId: 'INSURANCE_STATUS',
+    status: 'WARNING',
+    message: 'Third-party liability insurance status must be verified before flight',
+  });
 
-function buildReport(items: ComplianceItem[]): ComplianceReport {
-  const failCount = items.filter(i => i.status === 'FAIL').length
-  const warnCount = items.filter(i => i.status === 'WARN').length
-  const passCount = items.filter(i => i.status === 'PASS').length
+  // BVLOS_APPROVAL — CAR Section 3 Series X Part II
+  if (mission.missionType === 'BVLOS') {
+    results.push({ ruleId: 'BVLOS_APPROVAL', status: 'FAIL', message: 'BVLOS operations require specific DGCA approval — verify approval document' });
+  } else {
+    results.push({ ruleId: 'BVLOS_APPROVAL', status: 'NOT_APPLICABLE', message: `${mission.missionType} — BVLOS approval not required` });
+  }
+
+  // NIGHT_OPS — Rule 37
+  const startHour = new Date(mission.startTime).getUTCHours();
+  const endHour = new Date(mission.endTime).getUTCHours();
+  const isNight = startHour >= 18 || startHour < 6 || endHour >= 18 || endHour < 6;
+  if (isNight) {
+    results.push({ ruleId: 'NIGHT_OPS', status: 'WARNING', message: 'Mission includes night hours — additional DGCA approval and anti-collision lighting required' });
+  } else {
+    results.push({ ruleId: 'NIGHT_OPS', status: 'PASS', message: 'Daytime operation' });
+  }
+
+  const hasFailure = results.some(r => r.status === 'FAIL');
+  const hasWarning = results.some(r => r.status === 'WARNING');
+
   return {
-    items,
-    overallStatus: failCount > 0 ? 'FAIL' : warnCount > 0 ? 'WARN' : 'PASS',
-    failCount, warnCount, passCount,
-  }
+    missionId: mission.id,
+    timestamp: new Date(),
+    results,
+    overallStatus: hasFailure ? 'NON_COMPLIANT' : hasWarning ? 'WARNINGS' : 'COMPLIANT',
+  };
 }
+
+export function runAircraftCompliance(plan: FlightPlan): ComplianceReport {
+  const results: ComplianceResult[] = [];
+
+  // CALLSIGN_FORMAT — ICAO Doc 4444 Appendix 2 Para 2.3
+  const cleanCallsign = plan.callsign.replace(/-/g, '');
+  if (/^[A-Z0-9]{2,7}$/.test(cleanCallsign)) {
+    results.push({ ruleId: 'CALLSIGN_FORMAT', status: 'PASS', message: 'Callsign format valid' });
+  } else {
+    results.push({ ruleId: 'CALLSIGN_FORMAT', status: 'FAIL', message: 'Callsign must be 2-7 alphanumeric uppercase characters' });
+  }
+
+  // AIRCRAFT_TYPE — ICAO Doc 8643
+  if (/^[A-Z0-9]{2,4}$/.test(plan.aircraftType)) {
+    results.push({ ruleId: 'AIRCRAFT_TYPE', status: 'PASS', message: 'Aircraft type designator valid' });
+  } else {
+    results.push({ ruleId: 'AIRCRAFT_TYPE', status: 'FAIL', message: 'Aircraft type must be 2-4 character ICAO designator' });
+  }
+
+  // MILITARY_FIELD8 — Doc 4444 Para 2.3.3
+  if (cleanCallsign.startsWith('IFC') && plan.flightType !== 'M') {
+    results.push({ ruleId: 'MILITARY_FIELD8', status: 'FAIL', message: 'IFC callsign requires flight type M' });
+  } else {
+    results.push({ ruleId: 'MILITARY_FIELD8', status: 'PASS', message: 'Flight type consistent' });
+  }
+
+  // ROUTE_VALIDITY — Doc 4444 Appendix 2 Para 2.6
+  if (plan.route && plan.route.trim().length > 0) {
+    results.push({ ruleId: 'ROUTE_VALIDITY', status: 'PASS', message: 'Route string provided' });
+  } else {
+    results.push({ ruleId: 'ROUTE_VALIDITY', status: 'FAIL', message: 'Route field is empty' });
+  }
+
+  // AERODROME_CODES — ICAO Doc 7910
+  const icaoRe = /^[A-Z]{4}$/;
+  if (icaoRe.test(plan.departureAerodrome) && icaoRe.test(plan.destinationAerodrome)) {
+    results.push({ ruleId: 'AERODROME_CODES', status: 'PASS', message: 'Aerodrome codes valid' });
+  } else {
+    results.push({ ruleId: 'AERODROME_CODES', status: 'FAIL', message: 'Aerodromes must be 4-letter ICAO codes' });
+  }
+
+  // EOBT_VALIDITY — Doc 4444 Appendix 2 Para 2.5
+  if (/^\d{4}$/.test(plan.eobt)) {
+    const hh = parseInt(plan.eobt.slice(0, 2));
+    const mm = parseInt(plan.eobt.slice(2, 4));
+    if (hh <= 23 && mm <= 59) {
+      results.push({ ruleId: 'EOBT_VALIDITY', status: 'PASS', message: 'EOBT valid' });
+    } else {
+      results.push({ ruleId: 'EOBT_VALIDITY', status: 'FAIL', message: `EOBT ${plan.eobt} has invalid hours/minutes` });
+    }
+  } else {
+    results.push({ ruleId: 'EOBT_VALIDITY', status: 'FAIL', message: 'EOBT must be HHMM format' });
+  }
+
+  // EET_PLAUSIBILITY — Doc 4444 Appendix 2 Para 2.8
+  if (/^\d{4}$/.test(plan.totalEET)) {
+    results.push({ ruleId: 'EET_PLAUSIBILITY', status: 'PASS', message: 'EET format valid' });
+  } else {
+    results.push({ ruleId: 'EET_PLAUSIBILITY', status: 'FAIL', message: 'EET must be HHMM format' });
+  }
+
+  // NOTAM_CONFLICTS — CAR Section 4 Series B Part I
+  results.push({ ruleId: 'NOTAM_CONFLICTS', status: 'WARNING', message: 'Check active NOTAMs for route conflicts before departure' });
+
+  // AIRAC_CURRENCY — ICAO Annex 15
+  results.push({ ruleId: 'AIRAC_CURRENCY', status: 'WARNING', message: 'Verify navigation data is current AIRAC cycle before flight' });
+
+  // RVSM_EQUIPMENT — ICAO Doc 9574
+  const flMatch = plan.cruisingLevel.match(/^F(\d{3})$/);
+  if (flMatch) {
+    const fl = parseInt(flMatch[1]);
+    if (fl >= 290 && fl <= 410) {
+      if (plan.equipment.includes('W')) {
+        results.push({ ruleId: 'RVSM_EQUIPMENT', status: 'PASS', message: 'RVSM equipment approved' });
+      } else {
+        results.push({ ruleId: 'RVSM_EQUIPMENT', status: 'FAIL', message: `FL${fl} requires RVSM approval (W in equipment)` });
+      }
+    } else {
+      results.push({ ruleId: 'RVSM_EQUIPMENT', status: 'NOT_APPLICABLE', message: 'Flight level outside RVSM airspace' });
+    }
+  } else {
+    results.push({ ruleId: 'RVSM_EQUIPMENT', status: 'NOT_APPLICABLE', message: 'Non-FL cruising level' });
+  }
+
+  // ADS_B_REQUIREMENT — DGCA CAR Section 2 Series R Part V
+  if (flMatch && parseInt(flMatch[1]) >= 290) {
+    if (plan.surveillance.includes('B1') || plan.surveillance.includes('B2')) {
+      results.push({ ruleId: 'ADS_B_REQUIREMENT', status: 'PASS', message: 'ADS-B Out capability declared' });
+    } else {
+      results.push({ ruleId: 'ADS_B_REQUIREMENT', status: 'FAIL', message: 'ADS-B Out required above FL290 in Indian airspace' });
+    }
+  } else {
+    results.push({ ruleId: 'ADS_B_REQUIREMENT', status: 'NOT_APPLICABLE', message: 'Below FL290 — ADS-B not mandatory' });
+  }
+
+  const hasFailure = results.some(r => r.status === 'FAIL');
+  const hasWarning = results.some(r => r.status === 'WARNING');
+
+  return {
+    missionId: plan.id,
+    timestamp: new Date(),
+    results,
+    overallStatus: hasFailure ? 'NON_COMPLIANT' : hasWarning ? 'WARNINGS' : 'COMPLIANT',
+  };
+}
+
+export { DRONE_RULES, AIRCRAFT_RULES };

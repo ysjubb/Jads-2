@@ -1,128 +1,52 @@
-import React, { useMemo } from 'react'
-import { T } from '../../theme'
-import { assembleFPL, formatField7, formatField8, formatField9, formatField10, formatField13, formatField15, formatField16, formatField18 } from '../../utils/aftnFormatter'
-import type { ICAOFlightPlan } from '../../types/flightPlan'
+import React from 'react';
+import { T } from '../../theme';
+import { formatField7, buildField18, detectMilitaryField8 } from '../../utils/aftnFormatter';
+import type { FlightPlan } from '../../types/flightPlan';
 
-interface AftnMessagePreviewProps {
-  flightPlan: Partial<ICAOFlightPlan>
-  recipientAddresses?: string[]
-  originatorAddress?: string
-  priority?: 'FF' | 'GG' | 'SS' | 'DD' | 'KK'
-}
-
-const FIELD_LABELS: Record<string, string> = {
-  f7: 'Field 7 — Aircraft Identification',
-  f8: 'Field 8 — Flight Rules / Type',
-  f9: 'Field 9 — Number & Type / Wake Cat',
-  f10: 'Field 10 — Equipment & SSR',
-  f13: 'Field 13 — Departure Aerodrome & Time',
-  f15: 'Field 15 — Route',
-  f16: 'Field 16 — Destination & EET',
-  f18: 'Field 18 — Other Information',
-}
-
-export function AftnMessagePreview({
-  flightPlan,
-  recipientAddresses = ['VIDPZQZX', 'VIDFZPZX'],
-  originatorAddress = 'VIDPYFYX',
-  priority = 'FF',
-}: AftnMessagePreviewProps) {
-  const fpl = flightPlan
-
-  const fields = useMemo(() => ({
-    f7: formatField7(fpl.aircraftId ?? ''),
-    f8: formatField8(fpl.flightRules ?? 'I', fpl.flightType ?? 'S'),
-    f9: formatField9(fpl.aircraftType ?? 'ZZZZ', fpl.wakeTurbulence ?? 'M'),
-    f10: formatField10(fpl.equipment ?? ['S'], fpl.ssr ?? 'C', fpl.adsb),
-    f13: formatField13(fpl.departureAerodrome ?? 'ZZZZ', fpl.eobt ?? '0000'),
-    f15: formatField15(fpl.cruisingSpeed ?? 'N0440', fpl.cruisingLevel ?? 'F350', fpl.route ?? ''),
-    f16: formatField16(fpl.destinationAerodrome ?? 'ZZZZ', fpl.eet ?? '0000', fpl.alternate1, fpl.alternate2),
-    f18: formatField18(fpl.field18 ?? {} as Record<string, string>),
-  }), [fpl])
-
-  const fullFPL = useMemo(() => assembleFPL(fpl), [fpl])
-
-  const aftnMessage = useMemo(() => {
-    const now = new Date()
-    const dtg = `${String(now.getUTCDate()).padStart(2, '0')}${String(now.getUTCHours()).padStart(2, '0')}${String(now.getUTCMinutes()).padStart(2, '0')}`
-    return [
-      `ZCZC`,
-      `${priority} ${recipientAddresses.join(' ')}`,
-      `${dtg} ${originatorAddress}`,
-      '',
-      fullFPL,
-      '',
-      `NNNN`,
-    ].join('\n')
-  }, [fullFPL, priority, recipientAddresses, originatorAddress])
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(aftnMessage)
+/**
+ * Preview the AFTN message that would be generated for a flight plan.
+ * Shows Field 7 formatting, Field 18 auto-population, and military detection.
+ */
+export function AftnMessagePreview({ plan }: { plan: Partial<FlightPlan> }) {
+  if (!plan.callsign) {
+    return <div style={{ color: T.muted, fontSize: '0.7rem' }}>Enter a callsign to preview AFTN message</div>;
   }
 
+  const field7 = formatField7(plan.callsign);
+  const mil = detectMilitaryField8(field7.callsign);
+  const field18 = buildField18({
+    reg: plan.callsign,
+    dof: new Date().toISOString().slice(2, 10).replace(/-/g, ''),
+  });
+
   return (
-    <div style={{
-      background: T.surface,
-      border: `1px solid ${T.border}`,
-      borderRadius: '4px',
-      padding: '1rem',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <h3 style={{ color: T.textBright, fontSize: '0.85rem', margin: 0 }}>
-          AFTN Message Preview
-        </h3>
-        <button
-          onClick={copyToClipboard}
-          style={{
-            padding: '4px 10px', fontSize: '0.65rem', fontWeight: 600,
-            background: T.primary + '20', color: T.primary,
-            border: `1px solid ${T.primary}40`, borderRadius: '3px', cursor: 'pointer',
-          }}
-        >
-          Copy Message
-        </button>
+    <div style={{ background: T.bg, border: `1px solid ${T.border}`, borderRadius: '4px', padding: '0.8rem' }}>
+      <div style={{ color: T.muted, fontSize: '0.6rem', marginBottom: '0.4rem', textTransform: 'uppercase' }}>
+        AFTN Message Preview
       </div>
+      <pre style={{
+        color: T.textBright, fontSize: '0.7rem', fontFamily: 'monospace',
+        lineHeight: 1.6, margin: 0, whiteSpace: 'pre-wrap',
+      }}>
+{`(FPL-${field7.callsign}-${plan.flightRules ?? 'I'}${plan.flightType ?? 'S'}
+-${plan.aircraftType ?? 'ZZZZ'}/${plan.equipment ?? 'S'}
+-${plan.departureAerodrome ?? 'ZZZZ'}${plan.eobt ?? '0000'}
+-${plan.cruisingSpeed ?? 'N0000'}${plan.cruisingLevel ?? 'F000'} ${plan.route ?? 'DCT'}
+-${plan.destinationAerodrome ?? 'ZZZZ'}${plan.totalEET ?? '0000'}${plan.alternateAerodrome ? ' ' + plan.alternateAerodrome : ''}
+-${field18})`}
+      </pre>
 
-      {/* Field breakdown */}
-      <div style={{ marginBottom: '1rem' }}>
-        {Object.entries(fields).map(([key, value]) => (
-          <div key={key} style={{
-            display: 'flex', gap: '0.5rem', padding: '3px 0',
-            fontSize: '0.7rem', borderBottom: `1px solid ${T.border}08`,
-          }}>
-            <span style={{ color: T.muted, minWidth: '180px', fontSize: '0.6rem' }}>
-              {FIELD_LABELS[key]}
-            </span>
-            <span style={{ color: T.textBright, fontFamily: 'monospace' }}>{value}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Full AFTN message */}
-      <div style={{ position: 'relative' }}>
-        <div style={{ color: T.muted, fontSize: '0.6rem', marginBottom: '4px' }}>
-          Full AFTN Transmission:
+      {/* Warnings */}
+      {field7.warnings.length > 0 && (
+        <div style={{ marginTop: '0.5rem' }}>
+          {field7.warnings.map((w, i) => (
+            <div key={i} style={{ color: T.amber, fontSize: '0.6rem' }}>{w}</div>
+          ))}
         </div>
-        <pre style={{
-          background: '#000',
-          color: '#00FF88',
-          fontFamily: '"Courier New", monospace',
-          fontSize: '0.7rem',
-          padding: '0.75rem',
-          borderRadius: '3px',
-          border: `1px solid ${T.border}`,
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-all',
-          margin: 0,
-          lineHeight: 1.5,
-        }}>
-          {aftnMessage}
-        </pre>
-      </div>
-
-      <div style={{ marginTop: '0.5rem', fontSize: '0.55rem', color: T.muted }}>
-        Format: ICAO Doc 4444 PANS-ATM &middot; Priority: {priority} (Flight Safety)
-      </div>
+      )}
+      {mil.suggestMilitary && (
+        <div style={{ color: T.amber, fontSize: '0.6rem', marginTop: '0.3rem' }}>{mil.note}</div>
+      )}
     </div>
-  )
+  );
 }

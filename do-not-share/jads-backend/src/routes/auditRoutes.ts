@@ -207,13 +207,20 @@ router.get('/flight-plans/:id/route-geometry', async (req, res) => {
       }
     } catch { /* routeLegs may not exist */ }
 
+    // Filter out points with invalid (0,0) coordinates
+    points = points.filter(p => p.latDeg !== 0 || p.lonDeg !== 0)
+
     if (points.length === 0) {
       const [dep, dest] = await Promise.all([
         prisma.aerodromeRecord.findFirst({ where: { OR: [{ icao: plan.adep }, { icaoCode: plan.adep }] } }),
         prisma.aerodromeRecord.findFirst({ where: { OR: [{ icao: plan.ades }, { icaoCode: plan.ades }] } }),
       ])
-      if (dep)  points.push({ identifier: plan.adep, type: 'AERODROME', latDeg: dep.latDeg ?? dep.latitudeDeg ?? 0,  lonDeg: dep.lonDeg ?? dep.longitudeDeg ?? 0 })
-      if (dest) points.push({ identifier: plan.ades, type: 'AERODROME', latDeg: dest.latDeg ?? dest.latitudeDeg ?? 0, lonDeg: dest.lonDeg ?? dest.longitudeDeg ?? 0 })
+      const depLat = dep?.latDeg ?? dep?.latitudeDeg ?? 0
+      const depLon = dep?.lonDeg ?? dep?.longitudeDeg ?? 0
+      if (dep && (depLat !== 0 || depLon !== 0))  points.push({ identifier: plan.adep, type: 'AERODROME', latDeg: depLat, lonDeg: depLon })
+      const destLat = dest?.latDeg ?? dest?.latitudeDeg ?? 0
+      const destLon = dest?.lonDeg ?? dest?.longitudeDeg ?? 0
+      if (dest && (destLat !== 0 || destLon !== 0)) points.push({ identifier: plan.ades, type: 'AERODROME', latDeg: destLat, lonDeg: destLon })
     }
 
     res.json({ success: true, adep: plan.adep, ades: plan.ades, route: plan.route, points })

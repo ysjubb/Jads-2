@@ -1,37 +1,28 @@
-// Feature flags for progressive rollout
+/**
+ * Feature flags for the JADS user portal.
+ * Toggle features without code changes. In production, source from backend config.
+ */
+export const FEATURE_FLAGS = {
+  /** Enable Jeppesen chart integration */
+  JEPPESEN_CHARTS_ENABLED: false,
+  /** Auto-submit flight plans to DigitalSky */
+  DIGITAL_SKY_AUTO_SUBMIT: false,
+  /** Enable BVLOS mission filing */
+  BVLOS_FILING_ENABLED: true,
+  /** Add Q-prefix to purely numeric callsigns */
+  NUMERIC_CALLSIGN_Q_PREFIX: true,
+  /** Show AIRAC currency warnings */
+  AIRAC_CURRENCY_CHECK: true,
+  /** Enable live telemetry WebSocket connection */
+  LIVE_TELEMETRY_ENABLED: false,
+  /** Show evidence chain viewer */
+  EVIDENCE_CHAIN_ENABLED: true,
+  /** Use live backend adapters (false = stubs) */
+  USE_LIVE_ADAPTERS: false,
+} as const;
 
-export interface FeatureFlags {
-  BVLOS_WIZARD: boolean
-  OPENAIP_LAYERS: boolean
-  JEPPESEN_CHARTS: boolean
-  BRIEFING_PACK: boolean
-  FLEET_MANAGER: boolean
-  TRAJECTORY_VIEWER: boolean
-  I18N_HINDI: boolean
-  EVIDENCE_EXPORT: boolean
-  PWA_OFFLINE: boolean
-}
+export type FeatureFlag = keyof typeof FEATURE_FLAGS;
 
-const DEFAULT_FLAGS: FeatureFlags = {
-  BVLOS_WIZARD: true,
-  OPENAIP_LAYERS: true,
-  JEPPESEN_CHARTS: true,
-  BRIEFING_PACK: true,
-  FLEET_MANAGER: true,
-  TRAJECTORY_VIEWER: true,
-  I18N_HINDI: true,
-  EVIDENCE_EXPORT: true,
-  PWA_OFFLINE: false,
-}
-
-export function getFeatureFlags(): FeatureFlags {
-  try {
-    const stored = localStorage.getItem('jads-feature-flags')
-    if (stored) return { ...DEFAULT_FLAGS, ...JSON.parse(stored) }
-  } catch { /* ignore */ }
-  return DEFAULT_FLAGS
-}
-
-export function isFeatureEnabled(flag: keyof FeatureFlags): boolean {
-  return getFeatureFlags()[flag]
+export function isEnabled(flag: FeatureFlag): boolean {
+  return FEATURE_FLAGS[flag];
 }
