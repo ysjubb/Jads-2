@@ -1069,3 +1069,35 @@ model IncidentReport {
   @@index([status])
   @@index([createdAt])
 }
+
+// ── Operator Registration + Mission Management ─────────────────────────
+
+model Operator {
+  id             String    @id @default(cuid())
+  uin            String    @unique   // format: UA-YYYY-IN-XX-NNNNN
+  dgcaLicenseNo  String
+  operatorName   String
+  contactEmail   String
+  tokenHash      String    @unique   // SHA-256 of jads_op_<hex> token
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  missions       OperatorMission[]
+}
+
+model OperatorMission {
+  id             String    @id @default(cuid())
+  operatorId     String
+  operator       Operator  @relation(fields: [operatorId], references: [id])
+  uin            String
+  paReference    String
+  plannedStart   DateTime
+  plannedEnd     DateTime
+  polygon        String    // JSON string: [[lat,lon], ...]
+  maxAltitude    Float
+  status         String    @default("ACTIVE")  // ACTIVE | CLOSED | VIOLATED
+  closedAt       DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([status])
+  @@index([uin])
+}

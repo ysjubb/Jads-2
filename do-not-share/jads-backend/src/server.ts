@@ -18,6 +18,8 @@ import agentRoutes       from './routes/agentRoutes'
 import manufacturerRoutes from './routes/manufacturerRoutes'
 import droneOperationPlanRoutes from './routes/droneOperationPlanRoutes'
 import telemetryRoutes          from './routes/telemetryRoutes'
+import operatorRoutes           from './routes/operatorRoutes'
+import missionOpsRoutes         from './routes/missionOpsRoutes'
 import { initWsServer }         from './ws/wsServer'
 import { DEMO_CONFIG, getDemoCorsOrigins } from './config/demoConfig'
 
@@ -74,7 +76,9 @@ api.use('/system',       systemRoutes)
 api.use('/agents',       agentRoutes)
 api.use('/manufacturer', manufacturerRoutes)
 api.use('/drone-plans', droneOperationPlanRoutes)
-api.use('/missions',    telemetryRoutes)
+api.use('/missions',     telemetryRoutes)
+api.use('/operators',    operatorRoutes)
+api.use('/mission-ops',  missionOpsRoutes)
 app.use('/api', api)
 
 app.use((_req, res) => {
