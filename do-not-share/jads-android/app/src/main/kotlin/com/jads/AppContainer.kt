@@ -58,7 +58,32 @@ class AppContainer(context: Context) {
     // Production: key lives in Android Keystore (StrongBox when available).
     // KeyStoreSigningProvider.sign() handles the JCA signing internally.
     // Fallback: raw byte stub for emulator / unit tests where Keystore is unavailable.
-    val keyStoreProvider: KeyStoreSigningProvider? = KeyStoreSigningProvider.create()
+    //
+    // Nonce flow: fetch server nonce → pass as attestation challenge → generate key.
+    // If nonce fetch fails (offline), fall back to static challenge with advisory.
+    val keyStoreProvider: KeyStoreSigningProvider? = run {
+        val deviceId = android.provider.Settings.Secure.getString(
+            context.contentResolver, android.provider.Settings.Secure.ANDROID_ID
+        ) ?: "unknown-device"
+
+        val nonceResult = try {
+            apiClient.fetchAttestationNonce(deviceId)
+        } catch (_: Exception) { null }
+
+        when (nonceResult) {
+            is com.jads.network.ApiResult.Success -> {
+                val nonceBytes = nonceResult.data.chunked(2)
+                    .map { it.toInt(16).toByte() }.toByteArray()
+                KeyStoreSigningProvider.create(nonceBytes)
+            }
+            else -> {
+                android.util.Log.w("AppContainer",
+                    "WARN: Offline nonce fetch — static challenge used")
+                @Suppress("DEPRECATION")
+                KeyStoreSigningProvider.create()
+            }
+        }
+    }
     private val stubPrivateKeyBytes = ByteArray(32) { it.toByte() }
     val isStrongBoxBacked: Boolean get() = keyStoreProvider?.isStrongBoxBacked == true
     val isHardwareBacked:  Boolean get() = keyStoreProvider != null

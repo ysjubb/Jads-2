@@ -830,6 +830,10 @@ Mappls provides Digital Sky airspace layers as map overlays. This gives you a vi
 
 This is a visual enhancement — show the zone classification on an actual map, not just text.
 
+### Step 4.5b: What to Say at iDEX About NPNT
+
+> **What to say at iDEX about NPNT:** "NPNT compliance in JADS enforces the Permission Artefact structure, time bounds, geofence polygon containment, and weight-category rules per DGCA UAS Rules 2021. PKI signature verification against the DGCA root CA requires DSP certification — a 6–12 month government process we have initiated. In demo mode, the PA is signed with a self-signed certificate to prove the complete workflow end-to-end."
+
 ### Step 4.6: What to Say at iDEX About Digital Sky
 
 **The honest pitch:**

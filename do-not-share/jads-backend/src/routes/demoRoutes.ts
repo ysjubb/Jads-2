@@ -27,7 +27,7 @@ router.post('/create-flight', async (req: Request, res: Response) => {
     if (!input.callsign) {
       return res.status(400).json({ error: 'callsign is required' });
     }
-    const result = createDemoFlight(input);
+    const result = await createDemoFlight(input);
     return res.json(result);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -43,7 +43,7 @@ router.post('/simulate-flight/:missionId', async (req: Request, res: Response) =
   try {
     const { missionId } = req.params;
     const { includeViolations = true, violationCount = 2 } = req.body;
-    const result = simulateDemoFlight(missionId, includeViolations, violationCount);
+    const result = await simulateDemoFlight(missionId, includeViolations, violationCount);
     return res.json(result);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -103,13 +103,13 @@ router.get('/scenarios', async (_req: Request, res: Response) => {
 router.post('/run-full', async (_req: Request, res: Response) => {
   try {
     // Step 1: Create AIC302 flight
-    const aic302 = createDemoFlight(getAic302Scenario());
+    const aic302 = await createDemoFlight(getAic302Scenario());
 
     // Step 2: Create drone enforcement flight
-    const drone = createDemoFlight(getDroneEnforcementScenario());
+    const drone = await createDemoFlight(getDroneEnforcementScenario());
 
     // Step 3: Simulate drone flight with violations
-    const simulation = simulateDemoFlight(drone.missionId, true, 2);
+    const simulation = await simulateDemoFlight(drone.missionId, true, 2);
 
     // Step 4: Get full report
     const report = getDemoFullReport(drone.missionId);

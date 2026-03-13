@@ -170,6 +170,16 @@ export class KeyAttestationVerifier implements IAttestationVerifier {
   }
 }
 
+// ── Attestation Nonce Store (in-memory for demo; production: Redis/DB) ────
+
+interface NonceEntry {
+  nonce:     string
+  expiresAt: Date
+}
+
+const nonceStore = new Map<string, NonceEntry>()
+const NONCE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
 // ── Composite Device Attestation Service ─────────────────────────────────
 
 export class DeviceAttestationService {
@@ -181,6 +191,45 @@ export class DeviceAttestationService {
 
   addVerifier(v: IAttestationVerifier): void {
     this.verifiers.push(v)
+  }
+
+  /**
+   * Generate a one-use attestation nonce for a device registration.
+   * The nonce must be passed as the attestation challenge when generating
+   * a StrongBox/TEE key pair on the Android device.
+   */
+  generateAttestationNonce(deviceId: string): string {
+    const nonce = crypto.randomBytes(32).toString('hex')
+    nonceStore.set(deviceId, {
+      nonce,
+      expiresAt: new Date(Date.now() + NONCE_TTL_MS),
+    })
+    log.info('attestation_nonce_generated', { data: { deviceId } })
+    return nonce
+  }
+
+  /**
+   * Verify that the attestation nonce matches what was issued and has not expired.
+   * One-use: the nonce is deleted after verification (pass or fail).
+   */
+  verifyAttestationNonce(deviceId: string, nonce: string): boolean {
+    const entry = nonceStore.get(deviceId)
+    if (!entry) {
+      log.warn('attestation_nonce_not_found', { data: { deviceId } })
+      return false
+    }
+    nonceStore.delete(deviceId) // One-use: always delete
+
+    if (new Date() > entry.expiresAt) {
+      log.warn('attestation_nonce_expired', { data: { deviceId } })
+      return false
+    }
+    if (entry.nonce !== nonce) {
+      log.warn('attestation_nonce_mismatch', { data: { deviceId } })
+      return false
+    }
+    log.info('attestation_nonce_verified', { data: { deviceId } })
+    return true
   }
 
   async verifyDevice(input: DeviceAttestationInput): Promise<{

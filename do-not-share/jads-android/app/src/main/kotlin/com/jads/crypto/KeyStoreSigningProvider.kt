@@ -45,16 +45,31 @@ class KeyStoreSigningProvider private constructor(
         private var generatedWithStrongBox = false
 
         /**
-         * Initialise the signing provider.
+         * Initialise the signing provider with a server-issued attestation nonce.
          *
          * If a key already exists under [KEY_ALIAS], it is reused.
-         * Otherwise a new P-256 key pair is generated in the Keystore.
+         * Otherwise a new P-256 key pair is generated in the Keystore with the
+         * server nonce as the attestation challenge (replay protection).
          *
+         * @param nonce Server-issued nonce bytes (32 bytes from GET /api/drone/devices/:id/attestation-nonce)
          * @return [KeyStoreSigningProvider] ready for signing, or null if
-         *         the device does not support EC key generation in Keystore
-         *         (extremely rare — API 23+ all support it).
+         *         the device does not support EC key generation in Keystore.
          */
+        fun create(nonce: ByteArray): KeyStoreSigningProvider? {
+            return createInternal(nonce)
+        }
+
+        /**
+         * Initialise the signing provider with static challenge (offline/test fallback).
+         *
+         * @return [KeyStoreSigningProvider] ready for signing, or null.
+         */
+        @Deprecated("Use create(nonce) for production — static challenge has no replay protection")
         fun create(): KeyStoreSigningProvider? {
+            return createInternal("jads-attestation".toByteArray())
+        }
+
+        private fun createInternal(challenge: ByteArray): KeyStoreSigningProvider? {
             return try {
                 val ks = KeyStore.getInstance(KEYSTORE_PROVIDER)
                 ks.load(null)
@@ -63,7 +78,7 @@ class KeyStoreSigningProvider private constructor(
                 val strongBoxAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
 
                 if (!ks.containsAlias(KEY_ALIAS)) {
-                    generateKey(strongBoxAvailable)
+                    generateKey(strongBoxAvailable, challenge)
                 }
 
                 val entry = ks.getEntry(KEY_ALIAS, null) as? KeyStore.PrivateKeyEntry
@@ -94,7 +109,7 @@ class KeyStoreSigningProvider private constructor(
             }
         }
 
-        private fun generateKey(tryStrongBox: Boolean) {
+        private fun generateKey(tryStrongBox: Boolean, challenge: ByteArray) {
             val specBuilder = KeyGenParameterSpec.Builder(
                 KEY_ALIAS,
                 KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
@@ -102,11 +117,7 @@ class KeyStoreSigningProvider private constructor(
 
                 .setDigests(KeyProperties.DIGEST_SHA256)
                 .setKeySize(256)
-                // KNOWN LIMITATION: static challenge defeats replay protection.
-                // Production fix: replace with server-issued nonce unique per
-                // device registration. Backend must verify the nonce matches
-                // what it issued before trusting the attestation chain.
-                .setAttestationChallenge("jads-attestation".toByteArray())
+                .setAttestationChallenge(challenge)
                 .setUserAuthenticationRequired(false)   // mission must proceed without biometric
 
             if (tryStrongBox && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -127,10 +138,10 @@ class KeyStoreSigningProvider private constructor(
                         KEY_ALIAS,
                         KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
                     )
-        
+
                         .setDigests(KeyProperties.DIGEST_SHA256)
                         .setKeySize(256)
-                        .setAttestationChallenge("jads-attestation".toByteArray())
+                        .setAttestationChallenge(challenge)
                         .setUserAuthenticationRequired(false)
                         .build()
 

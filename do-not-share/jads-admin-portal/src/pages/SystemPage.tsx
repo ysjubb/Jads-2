@@ -479,8 +479,89 @@ export function SystemPage() {
               </div>
             </div>
           </Panel>
+
+          {/* ── Panel 6: Adapter Status ─────────────────────────────── */}
+          <AdapterStatusPanel />
         </div>
       )}
     </div>
+  )
+}
+
+// ── Adapter Status Panel ─────────────────────────────────────────────────────
+// Shows live vs stub status for all backend adapters.
+
+interface AdapterEntry {
+  id: string; name: string; status: 'LIVE' | 'STUB'; reason: string | null
+}
+
+function AdapterStatusPanel() {
+  const [adapters, setAdapters] = React.useState<AdapterEntry[]>([])
+  const [useLive, setUseLive] = React.useState(false)
+  const [loading, setLoading] = React.useState(true)
+
+  React.useEffect(() => {
+    const api = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080'
+    fetch(`${api}/api/system/adapter-status`, {
+      headers: { 'X-JADS-Version': '4.0' },
+    })
+      .then(r => r.json())
+      .then(data => {
+        setAdapters(data.adapters ?? [])
+        setUseLive(data.useLiveAdapters ?? false)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const stubCount = adapters.filter(a => a.status === 'STUB').length
+  const allStubs = stubCount === adapters.filter(a => !['hash_chain','npnt_pa_builder','forensic_verify','aftn_builder','clearance_sse'].includes(a.id)).length
+
+  return (
+    <Panel title="ADAPTER STATUS" style={{ gridColumn: '1 / -1' }}>
+      {loading ? (
+        <div style={{ color: T.muted, fontSize: '0.75rem' }}>Loading adapter status...</div>
+      ) : (
+        <div>
+          {allStubs && (
+            <div style={{
+              padding: '0.5rem 0.75rem', marginBottom: '0.75rem', borderRadius: '4px',
+              background: T.amber + '10', border: `1px solid ${T.amber}40`,
+              color: T.amber, fontSize: '0.7rem', fontWeight: 600, fontFamily: T.mono,
+            }}>
+              DEMO MODE — All external integrations use stubs. Government credentials required for live operation.
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+            {adapters.map(a => (
+              <div key={a.id} style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                padding: '0.3rem 0.5rem', fontSize: '0.75rem',
+                background: T.bg, borderRadius: '3px',
+              }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: a.status === 'LIVE' ? T.primary : T.amber,
+                  flexShrink: 0,
+                }} />
+                <span style={{
+                  fontFamily: T.mono, fontWeight: 700, fontSize: '0.65rem',
+                  color: a.status === 'LIVE' ? T.primary : T.amber,
+                  width: 40,
+                }}>
+                  {a.status}
+                </span>
+                <span style={{ color: T.textBright, flex: 1 }}>{a.name}</span>
+                {a.status === 'STUB' && a.reason && (
+                  <span style={{ color: T.muted, fontSize: '0.65rem', fontStyle: 'italic' }}>
+                    {a.reason}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Panel>
   )
 }

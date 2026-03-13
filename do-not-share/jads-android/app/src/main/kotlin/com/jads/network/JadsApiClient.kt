@@ -174,6 +174,19 @@ class JadsApiClient(
         }
     }
 
+    // ── Attestation nonce ──────────────────────────────────────────────────
+
+    /**
+     * Fetch a one-use attestation nonce from the server.
+     * Must be called BEFORE generating a StrongBox/TEE key pair.
+     * The nonce is used as the attestation challenge to prevent replay attacks.
+     */
+    fun fetchAttestationNonce(deviceId: String): ApiResult<String> {
+        return get("/api/drone/devices/$deviceId/attestation-nonce") { json ->
+            json.get("nonce")?.asString
+        }
+    }
+
     // ── Generic helpers ─────────────────────────────────────────────────────
 
     private fun <T : Any> get(

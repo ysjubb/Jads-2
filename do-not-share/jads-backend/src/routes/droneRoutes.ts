@@ -31,6 +31,7 @@ import {
   NotificationCategory,
 } from '../services/DroneNotificationService'
 import { createServiceLogger } from '../logger'
+import { createDeviceAttestationService } from '../services/DeviceAttestationService'
 
 const router      = express.Router()
 const prisma      = new PrismaClient()
@@ -38,10 +39,24 @@ const service     = new MissionService(prisma)
 const verifier    = new ForensicVerifier(prisma)
 const paLifecycle = new PALifecycleService(prisma)
 const notifService = new DroneNotificationService(prisma)
+const attestationService = createDeviceAttestationService()
 const log         = createServiceLogger('DroneRoutes')
 
 // Multer for file uploads — 20MB limit, memory storage
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
+
+// ── GET /api/drone/devices/:deviceId/attestation-nonce ──────────────────────
+// Issue a one-use nonce for StrongBox attestation challenge.
+// Android app must fetch this BEFORE generating the keystore key pair.
+router.get('/devices/:deviceId/attestation-nonce', requireAuth, async (req, res) => {
+  try {
+    const { deviceId } = req.params
+    const nonce = attestationService.generateAttestationNonce(deviceId)
+    return res.json({ nonce, expiresInSeconds: 600 })
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message })
+  }
+})
 
 // ── POST /api/drone/missions ──────────────────────────────────────────────────
 // Upload a completed mission from the Android device.
@@ -89,6 +104,22 @@ router.post('/missions', requireAuth, requireDomain('DRONE'), missionUploadRateL
     if (input.records.length > MAX_RECORDS) {
       res.status(400).json({ error: 'TOO_MANY_RECORDS', limit: MAX_RECORDS, received: input.records.length })
       return
+    }
+
+    // Attestation nonce verification — replay protection for StrongBox key generation.
+    // If the device submitted an attestationNonce, verify it matches what the server issued.
+    // Missing nonce = static challenge fallback (reduced trust, advisory logged).
+    if (input.deviceAttestation) {
+      const submittedNonce = (input as any).attestationNonce as string | undefined
+      if (submittedNonce && input.deviceId) {
+        const nonceValid = attestationService.verifyAttestationNonce(input.deviceId, submittedNonce)
+        if (!nonceValid) {
+          input.deviceAttestation.strongboxBacked = false
+          ;(input as any)._attestationAdvisory = 'Attestation nonce invalid or expired — trust level reduced to PARTIAL'
+        }
+      } else if (!submittedNonce) {
+        ;(input as any)._attestationAdvisory = 'Attestation nonce missing — replay protection not verified. Key generated with static challenge.'
+      }
     }
 
     const result = await service.submitMission(input, userId, userType as 'CIVILIAN' | 'SPECIAL')

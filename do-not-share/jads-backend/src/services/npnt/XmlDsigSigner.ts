@@ -9,6 +9,8 @@
  */
 
 import * as crypto from 'crypto';
+import { ExclusiveCanonicalization } from 'xml-crypto';
+import { DOMParser } from '@xmldom/xmldom';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -29,31 +31,17 @@ export interface XmlDsigVerifyResult {
   signatureAlgorithm: string;
 }
 
-// ── Canonicalization (simplified) ──────────────────────────────────────
+// ── Canonicalization (W3C Exclusive C14N 1.0) ─────────────────────────
 
 /**
- * Simplified XML canonicalization for NPNT PA signing.
- *
- * For production: use a proper C14N 1.1 library.
- * This implementation handles the common case of well-formed NPNT PA XML:
- *   - Normalize line endings to LF
- *   - Remove XML declaration (C14N omits it)
- *   - Normalize attribute whitespace
- *   - Remove comments
+ * W3C Exclusive XML Canonicalization 1.0 (xml-crypto). Required for XMLDSig
+ * compliance with DGCA NPNT v1.2 specification.
+ * Algorithm URI: http://www.w3.org/2001/10/xml-exc-c14n#
  */
 function canonicalize(xml: string): string {
-  let c = xml;
-  // Remove XML declaration
-  c = c.replace(/<\?xml[^?]*\?>\s*/g, '');
-  // Normalize line endings
-  c = c.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  // Remove comments
-  c = c.replace(/<!--[\s\S]*?-->/g, '');
-  // Trim trailing whitespace per line
-  c = c.split('\n').map(line => line.trimEnd()).join('\n');
-  // Remove leading/trailing blank lines
-  c = c.trim();
-  return c;
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const c14n = new ExclusiveCanonicalization();
+  return c14n.process(doc.documentElement).toString();
 }
 
 /**
@@ -124,12 +112,12 @@ export function signPaXml(
  */
 function buildSignedInfoXml(digestValue: string): string {
   return `<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">
-    <CanonicalizationMethod Algorithm="http://www.w3.org/2006/12/xml-c14n11"/>
+    <CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
     <SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>
     <Reference URI="">
       <Transforms>
         <Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>
-        <Transform Algorithm="http://www.w3.org/2006/12/xml-c14n11"/>
+        <Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
       </Transforms>
       <DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
       <DigestValue>${digestValue}</DigestValue>
@@ -246,27 +234,52 @@ export function verifyPaSignature(signedXml: string): XmlDsigVerifyResult {
 
 // ── Demo Certificate Generator ─────────────────────────────────────────
 
+import * as x509 from '@peculiar/x509';
+
+// Use Node.js built-in WebCrypto for @peculiar/x509
+x509.cryptoProvider.set(globalThis.crypto);
+
 /**
- * Generate a self-signed RSA-2048 demo certificate for NPNT PA signing.
- * FOR DEMO PURPOSES ONLY — production requires DGCA-recognized CA.
+ * FOR DEMO/DEV ONLY. Generates a self-signed RSA-2048 X.509 certificate.
+ * The resulting certificate is cryptographically valid but NOT issued by DGCA.
+ * Production requires a certificate from a CCA India licensed CA (eMudhra, CDAC).
+ * @returns { privateKey: PKCS8 PEM, certificate: X.509 PEM }
  */
-export function generateDemoCertificate(): { privateKey: string; certificate: string } {
-  const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
+export async function generateDemoCertificate(): Promise<{ privateKey: string; certificate: string }> {
+  const alg: RsaHashedKeyGenParams = {
+    name: 'RSASSA-PKCS1-v1_5',
+    hash: 'SHA-256',
     modulusLength: 2048,
-    publicKeyEncoding: { type: 'spki', format: 'pem' },
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    publicExponent: new Uint8Array([1, 0, 1]),
+  };
+
+  const keys = await globalThis.crypto.subtle.generateKey(alg, true, ['sign', 'verify']);
+
+  // Generate random serial number (8 bytes, hex-encoded)
+  const serialBytes = crypto.randomBytes(8);
+  const serialNumber = serialBytes.toString('hex');
+
+  const cert = await x509.X509CertificateGenerator.createSelfSigned({
+    serialNumber,
+    name: 'CN=JADS Demo PA Signer, O=JADS Platform, C=IN',
+    notBefore: new Date(),
+    notAfter: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+    keys,
+    signingAlgorithm: alg,
+    extensions: [
+      new x509.KeyUsagesExtension(x509.KeyUsageFlags.digitalSignature, true),
+      new x509.ExtendedKeyUsageExtension(['1.3.6.1.5.5.7.3.3'], false), // Code Signing
+    ],
   });
 
-  // Create self-signed certificate using Node.js X509Certificate
-  // For a real implementation, use openssl or a proper X.509 library
-  // This is a simplified version that creates a PEM-wrapped public key
-  // as a stand-in certificate for demo purposes
+  // Export certificate as PEM
+  const certificate = cert.toString('pem');
 
-  // For demo: we'll use the private key directly for signing
-  // and the public key for verification
-  // In production, this would be a proper X.509 certificate chain
-
-  const certificate = publicKey; // Simplified for demo
+  // Export private key as PKCS#8 PEM
+  const pkcs8 = await globalThis.crypto.subtle.exportKey('pkcs8', keys.privateKey);
+  const pkBase64 = Buffer.from(pkcs8).toString('base64');
+  const pkLines = pkBase64.match(/.{1,64}/g)!.join('\n');
+  const privateKey = `-----BEGIN PRIVATE KEY-----\n${pkLines}\n-----END PRIVATE KEY-----`;
 
   return { privateKey, certificate };
 }

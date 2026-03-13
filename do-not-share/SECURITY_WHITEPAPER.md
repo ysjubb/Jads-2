@@ -395,7 +395,7 @@ Additionally: 7-stage CI pipeline with 23 jobs. Determinism gates (Stage 2) veri
 
 | Regulation | JADS Control | Implementation |
 |------------|-------------|----------------|
-| DGCA UAS Rules 2021 | NPNT compliance (I-6), 5 weight categories (Nano–Large) with category-specific exemptions | `NpntComplianceGate.kt` — sequential gate: weight → zone → proximity |
+| DGCA UAS Rules 2021 | NPNT compliance (I-6) — PA structure enforced, DGCA PKI signature verification pending DSP certification; 5 weight categories (Nano–Large) with category-specific exemptions | `NpntComplianceGate.kt` — sequential gate: weight → zone → proximity |
 | DGCA UAS Rules 2021 Rule 36(1) | 5km inner / 8km outer airport proximity zones | `AirportProximityGate.ts` — haversine distance against 26 Indian airports |
 | NIST FIPS 204 | ML-DSA-65 post-quantum signatures (I-10) | `MlDsaSigner.kt` + `ForensicVerifier.checkPqcSignatures()` — 12 dedicated tests |
 | Indian Evidence Act Section 65B | Forensic report as electronic evidence certificate | All 10 invariants produce chain-of-custody documentation |

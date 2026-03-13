@@ -122,17 +122,22 @@ const _demoMissions: Record<string, {
 // ── Demo Certificate (generated once) ──────────────────────────────────
 
 let _demoCert: { privateKey: string; certificate: string } | null = null;
+let _demoCertPromise: Promise<{ privateKey: string; certificate: string }> | null = null;
 
-function getDemoCert(): { privateKey: string; certificate: string } {
-  if (!_demoCert) {
-    _demoCert = generateDemoCertificate();
+async function getDemoCert(): Promise<{ privateKey: string; certificate: string }> {
+  if (_demoCert) return _demoCert;
+  if (!_demoCertPromise) {
+    _demoCertPromise = generateDemoCertificate().then(cert => {
+      _demoCert = cert;
+      return cert;
+    });
   }
-  return _demoCert;
+  return _demoCertPromise;
 }
 
 // ── Create Flight ──────────────────────────────────────────────────────
 
-export function createDemoFlight(input: DemoFlightInput): DemoCreateResult {
+export async function createDemoFlight(input: DemoFlightInput): Promise<DemoCreateResult> {
   const missionId = `DEMO-${Date.now().toString(36).toUpperCase()}`;
   const flightId = generateFlightId();
 
@@ -212,7 +217,7 @@ export function createDemoFlight(input: DemoFlightInput): DemoCreateResult {
     };
 
     const unsignedXml = buildPermissionArtefactXml(paInput);
-    const cert = getDemoCert();
+    const cert = await getDemoCert();
     try {
       const signResult = signPaXml(unsignedXml, cert.privateKey, cert.certificate);
       signedPaXml = signResult.signedXml;
@@ -246,17 +251,17 @@ export function createDemoFlight(input: DemoFlightInput): DemoCreateResult {
 
 // ── Simulate Flight ────────────────────────────────────────────────────
 
-export function simulateDemoFlight(
+export async function simulateDemoFlight(
   missionId: string,
   includeViolations = true,
   violationCount = 2
-): DemoSimulateResult {
+): Promise<DemoSimulateResult> {
   const mission = _demoMissions[missionId];
   if (!mission) {
     throw new Error(`Demo mission not found: ${missionId}`);
   }
 
-  const cert = getDemoCert();
+  const cert = await getDemoCert();
   const chain = new FlightLogChain(
     mission.flightId,
     mission.input.droneUIN ?? 'UA001234567890',

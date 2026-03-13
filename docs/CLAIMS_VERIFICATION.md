@@ -37,4 +37,5 @@ with its verification status. This register prevents overclaims.
 | NPNT is enforced | PA signature verification is a stub |
 | Compliant with all drones | MAVLink covers 15–25% only |
 | AFTN messages are transmitted | Gateway is a stub |
+| "PA signatures verified against DGCA PKI" | Stub — NpntVerificationService.verifyDgcaSignature() returns true |
 | Hardware-backed ML-DSA keys | Android Keystore lacks FIPS 204 |

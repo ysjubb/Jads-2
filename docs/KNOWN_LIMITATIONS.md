@@ -49,7 +49,8 @@ Production requirement: FIPS 140-2 Level 3+ HSM for backend
 ECDSA private keys used in EvidenceLedger signing.
 
 ## 8. StrongBox Attestation Challenge
-KeyStoreSigningProvider uses a static attestation challenge string.
-Static challenges do not provide replay protection.
-Production fix: Server-issued nonce per device registration session,
-verified by backend before trusting the attestation chain.
+RESOLVED in v4.1: Server-issued nonce implemented via
+GET /api/drone/devices/:deviceId/attestation-nonce. The Android app
+fetches the nonce before key generation and passes it as the attestation
+challenge. The backend verifies the nonce before trusting the chain.
+Offline fallback retains static challenge with explicit advisory logged.

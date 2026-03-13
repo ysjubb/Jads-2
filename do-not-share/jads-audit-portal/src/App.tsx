@@ -7,6 +7,7 @@ import { FlightPlansPage }       from './pages/FlightPlansPage'
 import { FlightPlanDetailPage } from './pages/FlightPlanDetailPage'
 import { ViolationsPage }    from './pages/ViolationsPage'
 import { ForensicTimeline }  from './pages/ForensicTimeline'
+import { AdapterStatusPage } from './pages/AdapterStatusPage'
 import { ZoneCompliancePage } from './pages/audit/ZoneCompliancePage'
 import { CategoryCompliancePage } from './pages/audit/CategoryCompliancePage'
 import { ComplianceScorecardPage } from './pages/audit/ComplianceScorecardPage'
@@ -38,6 +39,7 @@ const NAV_ITEMS = [
   { to: '/anomaly-detection', label: 'Anomalies', icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z' },
   { to: '/incidents', label: 'Incidents', icon: 'M12 2L1 21h22L12 2zm0 4l7.53 13H4.47L12 6zm-1 8h2v2h-2v-2zm0-6h2v4h-2V8z' },
   { to: '/forensic-timeline', label: 'Timeline', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+  { to: '/system-status', label: 'System Status', icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z' },
 ]
 
 function SidebarNav() {
@@ -202,6 +204,9 @@ export default function App() {
         } />
         <Route path="/forensic-timeline" element={
           <Protected><Layout><ForensicTimeline /></Layout></Protected>
+        } />
+        <Route path="/system-status" element={
+          <Protected><Layout><AdapterStatusPage /></Layout></Protected>
         } />
         <Route path="*" element={<Navigate to="/missions" replace />} />
       </Routes>

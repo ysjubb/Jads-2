@@ -187,7 +187,7 @@ JADS is the first Indian airspace platform to implement **post-quantum cryptogra
 
 | Standard | Status | Depth |
 |----------|--------|-------|
-| DGCA UAS Rules 2021 | Fully implemented | NPNT compliance gate, 5 weight categories (Nano–Large) with category-specific exemptions, GREEN/YELLOW/RED zone classification, 5km/8km airport proximity gates (haversine distance against 26 airports), manufacturer registration + auto-share API |
+| DGCA UAS Rules 2021 | Implemented — NPNT PA structure + zone classification enforced; DGCA PKI signature verification pending DSP certification | NPNT compliance gate (Permission Artefact structure validated; DGCA PKI chain verification pending DSP certification), 5 weight categories (Nano–Large) with category-specific exemptions, GREEN/YELLOW/RED zone classification, 5km/8km airport proximity gates (haversine distance against 26 airports), manufacturer registration + auto-share API |
 | ICAO Doc 4444 (PANS-ATM) | Fully implemented | Full OFPL validation (Items 7–19), Item 18 semantic parsing (DOF, REG, PBN, OPR, STS, DEP, DEST), AFTN FPL/CNL/DLA message construction, semicircular rule enforcement (magnetic track → odd/even FL), RVSM compliance (FL290–FL410 + equipment 'W'), transition altitude/level per aerodrome, altitude compliance up to FL450 |
 | ICAO Doc 8585 | Fully implemented | AFTN addressee routing sequences for all 4 Indian FIRs, auto-generated addressees for 24+ Indian aerodromes |
 | ICAO Annex 2 Table 3-1 | Fully implemented | IFR semicircular rule: eastbound (000–179°) odd FLs, westbound (180–359°) even FLs, with RVSM band exceptions |
@@ -203,7 +203,7 @@ JADS is the first Indian airspace platform to implement **post-quantum cryptogra
 | Component | Status | Detail |
 |-----------|--------|--------|
 | Backend API (Express + Prisma) | Production-ready | 5-stage OFPL pipeline, 10-point forensic engine, 7 background jobs, 6 security layers auto-installed |
-| Android app (Kotlin) | Production-ready | ECDSA + ML-DSA-65 signing, SQLCipher encryption, NTP quorum, NPNT compliance, DJI log ingestion |
+| Android app (Kotlin) | Production-ready | ECDSA + ML-DSA-65 signing, SQLCipher encryption, NTP quorum, NPNT compliance (PA structure enforced; DGCA PKI pending DSP cert), DJI log ingestion |
 | Admin portal (React) | Production-ready | Airspace CMS, flight plan management, ADC/FIC clearance issuance, OFPL comparison tool |
 | Audit portal (React) | Production-ready | Forensic mission viewer, 10-point report display, DJI import visibility, role-scoped access |
 | Agent microservices (4) | Production-ready | NOTAM Interpreter, Forensic Narrator, AFTN Draft, Anomaly Advisor — all deterministic |
