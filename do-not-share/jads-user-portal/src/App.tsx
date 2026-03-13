@@ -8,24 +8,33 @@ import { FlightPlanDetailPage }  from './pages/FlightPlanDetailPage'
 import { EditFlightPlanPage }    from './pages/EditFlightPlanPage'
 import { DronePlanDetailPage }   from './pages/DronePlanDetailPage'
 import { useAuth }               from './hooks/useAuth'
+import { T }                     from './theme'
 
-// ── Theme Constants (blue-tinted variant for user portal) ─────────────────────
-export const T = {
-  bg:         '#050A08',
-  surface:    '#0A0E12',
-  border:     '#1A2030',
-  primary:    '#00AAFF',
-  amber:      '#FFB800',
-  red:        '#FF3B3B',
-  muted:      '#4A6A7A',
-  text:       '#b0c8d8',
-  textBright: '#d0e8f8',
-}
+// Portal components
+import { AirspaceMap }           from './components/portal/AirspaceMap'
+import { FlightPlanForm }        from './components/portal/FlightPlanForm'
+import { DroneTrackSubmission }  from './components/portal/DroneTrackSubmission'
+import { NOTAMCenter }           from './components/portal/NOTAMCenter'
+import { ComplianceChecklist }   from './components/portal/ComplianceChecklist'
+import { EvidenceChainViewer }   from './components/portal/EvidenceChainViewer'
+import { FleetManager }          from './components/portal/FleetManager'
+import { WeightBalance }         from './components/portal/WeightBalance'
+import { FuelPlanning }          from './components/portal/FuelPlanning'
+import { APISettings }           from './components/portal/APISettings'
 
 const NAV_ITEMS = [
   { to: '/',                 label: 'DASHBOARD',  icon: '///' },
   { to: '/file-flight-plan', label: 'FILE FPL',   icon: 'FPL' },
   { to: '/file-drone-plan',  label: 'FILE DRONE', icon: 'DOP' },
+  { to: '/airspace',         label: 'AIRSPACE',   icon: 'MAP' },
+  { to: '/icao-fpl',         label: 'ICAO FPL',   icon: 'ICO' },
+  { to: '/drone-track',      label: 'NPNT LOG',   icon: 'LOG' },
+  { to: '/notams',           label: 'NOTAMS',     icon: 'NOT' },
+  { to: '/compliance',       label: 'COMPLIANCE', icon: 'CHK' },
+  { to: '/evidence',         label: 'EVIDENCE',   icon: 'EVD' },
+  { to: '/fleet',            label: 'FLEET',      icon: 'FLT' },
+  { to: '/planning',         label: 'PLANNING',   icon: 'PLN' },
+  { to: '/settings',         label: 'SETTINGS',   icon: 'SET' },
 ]
 
 function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
@@ -108,6 +117,18 @@ export default function App() {
         <Route path="/flight-plan/:id"     element={<ProtectedLayout><FlightPlanDetailPage /></ProtectedLayout>} />
         <Route path="/edit-flight-plan/:id" element={<ProtectedLayout><EditFlightPlanPage /></ProtectedLayout>} />
         <Route path="/drone-plan/:id"      element={<ProtectedLayout><DronePlanDetailPage /></ProtectedLayout>} />
+
+        {/* Portal routes */}
+        <Route path="/airspace"    element={<ProtectedLayout><AirspaceMap /></ProtectedLayout>} />
+        <Route path="/icao-fpl"    element={<ProtectedLayout><FlightPlanForm /></ProtectedLayout>} />
+        <Route path="/drone-track" element={<ProtectedLayout><DroneTrackSubmission /></ProtectedLayout>} />
+        <Route path="/notams"      element={<ProtectedLayout><NOTAMCenter /></ProtectedLayout>} />
+        <Route path="/compliance"  element={<ProtectedLayout><ComplianceChecklist /></ProtectedLayout>} />
+        <Route path="/evidence"    element={<ProtectedLayout><EvidenceChainViewer /></ProtectedLayout>} />
+        <Route path="/fleet"       element={<ProtectedLayout><FleetManager /></ProtectedLayout>} />
+        <Route path="/planning"    element={<ProtectedLayout><><FuelPlanning /><div style={{ marginTop: '1.5rem' }}><WeightBalance /></div></></ProtectedLayout>} />
+        <Route path="/settings"    element={<ProtectedLayout><APISettings /></ProtectedLayout>} />
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

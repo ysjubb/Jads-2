@@ -164,12 +164,16 @@ export class FlightPlanService {
     })
 
     // ── Save to DB — VALIDATED ─────────────────────────────────────────────
+    // Map ICAO shorthand flight rules to Prisma FlightRules enum
+    const FLIGHT_RULES_MAP: Record<string, string> = { I: 'IFR', V: 'VFR', Y: 'Y', Z: 'Z' }
+    const dbFlightRules = FLIGHT_RULES_MAP[input.flightRules] ?? input.flightRules
+
     const flightPlanIdBig = BigInt(Date.now())
     const plan = await this.prisma.mannedFlightPlan.create({
       data: {
         flightPlanId:               flightPlanIdBig,
         aircraftId:              input.callsign,
-        flightRules:           input.flightRules,
+        flightRules:           dbFlightRules as any,
         flightType:            input.flightType,
         aircraftType:          input.aircraftType,
         wakeTurbulence:        input.wakeTurbulence,

@@ -82,6 +82,12 @@ export interface MissionSubmissionInput {
 
   // Phase 1 PQC: ML-DSA-65 (FIPS 204) public key for hybrid verification
   pqcPublicKeyHex?:      string         // ~3,904 hex chars (1,952 bytes)
+
+  // CC-1-01: Expected record count (declared by device at upload)
+  expectedRecordCount?:  number         // total records device intended to send
+
+  // C1-04: CRL freshness — parsed from CRL at upload time (RFC 5280 thisUpdate field)
+  crlThisUpdateUtcMs?:   number         // CRL thisUpdate as UTC ms
 }
 
 // Category-aware compliance check result
@@ -278,6 +284,11 @@ export class MissionService {
         npntExempt:              categoryResult.npntExempt,
         // Phase 1 PQC: ML-DSA-65 public key for hybrid verification
         pqcPublicKeyHex:         input.pqcPublicKeyHex    ?? null,
+        // CC-1-01: Record count validation — device declares expected count
+        expectedRecordCount:     input.expectedRecordCount ?? null,
+        // C1-04: CRL freshness metadata
+        crlArchivedAtUtcMs:      String(Date.now()),  // capture timestamp at upload
+        crlThisUpdateUtcMs:      input.crlThisUpdateUtcMs != null ? String(input.crlThisUpdateUtcMs) : null,
       }})
 
       await tx.droneTelemetryRecord.createMany({ data: input.records.map(r => {

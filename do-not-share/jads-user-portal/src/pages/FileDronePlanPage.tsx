@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { userApi } from '../api/client'
-import { T } from '../App'
+import { T } from '../theme'
 
 export function FileDronePlanPage() {
   const navigate = useNavigate()

@@ -1,0 +1,173 @@
+import type { ComplianceRule } from '../types/compliance';
+
+export const DRONE_RULES: ComplianceRule[] = [
+  {
+    id: 'ZONE_ELIGIBILITY',
+    name: 'Zone Eligibility',
+    category: 'DRONE',
+    severity: 'CRITICAL',
+    regulation: 'Drone Rules 2021, Rule 18 — Zone classification & permitted operations',
+    description: 'Drone category must be eligible for the airspace zone color (GREEN/YELLOW/RED)',
+  },
+  {
+    id: 'UAOP_VALIDITY',
+    name: 'UAOP Validity',
+    category: 'DRONE',
+    severity: 'CRITICAL',
+    regulation: 'Drone Rules 2021, Rule 11 — Unmanned Aircraft Operator Permit',
+    description: 'Operator must hold a valid, non-expired UAOP for the drone category',
+  },
+  {
+    id: 'RPL_CURRENCY',
+    name: 'Remote Pilot License Currency',
+    category: 'DRONE',
+    severity: 'CRITICAL',
+    regulation: 'Drone Rules 2021, Rule 12 — Remote Pilot Licence',
+    description: 'Remote pilot must hold a valid RPL with current proficiency check',
+  },
+  {
+    id: 'NPNT_HARDWARE',
+    name: 'NPNT Hardware Compliance',
+    category: 'DRONE',
+    severity: 'CRITICAL',
+    regulation: 'DGCA CAR Section 3 Series X Part I — NPNT Requirements',
+    description: 'Drone must have NPNT-compliant firmware with real-time geofencing and PA verification',
+  },
+  {
+    id: 'ALTITUDE_LIMIT',
+    name: 'Altitude Limit',
+    category: 'DRONE',
+    severity: 'HIGH',
+    regulation: 'Drone Rules 2021, Rule 36 — Maximum height restrictions',
+    description: 'Micro/Small drones limited to 400ft AGL in uncontrolled airspace; lower limits in controlled',
+  },
+  {
+    id: 'RESTRICTED_PROXIMITY',
+    name: 'Restricted Area Proximity',
+    category: 'DRONE',
+    severity: 'HIGH',
+    regulation: 'Drone Rules 2021, Schedule III — No-Drone Zones',
+    description: 'Minimum distance from airports, helipads, military installations, and vital installations',
+  },
+  {
+    id: 'INSURANCE_STATUS',
+    name: 'Insurance Status',
+    category: 'DRONE',
+    severity: 'MEDIUM',
+    regulation: 'Drone Rules 2021, Rule 42 — Third-party liability insurance',
+    description: 'Valid third-party liability insurance required for all categories except Nano',
+  },
+  {
+    id: 'BVLOS_APPROVAL',
+    name: 'BVLOS Approval',
+    category: 'DRONE',
+    severity: 'CRITICAL',
+    regulation: 'DGCA CAR Section 3 Series X Part II — BVLOS Operations',
+    description: 'Beyond Visual Line of Sight operations require specific DGCA approval and equipage',
+  },
+  {
+    id: 'NIGHT_OPS',
+    name: 'Night Operations',
+    category: 'DRONE',
+    severity: 'HIGH',
+    regulation: 'Drone Rules 2021, Rule 37 — Operations during night',
+    description: 'Night drone operations require additional DGCA approval and anti-collision lighting',
+  },
+];
+
+export const AIRCRAFT_RULES: ComplianceRule[] = [
+  {
+    id: 'CALLSIGN_FORMAT',
+    name: 'Callsign Format',
+    category: 'AIRCRAFT',
+    severity: 'HIGH',
+    regulation: 'ICAO Doc 4444 Appendix 2 Para 2.3 — Aircraft Identification',
+    description: 'Field 7 callsign must be 2-7 alphanumeric characters, uppercase, no hyphens',
+  },
+  {
+    id: 'AIRCRAFT_TYPE',
+    name: 'Aircraft Type Designator',
+    category: 'AIRCRAFT',
+    severity: 'HIGH',
+    regulation: 'ICAO Doc 8643 — Aircraft Type Designators',
+    description: 'Field 9 aircraft type must be valid ICAO type designator (2-4 characters)',
+  },
+  {
+    id: 'MILITARY_FIELD8',
+    name: 'Military Flight Type',
+    category: 'AIRCRAFT',
+    severity: 'MEDIUM',
+    regulation: 'ICAO Doc 4444 Para 2.3.3 — Type of Flight',
+    description: 'IFC-prefixed callsigns must have flight type set to M (military)',
+  },
+  {
+    id: 'ROUTE_VALIDITY',
+    name: 'Route Validity',
+    category: 'AIRCRAFT',
+    severity: 'HIGH',
+    regulation: 'ICAO Doc 4444 Appendix 2 Para 2.6 — Route',
+    description: 'Route must consist of valid ATS routes, waypoints, and direct segments',
+  },
+  {
+    id: 'AERODROME_CODES',
+    name: 'Aerodrome Codes',
+    category: 'AIRCRAFT',
+    severity: 'HIGH',
+    regulation: 'ICAO Doc 7910 — Location Indicators',
+    description: 'Departure, destination, and alternate must be valid 4-letter ICAO codes',
+  },
+  {
+    id: 'EOBT_VALIDITY',
+    name: 'EOBT Validity',
+    category: 'AIRCRAFT',
+    severity: 'MEDIUM',
+    regulation: 'ICAO Doc 4444 Appendix 2 Para 2.5 — Estimated Off-Block Time',
+    description: 'EOBT must be valid HHMM format, not in the past, within 24h filing window',
+  },
+  {
+    id: 'EET_PLAUSIBILITY',
+    name: 'EET Plausibility',
+    category: 'AIRCRAFT',
+    severity: 'MEDIUM',
+    regulation: 'ICAO Doc 4444 Appendix 2 Para 2.8 — Total Estimated Elapsed Time',
+    description: 'EET must be plausible for the route distance and aircraft performance',
+  },
+  {
+    id: 'NOTAM_CONFLICTS',
+    name: 'NOTAM Conflicts',
+    category: 'AIRCRAFT',
+    severity: 'HIGH',
+    regulation: 'CAR Section 4 Series B Part I — Pre-flight Information',
+    description: 'Route and timing must not conflict with active NOTAMs (runway closures, TFRs)',
+  },
+  {
+    id: 'AIRAC_CURRENCY',
+    name: 'AIRAC Currency',
+    category: 'AIRCRAFT',
+    severity: 'MEDIUM',
+    regulation: 'ICAO Annex 15 — Aeronautical Information Services',
+    description: 'Navigation data must be current AIRAC cycle; expired cycle = potential route errors',
+  },
+  {
+    id: 'RVSM_EQUIPMENT',
+    name: 'RVSM Equipment',
+    category: 'AIRCRAFT',
+    severity: 'HIGH',
+    regulation: 'ICAO Doc 9574 — RVSM Implementation',
+    description: 'Flights at FL290-FL410 require RVSM-approved altimetry and autopilot; Field 10 must include W',
+  },
+  {
+    id: 'ADS_B_REQUIREMENT',
+    name: 'ADS-B Requirement',
+    category: 'AIRCRAFT',
+    severity: 'HIGH',
+    regulation: 'DGCA CAR Section 2 Series R Part V — ADS-B Mandate',
+    description: 'Aircraft operating in Indian airspace above FL290 must have ADS-B Out capability',
+  },
+];
+
+export const ALL_RULES: ComplianceRule[] = [...DRONE_RULES, ...AIRCRAFT_RULES];
+
+export function getRuleById(id: string): ComplianceRule | undefined {
+  return ALL_RULES.find(r => r.id === id);
+}

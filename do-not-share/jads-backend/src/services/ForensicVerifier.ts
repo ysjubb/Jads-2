@@ -74,6 +74,15 @@ export class ForensicVerifier {
     // ── I-1: Hash chain intact (CRITICAL) ────────────────────────────────
     // Re-derives HASH_0 from missionId and walks every link server-side.
     const i1 = this.checkHashChain(mission.missionId, records, mission)
+
+    // CC-1-01: Record count validation — detect partial uploads (crash mid-flight)
+    const expectedCount = (mission as any).expectedRecordCount as number | null
+    if (expectedCount != null && records.length < expectedCount) {
+      const pct = Math.round((records.length / expectedCount) * 100)
+      const warning = `PARTIAL_UPLOAD: expected ${expectedCount} records, got ${records.length} (${pct}%) — mission may have crashed mid-flight`
+      i1.detail = i1.detail + ` | ${warning}`
+    }
+
     invariants.push(i1)
     if (!i1.pass) failures.push(...i1.detail.split('; '))
 
@@ -90,8 +99,13 @@ export class ForensicVerifier {
     invariants.push(i3)
     if (!i3.pass) failures.push(i3.detail)
 
-    // ── I-4: Archived CRL present (non-critical warning) ─────────────────
-    const i4 = this.checkArchivedCrl(mission.archivedCrlBase64)
+    // ── I-4: Archived CRL present + freshness check (non-critical warning) ──
+    const i4 = this.checkArchivedCrl(
+      mission.archivedCrlBase64,
+      (mission as any).crlArchivedAtUtcMs as string | null,
+      (mission as any).crlThisUpdateUtcMs as string | null,
+      Number(mission.missionStartUtcMs)
+    )
     invariants.push(i4)
     if (!i4.pass) failures.push(i4.detail)
 
@@ -362,16 +376,53 @@ export class ForensicVerifier {
     }
   }
 
-  private checkArchivedCrl(archivedCrlBase64: string | null): InvariantResult {
-    const pass = !!archivedCrlBase64
+  private checkArchivedCrl(
+    archivedCrlBase64: string | null,
+    crlArchivedAtUtcMs: string | null,
+    crlThisUpdateUtcMs: string | null,
+    missionStartMs: number
+  ): InvariantResult {
+    if (!archivedCrlBase64) {
+      return {
+        pass: false,
+        code:     'I4_CRL_ARCHIVED',
+        label:    'CRL Archived (RFC 5280)',
+        detail:   'No CRL snapshot archived — certificate revocation status cannot be verified',
+        critical: false,
+      }
+    }
+
+    const sizeKB = Math.round((archivedCrlBase64.length * 3/4) / 1024)
+    let detail = `CRL snapshot archived at upload time (${sizeKB}KB)`
+
+    // C1-04: CRL freshness validation
+    // If crlThisUpdateUtcMs is available, verify the CRL was issued AFTER the mission started.
+    // A stale CRL (issued before mission start) creates a timing window where a certificate
+    // revoked after CRL issuance but before mission start will appear valid.
+    if (crlThisUpdateUtcMs != null) {
+      const thisUpdateMs = Number(crlThisUpdateUtcMs)
+      const CRL_STALENESS_THRESHOLD = 48 * 60 * 60 * 1000  // 48 hours
+      const ageMs = missionStartMs - thisUpdateMs
+      if (ageMs > CRL_STALENESS_THRESHOLD) {
+        const ageHours = Math.round(ageMs / (60 * 60 * 1000))
+        detail += ` | CRL_STALE: thisUpdate is ${ageHours}h before mission start (threshold: 48h) — revocation gap possible`
+      }
+    } else if (crlArchivedAtUtcMs != null) {
+      // Fallback: use archive timestamp if CRL thisUpdate wasn't parsed
+      const archivedMs = Number(crlArchivedAtUtcMs)
+      const gapMs = missionStartMs - archivedMs
+      if (gapMs > 48 * 60 * 60 * 1000) {
+        const gapHours = Math.round(gapMs / (60 * 60 * 1000))
+        detail += ` | CRL_ARCHIVE_GAP: archived ${gapHours}h before mission start — freshness cannot be verified`
+      }
+    }
+
     return {
-      pass,
+      pass: true,
       code:     'I4_CRL_ARCHIVED',
       label:    'CRL Archived (RFC 5280)',
-      detail:   pass
-        ? `CRL snapshot archived at upload time (${Math.round((archivedCrlBase64!.length * 3/4) / 1024)}KB)`
-        : 'No CRL snapshot archived — certificate revocation status cannot be verified',
-      critical: false,  // Warning only — many NPNT setups don't archive CRL
+      detail,
+      critical: false,
     }
   }
 

@@ -167,11 +167,11 @@ export class AuditIntegrityService {
         END;
         $$ LANGUAGE plpgsql;
       `)
+      await this.prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trg_audit_log_no_update ON "AuditLog"`)
       await this.prisma.$executeRawUnsafe(`
-        DROP TRIGGER IF EXISTS trg_audit_log_no_update ON "AuditLog";
         CREATE TRIGGER trg_audit_log_no_update
           BEFORE UPDATE ON "AuditLog"
-          FOR EACH ROW EXECUTE FUNCTION audit_log_prevent_update();
+          FOR EACH ROW EXECUTE FUNCTION audit_log_prevent_update()
       `)
       details.push('UPDATE trigger installed')
 
@@ -185,11 +185,11 @@ export class AuditIntegrityService {
         END;
         $$ LANGUAGE plpgsql;
       `)
+      await this.prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trg_audit_log_no_delete ON "AuditLog"`)
       await this.prisma.$executeRawUnsafe(`
-        DROP TRIGGER IF EXISTS trg_audit_log_no_delete ON "AuditLog";
         CREATE TRIGGER trg_audit_log_no_delete
           BEFORE DELETE ON "AuditLog"
-          FOR EACH ROW EXECUTE FUNCTION audit_log_prevent_delete();
+          FOR EACH ROW EXECUTE FUNCTION audit_log_prevent_delete()
       `)
       details.push('DELETE trigger installed')
 
@@ -213,11 +213,11 @@ export class AuditIntegrityService {
         END;
         $$ LANGUAGE plpgsql;
       `)
+      await this.prisma.$executeRawUnsafe(`DROP TRIGGER IF EXISTS trg_audit_log_row_hash ON "AuditLog"`)
       await this.prisma.$executeRawUnsafe(`
-        DROP TRIGGER IF EXISTS trg_audit_log_row_hash ON "AuditLog";
         CREATE TRIGGER trg_audit_log_row_hash
           BEFORE INSERT ON "AuditLog"
-          FOR EACH ROW EXECUTE FUNCTION audit_log_compute_row_hash();
+          FOR EACH ROW EXECUTE FUNCTION audit_log_compute_row_hash()
       `)
       details.push('Row hash trigger installed')
 

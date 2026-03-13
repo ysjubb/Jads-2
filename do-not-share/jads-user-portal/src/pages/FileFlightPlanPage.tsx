@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { userApi } from '../api/client'
-import { T } from '../App'
+import { T } from '../theme'
 
 export function FileFlightPlanPage() {
   const navigate = useNavigate()
@@ -35,7 +35,7 @@ export function FileFlightPlanPage() {
       }
       const { data } = await userApi().post('/flight-plans', payload)
       if (data.success) {
-        navigate(`/flight-plan/${data.planId ?? data.id}`)
+        navigate(`/flight-plan/${data.flightPlanId ?? data.planId ?? data.id}`)
       } else {
         setError(data.error ?? 'Filing failed')
       }

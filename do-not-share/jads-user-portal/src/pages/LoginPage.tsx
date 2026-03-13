@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { T } from '../App'
+import { T } from '../theme'
 
 export function LoginPage() {
   const { error, loading, loginStep, pendingUserId, loginInitiate, loginComplete, loginSpecial } = useAuth()
