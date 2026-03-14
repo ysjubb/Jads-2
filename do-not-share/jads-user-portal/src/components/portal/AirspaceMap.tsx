@@ -17,7 +17,15 @@ const ZONE_COLORS: Record<string, string> = {
  * Interactive airspace map centered on India.
  * Renders FIR boundaries and drone zones (GREEN/YELLOW/RED).
  */
-export function AirspaceMap() {
+interface AirspaceMapProps {
+  height?: string
+  drawMode?: boolean
+  onAreaSelected?: (geojson: any) => void
+  zoom?: number
+  center?: number[]
+}
+
+export function AirspaceMap(_props: AirspaceMapProps = {}) {
   const [zones, setZones] = useState<AirspaceZone[]>([]);
 
   useEffect(() => {

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react'
 import { T } from '../../theme'
-import { INDIAN_AIRWAYS, findAirway } from '../../data/airwayData'
-import { getSIDsForAirport, getSTARsForAirport } from '../../data/sidStarData'
+import { INDIAN_AIRWAYS, getAirwayByDesignator } from '../../data/airwayData'
+import { getSidStarForAirport, type SidStarEntry } from '../../data/sidStarData'
 
 interface RouteSegment {
   type: 'SID' | 'AIRWAY' | 'DCT' | 'STAR' | 'WAYPOINT'
@@ -22,12 +22,18 @@ const inputStyle: React.CSSProperties = {
   borderRadius: '4px', color: T.textBright, fontSize: '0.7rem', fontFamily: 'inherit',
 }
 
+function getProcsForAirport(icao: string, type: 'SID' | 'STAR'): SidStarEntry[] {
+  const ap = getSidStarForAirport(icao)
+  if (!ap) return []
+  return ap.procedures.filter(p => p.type === type)
+}
+
 export function RouteBuilder({ departure = '', destination = '', onRouteChange }: RouteBuilderProps) {
   const [segments, setSegments] = useState<RouteSegment[]>([])
   const [speedLevel, setSpeedLevel] = useState('N0440F350')
 
-  const sids = useMemo(() => getSIDsForAirport(departure), [departure])
-  const stars = useMemo(() => getSTARsForAirport(destination), [destination])
+  const sids = useMemo(() => getProcsForAirport(departure, 'SID'), [departure])
+  const stars = useMemo(() => getProcsForAirport(destination, 'STAR'), [destination])
 
   const addSegment = (type: RouteSegment['type']) => {
     setSegments(s => [...s, { type, designator: '', entry: '', exit: '' }])
@@ -87,13 +93,13 @@ export function RouteBuilder({ departure = '', destination = '', onRouteChange }
           {seg.type === 'SID' && (
             <select style={{ ...inputStyle, flex: 1 }} value={seg.designator} onChange={e => updateSegment(idx, { designator: e.target.value })}>
               <option value="">Select SID...</option>
-              {sids.map(s => <option key={s.name} value={s.name}>{s.name} ({s.runways.join('/')})</option>)}
+              {sids.map((s: SidStarEntry) => <option key={s.name} value={s.name}>{s.name}{s.runway ? ` (${s.runway})` : ''}</option>)}
             </select>
           )}
           {seg.type === 'STAR' && (
             <select style={{ ...inputStyle, flex: 1 }} value={seg.designator} onChange={e => updateSegment(idx, { designator: e.target.value })}>
               <option value="">Select STAR...</option>
-              {stars.map(s => <option key={s.name} value={s.name}>{s.name} ({s.runways.join('/')})</option>)}
+              {stars.map((s: SidStarEntry) => <option key={s.name} value={s.name}>{s.name}{s.runway ? ` (${s.runway})` : ''}</option>)}
             </select>
           )}
           {seg.type === 'AIRWAY' && (
@@ -106,15 +112,12 @@ export function RouteBuilder({ departure = '', destination = '', onRouteChange }
                 <option value="">AWY...</option>
                 {INDIAN_AIRWAYS.map(a => (
                   <option key={a.designator} value={a.designator}>
-                    {a.designator}{a.cdr ? ' (CDR)' : ''}{a.oceanic ? ' (OCN)' : ''}
+                    {a.designator} ({a.type})
                   </option>
                 ))}
               </select>
               <input style={{ ...inputStyle, width: '70px' }} placeholder="Exit" value={seg.exit ?? ''}
                 onChange={e => updateSegment(idx, { exit: e.target.value.toUpperCase() })} />
-              {findAirway(seg.designator)?.cdr && (
-                <span style={{ fontSize: '0.55rem', color: T.amber, fontWeight: 700 }}>CDR</span>
-              )}
             </>
           )}
           {(seg.type === 'DCT' || seg.type === 'WAYPOINT') && (

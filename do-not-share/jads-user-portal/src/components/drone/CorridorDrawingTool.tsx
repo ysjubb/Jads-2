@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import * as turf from '@turf/turf'
 import { kml } from '@tmcw/togeojson'
-import { T } from '../../App'
+import { T } from '../../theme'
 import { userApi } from '../../api/client'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -129,8 +129,8 @@ export function CorridorDrawingTool({
 
     const buffered = generateBuffer(pts, width)
     if (buffered && buffered.geometry) {
-      const coords = buffered.geometry.coordinates[0].map(
-        (c: number[]) => [c[1], c[0]] as [number, number]
+      const coords = (buffered.geometry.coordinates[0] as number[][]).map(
+        (c) => [c[1], c[0]] as [number, number]
       )
       bufferLayerRef.current = L.polygon(coords, {
         color: '#EAB308',
@@ -295,8 +295,8 @@ export function CorridorDrawingTool({
     // Add the buffer polygon to drawnItems
     const L = (window as any).L
     if (L && drawnItemsRef.current && buffered.geometry) {
-      const coords = buffered.geometry.coordinates[0].map(
-        (c: number[]) => [c[1], c[0]] as [number, number]
+      const coords = (buffered.geometry.coordinates[0] as number[][]).map(
+        (c) => [c[1], c[0]] as [number, number]
       )
       const polygon = L.polygon(coords, {
         color: '#EAB308',

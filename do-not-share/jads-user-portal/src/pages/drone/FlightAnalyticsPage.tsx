@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react'
-import { T } from '../../App'
+import { T } from '../../theme'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, Legend,

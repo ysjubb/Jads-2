@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react'
-import { T } from '../../App'
+import { T } from '../../theme'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

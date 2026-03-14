@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { T } from '../../App'
+import { T } from '../../theme'
 import { userApi } from '../../api/client'
 
 // ── Types ────────────────────────────────────────────────────────────────────
