@@ -9,7 +9,7 @@
     "exclusionOuterKm": 8.0
   },
   {
-    "icaoCode": "VIAL",
+    "icaoCode": "VIAX",
     "name": "Adampur Air Force Station",
     "arpLat": 31.4336,
     "arpLon": 75.7588,
@@ -18,8 +18,8 @@
     "exclusionOuterKm": 10.0
   },
   {
-    "icaoCode": "VIGG",
-    "name": "Goa International Airport",
+    "icaoCode": "VAGO",
+    "name": "Goa International Airport (Dabolim)",
     "arpLat": 15.3808,
     "arpLon": 73.8314,
     "type": "INTERNATIONAL",

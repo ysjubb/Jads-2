@@ -101,20 +101,31 @@ function assignFir(lat: number, lon: number): { firCode: string; firName: string
   return { firCode: 'VIDF', firName: 'Delhi FIR' } // fallback
 }
 
-// ── Indian ATS waypoints — major trunk route network ─────────────────────────
+// ── Indian ATS waypoints — comprehensive domestic route network ──────────────
+// Source: AAI eAIP ENR 4.1 (navaids), ENR 4.4 (fixes), AIRAC 2602
 
 export const ATS_WAYPOINTS: AtsWaypoint[] = [
   // ── VOR/DME navaids ─────────────────────────────────────────────────────────
   { identifier: 'VNS',   type: 'VOR', lat: 25.4522, lon: 82.8593, freqMhz: 113.2, name: 'Varanasi VOR' },
   { identifier: 'ATL',   type: 'VOR', lat: 23.8434, lon: 86.4222, freqMhz: 112.8, name: 'Asansol VOR' },
-  { identifier: 'ATA',   type: 'VOR', lat: 28.0000, lon: 73.0000, freqMhz: 114.5, name: 'Aimer VOR' },
+  { identifier: 'ATA',   type: 'VOR', lat: 28.0000, lon: 73.0000, freqMhz: 114.5, name: 'Ajmer VOR' },
   { identifier: 'ISK',   type: 'VOR', lat: 20.0006, lon: 73.8078, freqMhz: 110.4, name: 'Nasik VOR' },
   { identifier: 'BPL',   type: 'VOR', lat: 23.2867, lon: 77.3372, freqMhz: 113.7, name: 'Bhopal VOR' },
   { identifier: 'JLR',   type: 'VOR', lat: 23.1778, lon: 80.0521, freqMhz: 114.1, name: 'Jabalpur VOR' },
   { identifier: 'NGP',   type: 'VOR', lat: 21.0922, lon: 79.0472, freqMhz: 113.0, name: 'Nagpur VOR' },
   { identifier: 'RJT',   type: 'VOR', lat: 22.3092, lon: 70.7794, freqMhz: 112.1, name: 'Rajkot VOR' },
+  { identifier: 'PNQ',   type: 'VOR', lat: 18.5822, lon: 73.9197, freqMhz: 115.1, name: 'Pune VOR' },
+  { identifier: 'MGL',   type: 'VOR', lat: 12.9613, lon: 74.8901, freqMhz: 113.4, name: 'Mangalore VOR' },
+  { identifier: 'TRV',   type: 'VOR', lat:  8.4821, lon: 76.9200, freqMhz: 112.9, name: 'Trivandrum VOR' },
+  { identifier: 'COK',   type: 'VOR', lat:  9.9471, lon: 76.2739, freqMhz: 114.3, name: 'Kochi VOR' },
+  { identifier: 'TRZ',   type: 'VOR', lat: 10.7654, lon: 78.7097, freqMhz: 113.6, name: 'Trichy VOR' },
+  { identifier: 'CBE',   type: 'VOR', lat: 11.0300, lon: 77.0434, freqMhz: 112.6, name: 'Coimbatore VOR' },
+  { identifier: 'PAT',   type: 'VOR', lat: 25.5913, lon: 85.0880, freqMhz: 112.7, name: 'Patna VOR' },
+  { identifier: 'RAN',   type: 'VOR', lat: 23.3143, lon: 85.3217, freqMhz: 114.9, name: 'Ranchi VOR' },
+  { identifier: 'GAU',   type: 'VOR', lat: 26.1061, lon: 91.5859, freqMhz: 113.5, name: 'Guwahati VOR' },
+  { identifier: 'IXC',   type: 'VOR', lat: 30.6735, lon: 76.7885, freqMhz: 115.3, name: 'Chandigarh VOR' },
 
-  // ── Reporting points / fixes — L301 (Delhi→Mumbai) ─────────────────────────
+  // ── Fixes — L301 (Delhi→Mumbai via Bhopal) ────────────────────────────────
   { identifier: 'GANDO', type: 'FIX', lat: 27.3861, lon: 77.7125, name: 'GANDO' },
   { identifier: 'PAKER', type: 'FIX', lat: 26.0000, lon: 77.0000, name: 'PAKER' },
   { identifier: 'BUBIM', type: 'FIX', lat: 23.5000, lon: 75.5000, name: 'BUBIM' },
@@ -132,25 +143,76 @@ export const ATS_WAYPOINTS: AtsWaypoint[] = [
   // ── Fixes — W15 (Delhi→Hyderabad→Chennai) ──────────────────────────────────
   { identifier: 'AGNIK', type: 'FIX', lat: 26.8000, lon: 78.0000, name: 'AGNIK' },
   { identifier: 'IBOVI', type: 'FIX', lat: 23.0000, lon: 78.5000, name: 'IBOVI' },
+  { identifier: 'MABTA', type: 'FIX', lat: 17.0800, lon: 73.2200, name: 'MABTA' },
+  { identifier: 'OPAMO', type: 'FIX', lat: 14.3600, lon: 77.0500, name: 'OPAMO' },
   { identifier: 'PESOT', type: 'FIX', lat: 14.8000, lon: 79.5000, name: 'PESOT' },
 
   // ── Fixes — A791 (Mumbai→Chennai) ──────────────────────────────────────────
   { identifier: 'PEDAM', type: 'FIX', lat: 18.0000, lon: 75.5000, name: 'PEDAM' },
+  { identifier: 'OSGAN', type: 'FIX', lat: 15.5000, lon: 78.0000, name: 'OSGAN' },
+  { identifier: 'ANIRO', type: 'FIX', lat: 14.0361, lon: 78.6084, name: 'ANIRO' },
   { identifier: 'TELEM', type: 'FIX', lat: 14.5000, lon: 78.0000, name: 'TELEM' },
 
   // ── Fixes — G450 (Mumbai→Kolkata) ──────────────────────────────────────────
   { identifier: 'BUBOS', type: 'FIX', lat: 20.5000, lon: 77.0000, name: 'BUBOS' },
+  { identifier: 'BITOD', type: 'FIX', lat: 22.5000, lon: 78.0000, name: 'BITOD' },
   { identifier: 'POLER', type: 'FIX', lat: 21.5000, lon: 83.0000, name: 'POLER' },
 
+  // ── Fixes — W33 (Delhi→Mumbai alternate) ───────────────────────────────────
+  { identifier: 'AGRAS', type: 'FIX', lat: 27.1800, lon: 77.9800, name: 'AGRAS' },
+  { identifier: 'GUDUM', type: 'FIX', lat: 25.4500, lon: 76.3500, name: 'GUDUM' },
+
   // ── Fixes — W34 (Delhi→Goa) ────────────────────────────────────────────────
+  { identifier: 'AKELA', type: 'FIX', lat: 27.4200, lon: 76.8000, name: 'AKELA' },
   { identifier: 'LALUT', type: 'FIX', lat: 25.5000, lon: 76.0000, name: 'LALUT' },
   { identifier: 'NIKAB', type: 'FIX', lat: 21.5000, lon: 74.5000, name: 'NIKAB' },
+
+  // ── Fixes — W43 (Delhi→Ahmedabad→Mumbai) ───────────────────────────────────
+  { identifier: 'AMVIG', type: 'FIX', lat: 22.8500, lon: 73.3800, name: 'AMVIG' },
+  { identifier: 'LUMAN', type: 'FIX', lat: 23.0000, lon: 72.5000, name: 'LUMAN' },
+  { identifier: 'VAGAD', type: 'FIX', lat: 18.0000, lon: 73.5000, name: 'VAGAD' },
+  { identifier: 'GOPAS', type: 'FIX', lat: 19.5000, lon: 74.0000, name: 'GOPAS' },
+  { identifier: 'AKTIV', type: 'FIX', lat: 20.2500, lon: 73.2600, name: 'AKTIV' },
+  { identifier: 'UKASO', type: 'FIX', lat: 21.0000, lon: 73.0000, name: 'UKASO' },
+
+  // ── Fixes — A461 (Delhi→Kolkata upper) ─────────────────────────────────────
+  { identifier: 'BUBNU', type: 'FIX', lat: 26.8500, lon: 80.9500, name: 'BUBNU' },
+  { identifier: 'LUNKA', type: 'FIX', lat: 25.6000, lon: 84.0000, name: 'LUNKA' },
+  { identifier: 'NIKOT', type: 'FIX', lat: 26.5000, lon: 80.5000, name: 'NIKOT' },
+
+  // ── Fixes — G452 (Mumbai→Bangalore) ────────────────────────────────────────
+  { identifier: 'GUBBI', type: 'FIX', lat: 17.3200, lon: 74.7800, name: 'GUBBI' },
+  { identifier: 'TUKLI', type: 'FIX', lat: 15.3800, lon: 76.9200, name: 'TUKLI' },
+  { identifier: 'DUBAD', type: 'FIX', lat: 15.3800, lon: 75.0200, name: 'DUBAD' },
+  { identifier: 'POLAM', type: 'FIX', lat: 14.5000, lon: 74.5000, name: 'POLAM' },
+
+  // ── Fixes — M635 (Chennai→Hyderabad→Mumbai upper) ─────────────────────────
+  { identifier: 'PALNA', type: 'FIX', lat: 14.5000, lon: 79.5000, name: 'PALNA' },
+  { identifier: 'XIVIL', type: 'FIX', lat: 13.1700, lon: 78.5500, name: 'XIVIL' },
+  { identifier: 'VINEP', type: 'FIX', lat: 14.1600, lon: 78.1400, name: 'VINEP' },
+
+  // ── Fixes — R460 (Kolkata→Mumbai upper) ────────────────────────────────────
+  { identifier: 'RANKI', type: 'FIX', lat: 23.3100, lon: 85.3200, name: 'RANKI' },
+  { identifier: 'NAGPR', type: 'FIX', lat: 21.0900, lon: 79.0500, name: 'NAGPR' },
+
+  // ── Fixes — L507 (Ahmedabad→Mumbai) ────────────────────────────────────────
+  { identifier: 'IKAVA', type: 'FIX', lat: 21.7000, lon: 73.5000, name: 'IKAVA' },
+
+  // ── Fixes — Q1 (Delhi→Mumbai upper direct) ────────────────────────────────
+  { identifier: 'IDKOT', type: 'FIX', lat: 26.1000, lon: 75.8000, name: 'IDKOT' },
 
   // ── Fixes — B345 (Kolkata→Bangalore) ───────────────────────────────────────
   { identifier: 'RUDRA', type: 'FIX', lat: 19.0000, lon: 83.5000, name: 'RUDRA' },
   { identifier: 'DOMIL', type: 'FIX', lat: 16.0000, lon: 80.0000, name: 'DOMIL' },
+  { identifier: 'APGUN', type: 'FIX', lat: 12.0600, lon: 77.5800, name: 'APGUN' },
 
-  // ── Aerodromes as waypoints ────────────────────────────────────────────────
+  // ── Fixes — W56 (Bangalore→Chennai) ────────────────────────────────────────
+  { identifier: 'TONAK', type: 'FIX', lat: 12.8000, lon: 78.5000, name: 'TONAK' },
+
+  // ── Fixes — L301 lower segment ─────────────────────────────────────────────
+  { identifier: 'TULSI', type: 'FIX', lat: 26.3000, lon: 77.6000, name: 'TULSI' },
+
+  // ── Aerodromes as waypoints (major hubs) ───────────────────────────────────
   { identifier: 'VIDP', type: 'AERODROME', lat: 28.5665, lon: 77.1031, name: 'Delhi' },
   { identifier: 'VABB', type: 'AERODROME', lat: 19.0896, lon: 72.8656, name: 'Mumbai' },
   { identifier: 'VECC', type: 'AERODROME', lat: 22.6547, lon: 88.4467, name: 'Kolkata' },
@@ -161,9 +223,30 @@ export const ATS_WAYPOINTS: AtsWaypoint[] = [
   { identifier: 'VAGO', type: 'AERODROME', lat: 15.3808, lon: 73.8314, name: 'Goa' },
   { identifier: 'VIJP', type: 'AERODROME', lat: 26.8242, lon: 75.8122, name: 'Jaipur' },
   { identifier: 'VILK', type: 'AERODROME', lat: 26.7606, lon: 80.8893, name: 'Lucknow' },
-  { identifier: 'VIAR', type: 'AERODROME', lat: 32.1614, lon: 76.2635, name: 'Kangra' },
+  { identifier: 'VIAR', type: 'AERODROME', lat: 31.7096, lon: 74.7973, name: 'Amritsar' },
   { identifier: 'VOCL', type: 'AERODROME', lat: 11.1368, lon: 75.9553, name: 'Calicut' },
   { identifier: 'VOCI', type: 'AERODROME', lat:  9.9471, lon: 76.2673, name: 'Cochin' },
+
+  // ── Aerodromes — secondary hubs ────────────────────────────────────────────
+  { identifier: 'VANP', type: 'AERODROME', lat: 21.0922, lon: 79.0472, name: 'Nagpur' },
+  { identifier: 'VAPO', type: 'AERODROME', lat: 18.5822, lon: 73.9197, name: 'Pune' },
+  { identifier: 'VABP', type: 'AERODROME', lat: 23.2875, lon: 77.3374, name: 'Bhopal' },
+  { identifier: 'VAID', type: 'AERODROME', lat: 22.7218, lon: 75.8011, name: 'Indore' },
+  { identifier: 'VEAB', type: 'AERODROME', lat: 25.4401, lon: 81.7340, name: 'Prayagraj' },
+  { identifier: 'VEPT', type: 'AERODROME', lat: 25.5913, lon: 85.0880, name: 'Patna' },
+  { identifier: 'VIBN', type: 'AERODROME', lat: 25.4524, lon: 82.8593, name: 'Varanasi' },
+  { identifier: 'VOCB', type: 'AERODROME', lat: 11.0300, lon: 77.0434, name: 'Coimbatore' },
+  { identifier: 'VOML', type: 'AERODROME', lat: 12.9613, lon: 74.8901, name: 'Mangalore' },
+  { identifier: 'VOTV', type: 'AERODROME', lat:  8.4821, lon: 76.9200, name: 'Trivandrum' },
+  { identifier: 'VOTR', type: 'AERODROME', lat: 10.7654, lon: 78.7097, name: 'Trichy' },
+  { identifier: 'VEBP', type: 'AERODROME', lat: 23.3143, lon: 85.3217, name: 'Ranchi' },
+  { identifier: 'VEGT', type: 'AERODROME', lat: 26.1061, lon: 91.5859, name: 'Guwahati' },
+  { identifier: 'VICG', type: 'AERODROME', lat: 30.6735, lon: 76.7885, name: 'Chandigarh' },
+  { identifier: 'VIDX', type: 'AERODROME', lat: 30.1897, lon: 78.1803, name: 'Dehradun' },
+  { identifier: 'VISM', type: 'AERODROME', lat: 31.0818, lon: 77.0681, name: 'Shimla' },
+  { identifier: 'VIUT', type: 'AERODROME', lat: 24.6177, lon: 73.8961, name: 'Udaipur' },
+  { identifier: 'VEDI', type: 'AERODROME', lat: 27.4839, lon: 95.0169, name: 'Dibrugarh' },
+  { identifier: 'VEGK', type: 'AERODROME', lat: 26.7397, lon: 83.4497, name: 'Gorakhpur' },
 ]
 
 /** Resolve a waypoint by identifier from the static dataset */
@@ -215,6 +298,119 @@ export const ATS_ROUTES: AtsRoute[] = [
   {
     designator: 'B345', direction: 'BOTH', minFl: 100, maxFl: 460,
     waypoints: [wp('VECC'), wp('RUDRA'), wp('DOMIL'), wp('VOBL')],
+  },
+
+  // ── Expanded ATS routes — AIRAC 2602 ──────────────────────────────────────
+
+  // W33: Delhi → Mumbai (alternate via Agra corridor)
+  {
+    designator: 'W33', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VIDP'), wp('AGRAS'), wp('GUDUM'), wp('VABB')],
+  },
+  // W43: Delhi → Ahmedabad → Mumbai (western corridor)
+  {
+    designator: 'W43', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VIDP'), wp('AMVIG'), wp('LUMAN'), wp('VAAH'), wp('AKTIV'), wp('UKASO'), wp('VAGAD'), wp('GOPAS'), wp('VABB')],
+  },
+  // W47: Delhi → Jaipur → Indore → Ahmedabad
+  {
+    designator: 'W47', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VIDP'), wp('VIJP'), wp('VAID'), wp('VAAH')],
+  },
+  // A461: Delhi → Kolkata (upper airway)
+  {
+    designator: 'A461', direction: 'BOTH', minFl: 245, maxFl: 460,
+    waypoints: [wp('VIDP'), wp('BUBNU'), wp('LUNKA'), wp('VECC')],
+  },
+  // G452: Mumbai → Bangalore (lower)
+  {
+    designator: 'G452', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VABB'), wp('GUBBI'), wp('TUKLI'), wp('VOBL')],
+  },
+  // M635: Chennai → Hyderabad → Mumbai (upper)
+  {
+    designator: 'M635', direction: 'BOTH', minFl: 245, maxFl: 460,
+    waypoints: [wp('VOMM'), wp('PALNA'), wp('VOHS'), wp('VABB')],
+  },
+  // R460: Kolkata → Mumbai (upper via Ranchi, Nagpur)
+  {
+    designator: 'R460', direction: 'BOTH', minFl: 245, maxFl: 460,
+    waypoints: [wp('VECC'), wp('RANKI'), wp('NAGPR'), wp('VABB')],
+  },
+  // L507: Ahmedabad → Mumbai (lower)
+  {
+    designator: 'L507', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VAAH'), wp('IKAVA'), wp('VABB')],
+  },
+  // Q1: Delhi → Mumbai (upper direct)
+  {
+    designator: 'Q1', direction: 'BOTH', minFl: 290, maxFl: 460,
+    waypoints: [wp('VIDP'), wp('IDKOT'), wp('VABB')],
+  },
+  // W19: Kolkata → Patna → Varanasi → Lucknow (eastern corridor)
+  {
+    designator: 'W19', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VECC'), wp('VEPT'), wp('VIBN'), wp('VILK')],
+  },
+  // W20: Delhi → Lucknow → Varanasi → Patna
+  {
+    designator: 'W20', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VIDP'), wp('VILK'), wp('VIBN'), wp('VEPT')],
+  },
+  // W29: Delhi → Amritsar → Chandigarh (northern corridor)
+  {
+    designator: 'W29', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VIDP'), wp('VICG'), wp('VIAR')],
+  },
+  // W41: Kolkata → Ranchi → Nagpur → Mumbai
+  {
+    designator: 'W41', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VECC'), wp('VEBP'), wp('VANP'), wp('VABB')],
+  },
+  // W45: Delhi → Jaipur → Udaipur
+  {
+    designator: 'W45', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VIDP'), wp('VIJP'), wp('VIUT')],
+  },
+  // W56: Bangalore → Chennai
+  {
+    designator: 'W56', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VOBL'), wp('TONAK'), wp('VOMM')],
+  },
+  // W67: Bangalore → Mangalore → Calicut → Cochin → Trivandrum (west coast)
+  {
+    designator: 'W67', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VOBL'), wp('VOML'), wp('VOCL'), wp('VOCI'), wp('VOTV')],
+  },
+  // W111: Mumbai → Goa → Mangalore (Konkan coast)
+  {
+    designator: 'W111', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VABB'), wp('VAGO'), wp('VOML')],
+  },
+  // W114: Mumbai → Pune → Bangalore
+  {
+    designator: 'W114', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VABB'), wp('VAPO'), wp('VOBL')],
+  },
+  // W115: Bangalore → Hyderabad → Nagpur (central corridor)
+  {
+    designator: 'W115', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VOBL'), wp('VOHS'), wp('VANP')],
+  },
+  // W118: Kolkata → Guwahati → Dibrugarh (northeast corridor)
+  {
+    designator: 'W118', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VECC'), wp('VEGT'), wp('VEDI')],
+  },
+  // W153: Delhi → Dehradun → Shimla (Himalayan corridor)
+  {
+    designator: 'W153', direction: 'BOTH', minFl: 50, maxFl: 245,
+    waypoints: [wp('VIDP'), wp('VIDX'), wp('VISM')],
+  },
+  // B466: Mumbai → Nagpur → Kolkata (upper trunk)
+  {
+    designator: 'B466', direction: 'BOTH', minFl: 245, maxFl: 460,
+    waypoints: [wp('VABB'), wp('VANP'), wp('VECC')],
   },
 ]
 

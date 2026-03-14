@@ -223,8 +223,8 @@
       "contactPhone": "+91-562-2400340"
     },
     {
-      "icao": "VIAL",
-      "name": "Allahabad Airport (Bamrauli)",
+      "icao": "VEAB",
+      "name": "Prayagraj Airport (Bamrauli)",
       "authority": "IAF",
       "nof": null,
       "commandHq": "IAF Central Air Command, Prayagraj",
@@ -257,14 +257,14 @@
     },
     {
       "icao": "VIGR",
-      "name": "Gorakhpur Airport",
+      "name": "Rajmata Vijaya Raje Scindia Airport, Gwalior",
       "authority": "IAF",
       "nof": null,
       "commandHq": "IAF Central Air Command, Prayagraj",
       "jointAuthority": null,
       "region": "NORTHERN",
       "contactEmail": "cac-ops@iaf.mil.in",
-      "contactPhone": "+91-551-2338800"
+      "contactPhone": "+91-751-2340300"
     },
     {
       "icao": "VIHR",
@@ -386,17 +386,6 @@
       "region": "NORTHERN",
       "contactEmail": "atc-sxr@aai.aero",
       "contactPhone": "+91-194-2303050"
-    },
-    {
-      "icao": "VILD",
-      "name": "Saharan Airport, Ludhiana",
-      "authority": "IAF",
-      "nof": null,
-      "commandHq": "IAF Western Air Command, New Delhi",
-      "jointAuthority": null,
-      "region": "NORTHERN",
-      "contactEmail": "wac-ops@iaf.mil.in",
-      "contactPhone": "+91-161-2301200"
     },
     {
       "icao": "VICG",
@@ -961,18 +950,18 @@
     },
     {
       "icao": "VEGK",
-      "name": "Gaya Airport",
+      "name": "Gorakhpur Airport",
       "authority": "AAI_IAF",
       "nof": "AAI Kolkata NOF",
       "commandHq": "IAF Eastern Air Command, Shillong",
       "jointAuthority": "AAI + IAF EAC",
       "region": "EASTERN",
-      "contactEmail": "atc-gay@aai.aero",
-      "contactPhone": "+91-631-2220434"
+      "contactEmail": "atc-gop@aai.aero",
+      "contactPhone": "+91-551-2338800"
     },
     {
       "icao": "VEGY",
-      "name": "Guwahati Airport (Lokpriya Gopinath Bordoloi)",
+      "name": "Gaya Airport (Bodhgaya)",
       "authority": "AAI_IAF",
       "nof": "AAI Kolkata NOF",
       "commandHq": "IAF Eastern Air Command, Shillong",
@@ -1368,14 +1357,14 @@
     },
     {
       "icao": "VEGT",
-      "name": "Sarsawa (near Saharanpur)",
-      "authority": "IAF",
-      "nof": null,
-      "commandHq": "IAF Western Air Command, New Delhi",
-      "jointAuthority": null,
-      "region": "NORTHERN",
-      "contactEmail": "wac-ops@iaf.mil.in",
-      "contactPhone": "+91-132-2752100"
+      "name": "Lokpriya Gopinath Bordoloi Intl, Guwahati",
+      "authority": "AAI_IAF",
+      "nof": "AAI Kolkata NOF",
+      "commandHq": "IAF Eastern Air Command, Shillong",
+      "jointAuthority": "AAI + IAF EAC",
+      "region": "EASTERN",
+      "contactEmail": "atc-gau@aai.aero",
+      "contactPhone": "+91-361-2840200"
     },
     {
       "icao": "VEHK",

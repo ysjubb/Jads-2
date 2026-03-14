@@ -12,6 +12,10 @@ import { ClearanceService } from '../services/ClearanceService'
 import { decodeCanonical } from '../telemetry/telemetryDecoder'
 import { resolveEgcaAdapter, EgcaAdapterMock, EgcaAdapterImpl } from '../adapters/egca'
 import { DroneNotificationService } from '../services/DroneNotificationService'
+import { DataSourceReconciliationService } from '../services/DataSourceReconciliationService'
+import { DataSourceManagerService }        from '../services/DataSourceManagerService'
+import { AAIeAIPAdapterStub }              from '../adapters/stubs/AAIeAIPAdapterStub'
+import { JeppesenAdapterStub }             from '../adapters/stubs/JeppesenAdapterStub'
 import { prisma }        from '../lib/prisma'
 
 const router                = express.Router()
@@ -19,6 +23,12 @@ const log                   = createServiceLogger('AdminRoutes')
 const specialUserAuthService = new SpecialUserAuthService(prisma)
 const clearanceService       = new ClearanceService(prisma)
 const notifService           = new DroneNotificationService(prisma)
+
+// ── Data source services (reconciliation + admin manager) ─────────
+const eaipAdapter            = new AAIeAIPAdapterStub()
+const jeppesenAdapter        = new JeppesenAdapterStub()
+const reconciliationService  = new DataSourceReconciliationService(eaipAdapter, jeppesenAdapter)
+const dataSourceManager      = new DataSourceManagerService(reconciliationService)
 
 // ── ADMIN LOGIN (no auth required) ────────────────────────────────────────
 
@@ -1012,22 +1022,226 @@ router.get('/system/health', async (req, res) => {
     timestamp: new Date().toISOString() })
 })
 
-// GET /admin/system/adapter-status — pings all adapters and returns stub vs live
-router.get('/system/adapter-status', async (req, res) => {
-  // All adapters are currently STUB — live integration pending
-  res.json({
+// GET /admin/system/adapter-status — returns status of all 14+ adapters via DataSourceManagerService
+router.get('/system/adapter-status', requireAdminAuth, async (_req, res) => {
+  try {
+    const adapters = dataSourceManager.getAllAdapters()
+    res.json({ adapters, retrievedAt: new Date().toISOString() })
+  } catch (e) {
+    log.error('adapter_status_failed', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'ADAPTER_STATUS_FAILED' })
+  }
+})
 
-    adapters: {
-      digitalSky:   { mode: 'STUB', live: false, latencyMs: null },
-      uidai:        { mode: 'STUB', live: false, latencyMs: null },
-      afmlu:        { mode: 'STUB', live: false, latencyMs: null },
-      aftn:         { mode: 'STUB', live: false, latencyMs: null },
-      ntpAuthority: { mode: 'STUB', live: false, latencyMs: null },
-      crl:          { mode: 'STUB', live: false, latencyMs: null },
-      notamFeed:    { mode: 'STUB', live: false, latencyMs: null },
-    },
-    retrievedAt: new Date().toISOString()
-  })
+// ── DATA SOURCE MANAGEMENT ─────────────────────────────────────────────────
+
+// GET /admin/data-sources/config — current authoritative source config
+router.get('/data-sources/config', requireAdminAuth, async (_req, res) => {
+  res.json({ success: true, config: dataSourceManager.getConfig() })
+})
+
+// PUT /admin/data-sources/config — toggle authoritative source (PLATFORM_SUPER_ADMIN)
+router.put('/data-sources/config', requireAdminRole('PLATFORM_SUPER_ADMIN'), async (req, res) => {
+  try {
+    const { routePlanningSource } = req.body
+    if (!routePlanningSource || !['AAI_EAIP', 'JEPPESEN', 'EMBEDDED'].includes(routePlanningSource)) {
+      res.status(400).json({ error: 'INVALID_SOURCE', valid: ['AAI_EAIP', 'JEPPESEN', 'EMBEDDED'] })
+      return
+    }
+    const adminId = (req as any).adminUser?.id ?? 'unknown'
+    const config = dataSourceManager.setAuthoritativeSource(routePlanningSource, adminId)
+
+    // Audit log
+    try {
+      await prisma.auditLog.create({
+        data: {
+          action: 'DATA_SOURCE_CONFIG_CHANGED',
+          actorId: adminId,
+          actorType: 'ADMIN',
+          resourceType: 'SYSTEM',
+          resourceId: 'route-planning-source',
+          detailJson: JSON.stringify({ routePlanningSource }),
+        }
+      })
+    } catch { /* audit log failure should not block response */ }
+
+    res.json({ success: true, config })
+  } catch (e) {
+    log.error('data_source_config_update_failed', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'CONFIG_UPDATE_FAILED' })
+  }
+})
+
+// POST /admin/data-sources/:adapterId/sync — trigger manual sync for any adapter
+router.post('/data-sources/:adapterId/sync', requireAdminRole('PLATFORM_SUPER_ADMIN'), async (req, res) => {
+  try {
+    const { adapterId } = req.params
+    const adminId = (req as any).adminUser?.id ?? 'unknown'
+
+    const adapter = dataSourceManager.getAdapter(adapterId)
+    if (!adapter) {
+      res.status(404).json({ error: 'ADAPTER_NOT_FOUND', adapterId })
+      return
+    }
+
+    const syncable = dataSourceManager.getSyncableAdapters()
+    if (!syncable.includes(adapterId)) {
+      res.status(400).json({ error: 'ADAPTER_NOT_SYNCABLE', adapterId, syncableAdapters: syncable })
+      return
+    }
+
+    const result = await dataSourceManager.triggerManualSync(adapterId, adminId)
+
+    // Audit log
+    try {
+      await prisma.auditLog.create({
+        data: {
+          action: 'MANUAL_SYNC_TRIGGERED',
+          actorId: adminId,
+          actorType: 'ADMIN',
+          resourceType: 'ADAPTER',
+          resourceId: adapterId,
+          detailJson: JSON.stringify(result),
+        }
+      })
+    } catch { /* audit log failure should not block response */ }
+
+    res.json({ success: true, adapterId, result })
+  } catch (e) {
+    log.error('manual_sync_failed', { data: { adapterId: req.params.adapterId, error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'MANUAL_SYNC_FAILED', message: e instanceof Error ? e.message : String(e) })
+  }
+})
+
+// GET /admin/data-sources/reconciliation/latest — latest reconciliation report
+router.get('/data-sources/reconciliation/latest', requireAdminAuth, async (_req, res) => {
+  const recon = dataSourceManager.getReconciliationService()
+  const report = recon.getLatestReport()
+  if (!report) {
+    res.json({ success: true, report: null, message: 'No reconciliation has been run yet' })
+    return
+  }
+  res.json({ success: true, report })
+})
+
+// POST /admin/data-sources/reconciliation/run — trigger new reconciliation
+router.post('/data-sources/reconciliation/run', requireAdminRole('PLATFORM_SUPER_ADMIN'), async (req, res) => {
+  try {
+    const adminId = (req as any).adminUser?.id ?? 'unknown'
+    const recon = dataSourceManager.getReconciliationService()
+    const report = await recon.reconcile()
+
+    // Audit log
+    try {
+      await prisma.auditLog.create({
+        data: {
+          action: 'RECONCILIATION_TRIGGERED',
+          actorId: adminId,
+          actorType: 'ADMIN',
+          resourceType: 'SYSTEM',
+          resourceId: report.reportId,
+          detailJson: JSON.stringify({
+            totalCompared: report.totalCompared,
+            matchCount: report.matchCount,
+            varianceCount: report.varianceCount,
+          }),
+        }
+      })
+    } catch { /* audit log failure should not block response */ }
+
+    res.json({ success: true, report })
+  } catch (e) {
+    log.error('reconciliation_run_failed', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'RECONCILIATION_FAILED' })
+  }
+})
+
+// GET /admin/data-sources/variances — list variances (filterable by ?status=&severity=)
+router.get('/data-sources/variances', requireAdminAuth, async (req, res) => {
+  const recon = dataSourceManager.getReconciliationService()
+  const status   = req.query.status   as string | undefined
+  const severity = req.query.severity as string | undefined
+
+  const filter: { status?: any; severity?: any } = {}
+  if (status   && ['PENDING', 'ACCEPTED', 'REJECTED'].includes(status))   filter.status   = status
+  if (severity && ['LOW', 'MEDIUM', 'HIGH'].includes(severity))           filter.severity = severity
+
+  const variances = recon.getVariances(Object.keys(filter).length > 0 ? filter : undefined)
+  const summary   = recon.getVarianceSummary()
+
+  res.json({ success: true, variances, summary })
+})
+
+// POST /admin/data-sources/variances/:id/accept — accept a variance
+router.post('/data-sources/variances/:id/accept', requireAdminRole('PLATFORM_SUPER_ADMIN'), async (req, res) => {
+  try {
+    const { id } = req.params
+    const { notes } = req.body ?? {}
+    const adminId = (req as any).adminUser?.id ?? 'unknown'
+
+    const recon = dataSourceManager.getReconciliationService()
+    const variance = recon.acceptVariance(id, adminId, notes)
+
+    if (!variance) {
+      res.status(404).json({ error: 'VARIANCE_NOT_FOUND', varianceId: id })
+      return
+    }
+
+    // Audit log
+    try {
+      await prisma.auditLog.create({
+        data: {
+          action: 'VARIANCE_ACCEPTED',
+          actorId: adminId,
+          actorType: 'ADMIN',
+          resourceType: 'DATA_SOURCE_VARIANCE',
+          resourceId: id,
+          detailJson: JSON.stringify({ varianceType: variance.varianceType, notes }),
+        }
+      })
+    } catch { /* audit log failure should not block response */ }
+
+    res.json({ success: true, variance })
+  } catch (e) {
+    log.error('variance_accept_failed', { data: { varianceId: req.params.id, error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'VARIANCE_ACCEPT_FAILED' })
+  }
+})
+
+// POST /admin/data-sources/variances/:id/reject — reject a variance
+router.post('/data-sources/variances/:id/reject', requireAdminRole('PLATFORM_SUPER_ADMIN'), async (req, res) => {
+  try {
+    const { id } = req.params
+    const { notes } = req.body ?? {}
+    const adminId = (req as any).adminUser?.id ?? 'unknown'
+
+    const recon = dataSourceManager.getReconciliationService()
+    const variance = recon.rejectVariance(id, adminId, notes)
+
+    if (!variance) {
+      res.status(404).json({ error: 'VARIANCE_NOT_FOUND', varianceId: id })
+      return
+    }
+
+    // Audit log
+    try {
+      await prisma.auditLog.create({
+        data: {
+          action: 'VARIANCE_REJECTED',
+          actorId: adminId,
+          actorType: 'ADMIN',
+          resourceType: 'DATA_SOURCE_VARIANCE',
+          resourceId: id,
+          detailJson: JSON.stringify({ varianceType: variance.varianceType, notes }),
+        }
+      })
+    } catch { /* audit log failure should not block response */ }
+
+    res.json({ success: true, variance })
+  } catch (e) {
+    log.error('variance_reject_failed', { data: { varianceId: req.params.id, error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'VARIANCE_REJECT_FAILED' })
+  }
 })
 
 // ── DRONE OPERATION PLANS (admin review) ────────────────────────────────────
