@@ -21,6 +21,7 @@ import verificationRoutes       from './routes/verificationRoutes'
 import demoRoutes               from './routes/demoRoutes'
 import fplRoutes                from './routes/fplRoutes'
 import lookupRoutes             from './routes/lookupRoutes'
+import digitalSkyRoutes         from './routes/digitalSkyRoutes'
 
 const app = express()
 
@@ -65,6 +66,7 @@ api.use('/verify',      verificationRoutes)
 api.use('/demo',        demoRoutes)
 api.use('/fpl',         fplRoutes)
 api.use('/lookup',      lookupRoutes)
+api.use('/digital-sky', digitalSkyRoutes)
 app.use('/api', api)
 
 app.use((_req, res) => {

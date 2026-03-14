@@ -44,6 +44,13 @@ class JadsApiClient(
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(60,    TimeUnit.SECONDS)
         .writeTimeout(60,   TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            chain.proceed(
+                chain.request().newBuilder()
+                    .header("X-JADS-Version", "4.0")
+                    .build()
+            )
+        }
         .addInterceptor(HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC  // HEADERS in debug builds
         })
@@ -58,7 +65,7 @@ class JadsApiClient(
         val body = """{"username":"$username","password":"$password"}"""
         return post("/api/auth/civilian/login", body, authenticated = false) { json ->
             LoginResponse(
-                token        = json.get("token")?.asString ?: return@post null,
+                token        = json.get("accessToken")?.asString ?: return@post null,
                 operatorId   = json.get("operatorId")?.asString ?: return@post null,
                 operatorType = "CIVILIAN"
             )
@@ -69,9 +76,21 @@ class JadsApiClient(
         val body = """{"username":"$username","password":"$password"}"""
         return post("/api/auth/special/login", body, authenticated = false) { json ->
             LoginResponse(
-                token        = json.get("token")?.asString ?: return@post null,
+                token        = json.get("accessToken")?.asString ?: return@post null,
                 operatorId   = json.get("operatorId")?.asString ?: return@post null,
                 operatorType = "SPECIAL"
+            )
+        }
+    }
+
+    // DS-14: Drone operator login via UIN — single-step, no OTP
+    fun loginWithUIN(uinNumber: String): ApiResult<LoginResponse> {
+        val body = """{"uinNumber":"$uinNumber"}"""
+        return post("/api/auth/drone/login", body, authenticated = false) { json ->
+            LoginResponse(
+                token        = json.get("accessToken")?.asString ?: return@post null,
+                operatorId   = json.get("operatorId")?.asString ?: "",
+                operatorType = "DRONE"
             )
         }
     }
@@ -95,7 +114,7 @@ class JadsApiClient(
         altitudeM: Int
     ): ApiResult<ZoneClassificationResult> {
         val body = gson.toJson(mapOf("polygon" to polygon, "altitudeM" to altitudeM))
-        return post("/api/drone-plans/zone-check", body, authenticated = true) { json ->
+        return post("/api/drone/zone-check", body, authenticated = true) { json ->
             val reasons = json.getAsJsonArray("reasons")?.map { it.asString } ?: emptyList()
             ZoneClassificationResult(
                 zone         = json.get("zone")?.asString ?: "GREEN",
@@ -171,6 +190,44 @@ class JadsApiClient(
     fun markAllNotificationsRead(): ApiResult<Unit> {
         return post("/api/drone/notifications/read-all", "{}", authenticated = true) {
             Unit
+        }
+    }
+
+    // ── Pre-flight compliance check (DS-15) ────────────────────────────────
+
+    fun preFlightCheck(
+        uinNumber: String,
+        paId: String? = null,
+        polygon: List<ZoneCheckLatLng>? = null,
+        altitudeM: Int? = null,
+        flightTime: String? = null
+    ): ApiResult<PreFlightReport> {
+        val params = mutableMapOf<String, Any>("uinNumber" to uinNumber)
+        if (paId != null) params["paId"] = paId
+        if (polygon != null) params["polygon"] = polygon
+        if (altitudeM != null) params["altitudeM"] = altitudeM
+        if (flightTime != null) params["flightTime"] = flightTime
+        val body = gson.toJson(params)
+        return post("/api/drone/pre-flight-check", body, authenticated = true) { json ->
+            val verdict = json.get("verdict")?.asString ?: return@post null
+            val checksArray = json.getAsJsonArray("checks") ?: return@post null
+            val checks = checksArray.map { elem ->
+                val obj = elem.asJsonObject
+                ComplianceCheck(
+                    code        = obj.get("code")?.asString ?: "",
+                    name        = obj.get("name")?.asString ?: "",
+                    status      = obj.get("status")?.asString ?: "",
+                    detail      = obj.get("detail")?.asString ?: "",
+                    remediation = obj.get("remediation")?.asString
+                )
+            }
+            PreFlightReport(
+                verdict   = verdict,
+                checks    = checks,
+                uinNumber = json.get("uinNumber")?.asString ?: uinNumber,
+                paId      = json.get("paId")?.asString,
+                checkedAt = json.get("checkedAt")?.asString ?: ""
+            )
         }
     }
 
@@ -292,4 +349,21 @@ data class NotificationsResponse(
     val notifications: List<NotificationDto>,
     val total:         Int,
     val unreadCount:   Int
+)
+
+// DS-15: Pre-flight compliance check types
+data class ComplianceCheck(
+    val code:        String,     // e.g. "UIN_VERIFIED", "UAOP_VALID", "PA_SIGNATURE"
+    val name:        String,     // human-readable check name
+    val status:      String,     // "PASS" | "FAIL" | "WARN" | "SKIP"
+    val detail:      String,     // what the check found
+    val remediation: String?     // hint for fixing failures
+)
+
+data class PreFlightReport(
+    val verdict:   String,       // "GO" | "NO_GO" | "ADVISORY"
+    val checks:    List<ComplianceCheck>,
+    val uinNumber: String,
+    val paId:      String?,
+    val checkedAt: String
 )

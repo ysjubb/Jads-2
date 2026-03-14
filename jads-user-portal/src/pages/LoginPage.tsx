@@ -5,17 +5,18 @@ import { T } from '../theme'
 
 export function LoginPage() {
   const navigate = useNavigate()
-  const { token, error, loading, loginStep, pendingUserId, loginInitiate, loginComplete, loginSpecial } = useAuth()
+  const { token, error, loading, loginStep, pendingUserId, loginInitiate, loginComplete, loginSpecial, loginDroneUIN } = useAuth()
 
   // Redirect to dashboard once token is set (login succeeded)
   useEffect(() => {
     if (token) navigate('/', { replace: true })
   }, [token, navigate])
-  const [mode, setMode]       = useState<'CIVILIAN' | 'SPECIAL'>('CIVILIAN')
+  const [mode, setMode]       = useState<'CIVILIAN' | 'SPECIAL' | 'DRONE'>('CIVILIAN')
   const [identifier, setId]   = useState('')
   const [otp, setOtp]         = useState('')
   const [username, setUser]   = useState('')
   const [password, setPass]   = useState('')
+  const [uinNumber, setUin]   = useState('')
 
   const handleCivilianStep1 = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,6 +33,11 @@ export function LoginPage() {
     if (username.trim() && password) await loginSpecial(username.trim(), password)
   }
 
+  const handleDroneLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (uinNumber.trim()) await loginDroneUIN(uinNumber.trim())
+  }
+
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '0.6rem 0.8rem', background: T.surface, color: T.textBright,
     border: `1px solid ${T.border}`, borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.8rem',
@@ -39,6 +45,13 @@ export function LoginPage() {
   const btnStyle: React.CSSProperties = {
     width: '100%', padding: '0.7rem', background: T.primary, color: T.bg, border: 'none',
     borderRadius: '4px', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem',
+  }
+
+  const modes = ['CIVILIAN', 'SPECIAL', 'DRONE'] as const
+  const modeLabels: Record<typeof modes[number], string> = {
+    CIVILIAN: 'Civilian (OTP)',
+    SPECIAL: 'Unit Login',
+    DRONE: 'Drone Operator',
   }
 
   return (
@@ -51,7 +64,7 @@ export function LoginPage() {
 
         {/* Tab toggle */}
         <div style={{ display: 'flex', marginBottom: '1rem', gap: '2px' }}>
-          {(['CIVILIAN', 'SPECIAL'] as const).map(m => (
+          {modes.map(m => (
             <button key={m} onClick={() => setMode(m)}
               style={{
                 flex: 1, padding: '0.5rem', border: `1px solid ${T.border}`, borderRadius: '4px',
@@ -59,7 +72,7 @@ export function LoginPage() {
                 color: mode === m ? T.primary : T.muted,
                 cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600,
               }}>
-              {m === 'CIVILIAN' ? 'Civilian (OTP)' : 'Unit Login'}
+              {modeLabels[m]}
             </button>
           ))}
         </div>
@@ -85,13 +98,25 @@ export function LoginPage() {
               <button type="submit" disabled={loading} style={btnStyle}>{loading ? 'Verifying...' : 'Verify OTP'}</button>
             </form>
           )
-        ) : (
+        ) : mode === 'SPECIAL' ? (
           <form onSubmit={handleSpecialLogin} style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
             <label style={{ fontSize: '0.7rem', color: T.muted }}>Username</label>
             <input value={username} onChange={e => setUser(e.target.value)} placeholder="unit.username" style={inputStyle} />
             <label style={{ fontSize: '0.7rem', color: T.muted }}>Password</label>
             <input value={password} onChange={e => setPass(e.target.value)} type="password" placeholder="********" style={inputStyle} />
             <button type="submit" disabled={loading} style={btnStyle}>{loading ? 'Logging in...' : 'Login'}</button>
+          </form>
+        ) : (
+          <form onSubmit={handleDroneLogin} style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+            <label style={{ fontSize: '0.7rem', color: T.muted }}>UIN Number (Digital Sky)</label>
+            <input value={uinNumber} onChange={e => setUin(e.target.value)} placeholder="UIN-DEMO-001" style={inputStyle} />
+            <p style={{ fontSize: '0.6rem', color: T.muted, margin: 0 }}>
+              Enter the UIN registered on Digital Sky. No password or OTP needed.
+            </p>
+            <button type="submit" disabled={loading} style={btnStyle}>{loading ? 'Verifying UIN...' : 'Login with UIN'}</button>
+            <p style={{ fontSize: '0.55rem', color: T.muted, textAlign: 'center', margin: 0 }}>
+              Not registered? Visit digitalsky.dgca.gov.in
+            </p>
           </form>
         )}
       </div>

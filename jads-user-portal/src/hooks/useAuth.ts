@@ -90,6 +90,29 @@ export function useAuth() {
     }
   }, [])
 
+  // Drone operator login via UIN (DS-14) — single-step, no OTP
+  const loginDroneUIN = useCallback(async (uinNumber: string) => {
+    setLoading(true); setError(null)
+    try {
+      const { data } = await axios.post(
+        `${API}/auth/drone/login`,
+        { uinNumber },
+        { headers: { 'X-JADS-Version': '4.0' } }
+      )
+      setToken(data.accessToken)
+      setTokenState(data.accessToken)
+      setLoginStep('DONE')
+      return true
+    } catch (e: any) {
+      const errMsg = e.response?.data?.error ?? 'DRONE_LOGIN_FAILED'
+      const detail = e.response?.data?.detail
+      setError(detail ? `${errMsg}: ${detail}` : errMsg)
+      return false
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   const logout = useCallback(() => {
     clearToken()
     setTokenState(null)
@@ -97,5 +120,5 @@ export function useAuth() {
     setPendingUserId(null)
   }, [])
 
-  return { token, error, loading, loginStep, pendingUserId, credentialDomain, role, loginInitiate, loginComplete, loginSpecial, logout }
+  return { token, error, loading, loginStep, pendingUserId, credentialDomain, role, loginInitiate, loginComplete, loginSpecial, loginDroneUIN, logout }
 }

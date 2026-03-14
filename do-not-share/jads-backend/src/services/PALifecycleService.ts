@@ -78,9 +78,9 @@ export interface FlightLogEntry {
 // ── Valid State Transitions ───────────────────────────────────────────────────
 
 const VALID_TRANSITIONS: Record<PAStatus, PAStatus[]> = {
-  PENDING:        ['APPROVED', 'REJECTED', 'EXPIRED', 'REVOKED'],
+  PENDING:        ['APPROVED', 'REJECTED', 'EXPIRED', 'REVOKED', 'CANCELLED'],
   APPROVED:       ['DOWNLOADED', 'EXPIRED', 'REVOKED'],
-  DOWNLOADED:     ['LOADED', 'EXPIRED', 'REVOKED'],
+  DOWNLOADED:     ['LOADED', 'EXPIRED', 'REVOKED', 'CANCELLED'],
   LOADED:         ['ACTIVE', 'EXPIRED', 'REVOKED'],
   ACTIVE:         ['COMPLETED', 'EXPIRED', 'REVOKED'],
   COMPLETED:      ['LOG_UPLOADED', 'EXPIRED', 'REVOKED'],
@@ -89,6 +89,7 @@ const VALID_TRANSITIONS: Record<PAStatus, PAStatus[]> = {
   EXPIRED:        [],               // terminal
   REJECTED:       [],               // terminal
   REVOKED:        [],               // terminal
+  CANCELLED:      [],               // terminal
 }
 
 // ── Geo Utility Functions ─────────────────────────────────────────────────────

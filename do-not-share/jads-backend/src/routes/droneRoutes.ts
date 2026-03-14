@@ -31,6 +31,9 @@ import {
 } from '../services/DroneNotificationService'
 import { createServiceLogger } from '../logger'
 import { createDeviceAttestationService } from '../services/DeviceAttestationService'
+import { UINVerificationService }          from '../services/UINVerificationService'
+import { PreFlightComplianceService }      from '../services/PreFlightComplianceService'
+import { DigitalSkyAdapterStub }           from '../adapters/stubs/DigitalSkyAdapterStub'
 import { prisma }              from '../lib/prisma'
 
 const router      = express.Router()
@@ -39,6 +42,9 @@ const verifier    = new ForensicVerifier(prisma)
 const paLifecycle = new PALifecycleService(prisma)
 const notifService = new DroneNotificationService(prisma)
 const attestationService = createDeviceAttestationService()
+const dsAdapter          = new DigitalSkyAdapterStub()
+const uinVerification    = new UINVerificationService(prisma, dsAdapter)
+const preFlightCompliance = new PreFlightComplianceService(prisma, uinVerification)
 const log         = createServiceLogger('DroneRoutes')
 
 // Multer for file uploads — 20MB limit, memory storage
@@ -352,6 +358,45 @@ router.get(
   }
 )
 
+// ── GET /api/drone/airspace-zones ─────────────────────────────────────────────
+// Return all active airspace zones for map display.
+// Optional query params: lat, lon, radius (km) — not yet used, returns all active.
+// Response: { zones: Array<{ id, name, classification, geometry, authority?, reason? }> }
+router.get('/airspace-zones', requireAuth, async (_req, res) => {
+  try {
+    // Fetch all ACTIVE airspace versions with dataType 'DRONE_ZONE'
+    const versions = await prisma.airspaceVersion.findMany({
+      where: {
+        approvalStatus: 'ACTIVE',
+        dataType: { in: ['DRONE_ZONE', 'AIRPORT_PROXIMITY', 'RESTRICTED_AREA', 'MILITARY_ZONE'] },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    })
+
+    const zones = versions.map(v => {
+      let payload: any = {}
+      try {
+        payload = JSON.parse(v.payloadJson)
+      } catch { /* skip malformed */ }
+
+      return {
+        id: v.id,
+        name: payload.name ?? v.dataType,
+        classification: payload.classification ?? payload.zone ?? 'GREEN',
+        geometry: payload.geometry ?? payload.geoJson ?? null,
+        authority: payload.authority ?? null,
+        reason: payload.reason ?? v.changeReason ?? null,
+      }
+    })
+
+    res.json({ zones })
+  } catch (e: unknown) {
+    log.error('airspace_zones_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'AIRSPACE_ZONES_FETCH_FAILED' })
+  }
+})
+
 // ── POST /api/drone/zone-check ────────────────────────────────────────────────
 // Classify a geofence polygon against India's drone airspace zones.
 // Body: { polygon: Array<{ lat: number, lng: number }>, altitudeAGL: number }
@@ -408,6 +453,43 @@ router.post('/zone-check', async (req, res) => {
   } catch (e: unknown) {
     log.error('zone_check_error', { data: { error: e instanceof Error ? e.message : String(e) } })
     res.status(500).json({ error: 'ZONE_CHECK_FAILED' })
+  }
+})
+
+// ── POST /api/drone/verify-uin ──────────────────────────────────────────────
+// Verify a UIN against Digital Sky. Requires JWT.
+// Body: { uinNumber: string, forceRefresh?: boolean }
+// Rate limit: 5 requests/minute per user
+router.post('/verify-uin', requireAuth, async (req, res) => {
+  try {
+    const { uinNumber, forceRefresh } = req.body as { uinNumber?: string; forceRefresh?: boolean }
+
+    if (!uinNumber || typeof uinNumber !== 'string' || uinNumber.trim().length === 0) {
+      res.status(400).json({ error: 'MISSING_UIN', detail: 'uinNumber is required' })
+      return
+    }
+
+    const result = await uinVerification.verifyUIN(uinNumber.trim(), { forceRefresh })
+    res.json(result)
+  } catch (e: unknown) {
+    log.error('verify_uin_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'UIN_VERIFICATION_FAILED' })
+  }
+})
+
+// ── GET /api/drone/verify-uin/:uinNumber ────────────────────────────────────
+// Return cached verification status for a UIN. Used by admin portal.
+router.get('/verify-uin/:uinNumber', requireAuth, async (req, res) => {
+  try {
+    const cached = await uinVerification.getCachedVerification(req.params.uinNumber)
+    if (!cached) {
+      res.status(404).json({ error: 'NO_CACHED_VERIFICATION', detail: 'No cached verification found for this UIN' })
+      return
+    }
+    res.json(cached)
+  } catch (e: unknown) {
+    log.error('get_cached_uin_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'UIN_CACHE_LOOKUP_FAILED' })
   }
 })
 
@@ -740,6 +822,117 @@ router.get('/permissions/:id/download', requireAuth, async (req, res) => {
   } catch (e: unknown) {
     log.error('pa_download_error', { data: { error: e instanceof Error ? e.message : String(e) } })
     res.status(500).json({ error: 'PA_DOWNLOAD_FAILED' })
+  }
+})
+
+// ── POST /api/drone/permissions/:id/download ────────────────────────────────
+// Duplicate of GET handler — portal calls POST for download.
+router.post('/permissions/:id/download', requireAuth, async (req, res) => {
+  try {
+    const { userId } = req.auth!
+    const pa = await prisma.permissionArtefact.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id:          true,
+        operatorId:  true,
+        applicationId: true,
+        status:      true,
+        rawPaXml:    true,
+        paZipHash:   true,
+      },
+    })
+
+    if (!pa) {
+      res.status(404).json({ error: 'PERMISSION_NOT_FOUND' })
+      return
+    }
+    if (pa.operatorId !== userId) {
+      res.status(403).json({ error: 'ACCESS_DENIED' })
+      return
+    }
+
+    let zipData = pa.rawPaXml ? Buffer.from(pa.rawPaXml) : null
+    if (!zipData) {
+      try {
+        await paLifecycle.downloadAndStorePA(pa.applicationId)
+        const updated = await prisma.permissionArtefact.findUnique({
+          where: { id: pa.id },
+          select: { rawPaXml: true },
+        })
+        zipData = updated?.rawPaXml ? Buffer.from(updated.rawPaXml) : null
+      } catch (dlErr) {
+        log.warn('pa_download_proxy_failed', {
+          data: { id: pa.id, error: dlErr instanceof Error ? dlErr.message : String(dlErr) },
+        })
+      }
+    }
+
+    if (!zipData) {
+      res.status(404).json({ error: 'PA_ZIP_NOT_AVAILABLE' })
+      return
+    }
+
+    res.setHeader('Content-Type', 'application/zip')
+    res.setHeader('Content-Disposition', `attachment; filename="PA-${pa.applicationId}.zip"`)
+    res.setHeader('X-PA-SHA256', pa.paZipHash ?? 'unknown')
+    res.send(zipData)
+  } catch (e: unknown) {
+    log.error('pa_download_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'PA_DOWNLOAD_FAILED' })
+  }
+})
+
+// ── POST /api/drone/permissions/:id/cancel ──────────────────────────────────
+// Cancel a permission artefact. Only the owner can cancel.
+// Cannot cancel already-approved permissions.
+router.post('/permissions/:id/cancel', requireAuth, async (req, res) => {
+  try {
+    const { userId } = req.auth!
+
+    const pa = await prisma.permissionArtefact.findUnique({
+      where: { id: req.params.id },
+    })
+    if (!pa) {
+      res.status(404).json({ error: 'PERMISSION_NOT_FOUND' })
+      return
+    }
+    if (pa.operatorId !== userId) {
+      res.status(403).json({ error: 'ACCESS_DENIED' })
+      return
+    }
+
+    // Cannot cancel already-approved or completed PAs
+    const nonCancellable: string[] = ['APPROVED', 'ACTIVE', 'COMPLETED', 'LOG_UPLOADED', 'AUDIT_COMPLETE']
+    if (nonCancellable.includes(pa.status)) {
+      res.status(409).json({
+        error: 'CANNOT_CANCEL_APPROVED',
+        detail: `Permission in status '${pa.status}' cannot be cancelled`,
+      })
+      return
+    }
+
+    await prisma.permissionArtefact.update({
+      where: { id: pa.id },
+      data: { status: 'CANCELLED' },
+    })
+
+    // Audit log
+    await prisma.auditLog.create({
+      data: {
+        actorId: userId,
+        actorType: 'USER',
+        action: 'PA_CANCELLED',
+        resourceType: 'PermissionArtefact',
+        resourceId: pa.id,
+        detailJson: JSON.stringify({ applicationId: pa.applicationId, previousStatus: pa.status }),
+      },
+    })
+
+    log.info('pa_cancelled', { data: { id: pa.id, applicationId: pa.applicationId, userId } })
+    res.json({ success: true, status: 'CANCELLED' })
+  } catch (e: unknown) {
+    log.error('pa_cancel_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'PA_CANCEL_FAILED' })
   }
 })
 
@@ -1477,6 +1670,59 @@ router.post('/validate-pa', requireAuth, async (req, res) => {
     const msg = e instanceof Error ? e.message : String(e)
     log.error('pa_validate_error', { data: { error: msg } })
     res.status(500).json({ error: 'PA_VALIDATION_FAILED' })
+  }
+})
+
+// ── POST /api/drone/pre-flight-check ─────────────────────────────────────
+// DS-15: Pre-flight compliance check (Go/No-Go gate).
+// Runs 6 sequential checks and returns a ComplianceReport with verdict.
+// Body: { uinNumber, paId?, polygon?, altitudeM?, flightTime? }
+router.post('/pre-flight-check', requireAuth, async (req, res) => {
+  try {
+    const { uinNumber, paId, polygon, altitudeM, flightTime } = req.body as {
+      uinNumber?:  string
+      paId?:       string
+      polygon?:    Array<{ lat: number; lng: number }>
+      altitudeM?:  number
+      flightTime?: string
+    }
+
+    if (!uinNumber || typeof uinNumber !== 'string' || uinNumber.trim().length === 0) {
+      res.status(400).json({ error: 'MISSING_UIN', detail: 'uinNumber is required for pre-flight check' })
+      return
+    }
+
+    const report = await preFlightCompliance.runCheck({
+      uinNumber: uinNumber.trim(),
+      paId,
+      polygon,
+      altitudeM,
+      flightTime,
+    })
+
+    // Audit log
+    await prisma.auditLog.create({
+      data: {
+        actorId:      req.auth!.userId,
+        actorType:    'CIVILIAN_USER',
+        actorRole:    req.auth!.role ?? 'DRONE_OPERATOR',
+        action:       'pre_flight_check',
+        resourceType: 'compliance_report',
+        resourceId:   uinNumber.trim(),
+        ipAddress:    req.ip ?? 'unknown',
+        detailJson:   JSON.stringify({
+          verdict: report.verdict,
+          paId,
+          passCount: report.checks.filter(c => c.status === 'PASS').length,
+          failCount: report.checks.filter(c => c.status === 'FAIL').length,
+        }),
+      },
+    })
+
+    res.json(report)
+  } catch (e: unknown) {
+    log.error('pre_flight_check_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'PRE_FLIGHT_CHECK_FAILED' })
   }
 })
 
