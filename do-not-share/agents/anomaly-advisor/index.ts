@@ -55,11 +55,14 @@ app.post('/analyze', (req, res) => {
     const curr = points[i]
 
     // Altitude spike detection
+    // Threshold: 500ft between consecutive records is abnormal for drones
+    // (100ft was too sensitive — normal climb/descent at ~30m/s = ~100ft/s).
+    // At 1Hz recording rate, 500ft/s ≈ 150m/s is physically implausible.
     const altDiff = Math.abs(curr.altitudeFt - prev.altitudeFt)
-    if (altDiff > 100) {
+    if (altDiff > 500) {
       anomalies.push({
         type: 'ALTITUDE_SPIKE',
-        severity: altDiff > 200 ? 'HIGH' : 'MEDIUM',
+        severity: altDiff > 1000 ? 'HIGH' : 'MEDIUM',
         sequence: curr.sequence,
         description: `Altitude changed by ${altDiff.toFixed(0)}ft between consecutive records`,
         detail: { prevAlt: prev.altitudeFt, currAlt: curr.altitudeFt },

@@ -27,6 +27,7 @@ interface DraftRequest {
   route?:         string
   cruisingLevel?: string
   cruisingSpeed?: string
+  totalEet?:      string        // Total EET in HHMM format (e.g. "0130" = 1h30m)
   // DLA-specific
   newEobt?:       string
   // CHG-specific
@@ -50,15 +51,20 @@ app.post('/draft', (req, res) => {
         res.status(400).json({ error: 'FPL requires route, cruisingLevel, cruisingSpeed' })
         return
       }
+      // EET: use provided totalEet, or default to "0000" (must be corrected by pilot).
+      // Previous code incorrectly used eobt.substring(2) which yielded the minutes
+      // portion of EOBT rather than the flight duration.
+      const eet = input.totalEet ?? '0000'
       draft = [
         `(FPL-${input.callsign}-${input.flightRules ?? 'I'}${input.flightType ?? 'G'}`,
         `-${input.aircraftType ?? 'ZZZZ'}/${input.wakeTurbulence ?? 'L'}`,
         `-${input.equipment ?? 'S'}/C`,
         `-${input.departureIcao}${input.eobt}`,
         `-${input.cruisingSpeed}${input.cruisingLevel} ${input.route}`,
-        `-${input.destinationIcao}/${input.eobt.substring(2)}`,
+        `-${input.destinationIcao}${eet}`,
         `-0)`,
       ].join('\n')
+      if (!input.totalEet) suggestions.push('WARNING: Total EET not provided — defaulted to 0000. Supply totalEet in HHMM format.')
 
       if (!input.flightRules) suggestions.push('Flight rules defaulted to IFR (I). Verify if VFR intended.')
       if (!input.wakeTurbulence) suggestions.push('Wake turbulence defaulted to Light (L). Check aircraft category.')

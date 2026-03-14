@@ -3,6 +3,7 @@ import { PrismaClient }    from '@prisma/client'
 import { CivilianAuthService }   from '../services/CivilianAuthService'
 import { SpecialUserAuthService } from '../services/SpecialUserAuthService'
 import { requireAuth }           from '../middleware/authMiddleware'
+import { authLoginRateLimit }    from '../middleware/rateLimiter'
 import { serializeForJson }      from '../utils/bigintSerializer'
 import { createServiceLogger }   from '../logger'
 
@@ -105,7 +106,7 @@ router.post('/aadhaar/verify', async (req, res) => {
 // ── Civilian login (OTP-based) ────────────────────────────────────────────────
 
 // POST /api/auth/civilian/login/initiate
-router.post('/civilian/login/initiate', async (req, res) => {
+router.post('/civilian/login/initiate', authLoginRateLimit, async (req, res) => {
   try {
     const { emailOrMobile, mobileNumber } = req.body
     const identifier = emailOrMobile ?? mobileNumber
@@ -164,7 +165,7 @@ router.post('/reverify/complete', requireAuth, async (req, res) => {
 
 // POST /api/auth/special/login
 // Single-step. Username + password. No two-step. No OTP.
-router.post('/special/login', async (req, res) => {
+router.post('/special/login', authLoginRateLimit, async (req, res) => {
   try {
     const { username, password } = req.body
     if (!username || !password) {

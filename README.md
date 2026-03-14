@@ -61,7 +61,7 @@ The platform defends against five attack vectors:
 | Threat | Defense |
 |--------|---------|
 | **Malicious Admin** | Two-person rule + admin lineage tracking (prevents colluding admin pairs) |
-| **Compromised Database** | Row-level SHA-256 hashing on audit logs, PostgreSQL triggers block UPDATE/DELETE |
+| **Compromised Database** | Row-level SHA-256 hashing on audit logs, PostgreSQL triggers block UPDATE/DELETE (deployed via Prisma migration) |
 | **Compromised Server** | HSM-ready key management, runtime integrity checking of critical service files |
 | **Compromised Device** | Play Integrity API verification, hardware key attestation, trust scoring (0-100) |
 | **Compromised Time** | NTP quorum authority (Android), monotonic clock validation |
@@ -178,6 +178,24 @@ Required header: `X-JADS-Version: 4.0`
 | GET | `/audit/ledger/:date/external-verify` | Verify ledger against external anchors |
 | PATCH | `/admin/airspace/versions/:id/approve` | Two-person airspace approval |
 | GET | `/system/health` | Health check |
+| GET | `/system/metrics` | Operational metrics (admin auth required) |
+
+Full API specification: [`share-this/api-spec.yaml`](share-this/api-spec.yaml) (OpenAPI 3.0.3)
+
+---
+
+## Agent Microservices
+
+Four deterministic, rule-based microservices. No LLM dependency.
+
+| Agent | Port | Purpose |
+|-------|------|---------|
+| **NOTAM Interpreter** | 3101 | Parses raw NOTAM text into structured advisories (severity, area, time, impact) |
+| **Forensic Narrator** | 3102 | Converts forensic verification data into human-readable narrative + risk score |
+| **AFTN Draft** | 3103 | Drafts ICAO-compliant AFTN messages (FPL, CNL, DLA, CHG) |
+| **Anomaly Advisor** | 3104 | Detects telemetry anomalies: altitude spikes, velocity spikes, time reversals, GPS spoofing |
+
+Agents are optional. Core platform operations work without them.
 
 ---
 
@@ -274,7 +292,13 @@ Government replaces the stub with their live Digital Sky integration — **zero 
 - [x] Shared test helpers (chainBuilders.ts — no builder drift risk)
 - [x] Swarm scale test (100 drones x 1000 records = 100k records)
 - [x] PQC hybrid fallback tests (12 degradation detection scenarios)
-- [x] 480+ backend tests passing (14 suites, 0 failures)
+- [x] 545 backend tests passing (19 suites, 0 failures)
+- [x] Route advisory system (airway recommendations, flight level selection)
+- [x] Rate limiting on auth endpoints (5 login attempts/min/IP)
+- [x] Observability metrics endpoint (`GET /api/system/metrics`)
+- [x] SBOM generation (CycloneDX) in CI pipeline
+- [x] OpenAPI 3.0.3 specification (`share-this/api-spec.yaml`)
+- [x] DB immutability triggers deployed via Prisma migration
 
 ### Remaining
 

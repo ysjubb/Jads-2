@@ -31,7 +31,12 @@ enum class SyncStatus {
 
 class NtpQuorumAuthority(
     private val servers:       List<String> = listOf(
-        "time.nist.gov", "time.google.com", "ntp.aai.aero"
+        "time.google.com",      // Google — anycast, globally reachable
+        "time.nist.gov",        // NIST — US, reliable stratum-1
+        "time.nplindia.org",    // NPL India — official Indian NTP stratum-1
+        "time.cloudflare.com",  // Cloudflare — anycast, low latency
+        "pool.ntp.org"          // NTP Pool — geographically diverse
+        // ntp.aai.aero removed — unreachable from civilian networks
     ),
     private val quorumMinimum: Int  = 2,
     private val maxSpreadMs:   Long = 100L,

@@ -6,6 +6,7 @@ import { env }           from '../env'
 import { requireAdminAuth, requireAdminRole } from '../middleware/adminAuthMiddleware'
 import { serializeForJson } from '../utils/bigintSerializer'
 import { createServiceLogger } from '../logger'
+import { adminLoginRateLimit } from '../middleware/rateLimiter'
 import { BCRYPT_ROUNDS, ADMIN_SESSION_HOURS } from '../constants'
 import { SpecialUserAuthService } from '../services/SpecialUserAuthService'
 import { ClearanceService } from '../services/ClearanceService'
@@ -23,7 +24,7 @@ const notifService           = new DroneNotificationService(prisma)
 // ── ADMIN LOGIN (no auth required) ────────────────────────────────────────
 
 // POST /api/admin/login — issues JWT signed with ADMIN_JWT_SECRET (not JWT_SECRET)
-router.post('/login', async (req, res) => {
+router.post('/login', adminLoginRateLimit, async (req, res) => {
   try {
     const { username, password } = req.body
     if (!username || !password) { res.status(400).json({ error: 'MISSING_CREDENTIALS' }); return }

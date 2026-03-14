@@ -46,9 +46,16 @@ function canonicalize(xml: string): string {
 
 /**
  * Remove the Signature element for enveloped signature digest computation.
+ * Uses a namespace-aware pattern that handles both:
+ *   <Signature xmlns="...">...</Signature>
+ *   <ds:Signature xmlns:ds="...">...</ds:Signature>
  */
 function removeSignatureElement(xml: string): string {
-  return xml.replace(/<Signature[\s\S]*?<\/Signature>/g, '').trim();
+  // Match <Signature ...>...</Signature> or <ds:Signature ...>...</ds:Signature>
+  // The [\s\S]*? is lazy so it finds the nearest closing tag.
+  return xml
+    .replace(/<(?:ds:)?Signature\b[\s\S]*?<\/(?:ds:)?Signature>/g, '')
+    .trim();
 }
 
 // ── Signer ─────────────────────────────────────────────────────────────

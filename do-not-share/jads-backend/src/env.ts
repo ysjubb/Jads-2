@@ -90,3 +90,21 @@ export const env = {
   SMTP_PASS:     optionalEnv('SMTP_PASS', ''),
   SMTP_FROM:     optionalEnv('SMTP_FROM', 'noreply@jads.gov.in'),
 } as const
+
+// ── Startup assertions ──────────────────────────────────────────────────
+// These run once at import time.  Any violation halts the process before
+// the HTTP server starts, so misconfiguration is caught immediately.
+
+if (env.NODE_ENV !== 'test') {
+  // JWT_SECRET and ADMIN_JWT_SECRET MUST differ.  If they're identical,
+  // a regular user JWT would verify against ADMIN_JWT_SECRET in
+  // requireAuditAuth(), granting admin-level access to the audit portal.
+  if (env.JWT_SECRET === env.ADMIN_JWT_SECRET) {
+    process.stderr.write(
+      'FATAL: JWT_SECRET and ADMIN_JWT_SECRET must not be identical.\n' +
+      'Using the same secret allows user tokens to authenticate as admin tokens.\n' +
+      'Generate separate secrets: openssl rand -hex 64\n'
+    )
+    process.exit(1)
+  }
+}

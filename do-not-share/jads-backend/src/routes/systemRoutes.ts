@@ -1,12 +1,82 @@
 import express from 'express'
+import { PrismaClient } from '@prisma/client'
 import { env } from '../env'
 import { requireAdminAuth } from '../middleware/adminAuthMiddleware'
+import { getActiveSseConnectionCount } from '../services/ClearanceService'
 
 const router = express.Router()
+const prisma = new PrismaClient()
 
 // GET /api/system/health — public
 router.get('/health', (_req, res) => {
   res.json({ status: 'ok', version: env.JADS_VERSION, timestamp: new Date().toISOString() })
+})
+
+// GET /api/system/metrics — structured observability endpoint
+// Returns platform operational metrics for monitoring dashboards.
+// Admin auth required — not public.
+router.get('/metrics', requireAdminAuth, async (_req, res) => {
+  try {
+    const now = new Date()
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+
+    // 1. Missions processed in last 24h
+    const missionsProcessed24h = await prisma.droneMission.count({
+      where: { uploadedAt: { gte: twentyFourHoursAgo } },
+    })
+
+    // 2. Average forensic verification time (ms) from audit log
+    const verificationLogs = await prisma.auditLog.findMany({
+      where: {
+        action: { in: ['mission_uploaded', 'forensic_verification_complete'] },
+        timestamp: { gte: twentyFourHoursAgo },
+      },
+      select: { detailJson: true },
+      take: 500,
+    })
+
+    let totalVerifyMs = 0
+    let verifyCount   = 0
+    for (const entry of verificationLogs) {
+      try {
+        const detail = JSON.parse(entry.detailJson ?? '{}')
+        if (typeof detail.verificationMs === 'number') {
+          totalVerifyMs += detail.verificationMs
+          verifyCount++
+        }
+      } catch { /* skip unparseable */ }
+    }
+    const avgForensicVerificationMs = verifyCount > 0
+      ? Math.round(totalVerifyMs / verifyCount)
+      : null
+
+    // 3. Pending TSA timestamps — evidence ledger entries with no TSA response
+    const pendingTsaStamps = await prisma.evidenceLedger.count({
+      where: { rfc3161TimestampToken: null },
+    })
+
+    // 4. Failed uploads in last 24h (audit log entries for failed missions)
+    const failedUploads24h = await prisma.auditLog.count({
+      where: {
+        action: { in: ['mission_upload_failed', 'mission_chain_invalid', 'mission_replay_attempt'] },
+        timestamp: { gte: twentyFourHoursAgo },
+      },
+    })
+
+    // 5. Active SSE connections
+    const activeSseConnections = getActiveSseConnectionCount()
+
+    res.json({
+      timestamp:                new Date().toISOString(),
+      missionsProcessed24h,
+      avgForensicVerificationMs,
+      pendingTsaStamps,
+      failedUploads24h,
+      activeSseConnections,
+    })
+  } catch (e) {
+    res.status(500).json({ error: 'METRICS_FETCH_FAILED' })
+  }
 })
 
 // GET /api/system/adapter-status — public (needed by audit portal too)

@@ -16,6 +16,14 @@ const routeService   = new RoutePlanningService()
 const advisoryService = new RouteAdvisoryService()
 const log          = createServiceLogger('FlightPlanRoutes')
 
+// DI-wirable service — replace via setAdvisoryService() for testing.
+let advisoryService: RouteAdvisoryService = new RouteAdvisoryService()
+
+/** Override the RouteAdvisoryService instance (for testing/DI). */
+export function setAdvisoryService(svc: RouteAdvisoryService): void {
+  advisoryService = svc
+}
+
 // Roles authorised for manned flight plan filing and lifecycle operations
 const FPL_ROLES = ['PILOT', 'PILOT_AND_DRONE', 'GOVT_PILOT', 'GOVT_DRONE_OPERATOR', 'PLATFORM_SUPER_ADMIN']
 

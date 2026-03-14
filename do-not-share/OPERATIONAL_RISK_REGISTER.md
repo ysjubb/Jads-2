@@ -4,7 +4,7 @@ Known infrastructure-level risks that are **not covered by unit tests** and requ
 
 **Platform scope:** Manned aircraft flight plan filing (ICAO OFPL, ADC/FIC/METAR/NOTAM, AFTN messaging) + drone forensic audit (cryptographic hash chains, 10-point verification, PQC signatures) + 4 agent microservices.
 
-Last reviewed: 2026-03-04
+Last reviewed: 2026-03-14
 
 ---
 
@@ -181,9 +181,86 @@ Last reviewed: 2026-03-04
 
 ---
 
+## OPS-RISK-09: Audit Log Trigger Bypass via Migration Rollback
+
+**Component:** Prisma migrations, PostgreSQL triggers on `AuditLog`
+
+**What happens:** An operator rolls back the Prisma migration that installs the audit log immutability triggers (e.g., `npx prisma migrate reset` or manual SQL `DROP TRIGGER`). The audit log becomes mutable — UPDATE and DELETE operations succeed silently.
+
+**Current behavior:** Triggers are deployed via Prisma migration (`20260314000000_add_audit_log_immutability_triggers`). There is no runtime check that triggers are still present. The previous `AuditIntegrityService.installTriggers()` startup check has been superseded by migration-based deployment.
+
+**Gap:** No continuous monitoring that triggers remain active. A malicious DBA or accidental migration reset could silently remove protection.
+
+**Mitigation:**
+- Add a startup health check in `server.ts` that queries `information_schema.triggers` and refuses to start if fewer than 3 `AuditLog` triggers exist
+- Monitor via `GET /api/system/health` — include trigger count in health response
+- Set PostgreSQL `event_trigger` to log DDL changes affecting the `AuditLog` table
+
+**Priority:** MEDIUM — address before production deployment.
+
+---
+
+## OPS-RISK-10: JWT Secret Misconfiguration
+
+**Component:** `env.ts`, JWT authentication
+
+**What happens:** `JWT_SECRET` and `ADMIN_JWT_SECRET` are set to the same value, or either is too short. A regular user's JWT could be accepted as an admin JWT, or secrets could be brute-forced.
+
+**Current behavior:** `env.ts` validates that both secrets are present and non-empty. The server asserts `JWT_SECRET !== ADMIN_JWT_SECRET` at startup and exits if they match. Minimum length validation is enforced.
+
+**Gap:** If an operator bypasses `env.ts` (e.g., hardcodes secrets in code or uses a custom startup script), the assertion is skipped. No runtime re-validation after startup.
+
+**Mitigation:**
+- The env.ts startup assertion is the primary control (already implemented)
+- Add rate limiting on auth endpoints to slow brute-force attempts (implemented in P16: 5 login attempts/min/IP)
+- Document minimum secret entropy requirements in deployment guide (done)
+
+**Priority:** LOW — primary controls are already in place.
+
+---
+
+## OPS-RISK-11: TSA Server Unavailability
+
+**Component:** `EvidenceLedgerService`, RFC 3161 TSA stamping
+
+**What happens:** The external TSA (Timestamp Authority) server is unreachable or slow when `EvidenceLedgerService` requests an RFC 3161 timestamp.
+
+**Current behavior:** TSA stamping is asynchronous (P9). The evidence ledger entry is written to the database immediately with `rfc3161TimestampToken = null`. The TSA response populates this field later. If the TSA never responds, the field remains null permanently.
+
+**Gap:** No retry mechanism for failed TSA requests. No alerting when `pendingTsaStamps` count grows. The `GET /api/system/metrics` endpoint (P18) exposes the count but does not trigger alerts.
+
+**Mitigation:**
+- Monitor `pendingTsaStamps` metric — alert if count exceeds threshold (e.g., >50)
+- Add a background job to retry TSA requests for entries where `rfc3161TimestampToken` is null and entry is older than 1 hour
+- Configure multiple TSA servers for redundancy
+
+**Priority:** MEDIUM — address when connecting to a live TSA server.
+
+---
+
+## OPS-RISK-12: NTP Quorum Failure on Android Devices
+
+**Component:** `NtpQuorumAuthority` (Android), forensic invariant I-2
+
+**What happens:** The Android device cannot reach 2+ NTP servers (e.g., in a remote area, behind a restrictive firewall, or during military operations with network restrictions).
+
+**Current behavior:** `NtpQuorumAuthority` queries 3+ NTP servers. If fewer than 2 respond, quorum fails. The mission proceeds with `ntpSyncStatus = DEGRADED`. Forensic invariant I-2 flags this as a warning (not rejection) — the mission is admissible but with reduced time confidence.
+
+**Gap:** In military field deployments (the primary use case), network connectivity may be deliberately restricted. All NTP servers could be blocked by unit-level firewall rules, meaning all missions from that deployment would have degraded time confidence.
+
+**Mitigation:**
+- Pre-configure NTP servers that are accessible from military networks (e.g., internal MoD NTP servers)
+- Allow `NtpQuorumAuthority` to accept a configurable NTP server list (currently hardcoded)
+- Document that field deployment kits should include instructions for NTP server whitelisting
+- Consider GPS time as a fallback NTP source (available when GPS fix is acquired)
+
+**Priority:** MEDIUM — address before military field trials.
+
+---
+
 ## General Notes
 
-- These risks are **infrastructure/ops concerns**, not application logic bugs. The pure logic layer (AFTN, Merkle, geofence, forensic verification, OFPL validation, altitude compliance, FIR sequencing, etc.) is covered by the 522-test suite.
+- These risks are **infrastructure/ops concerns**, not application logic bugs. The pure logic layer (AFTN, Merkle, geofence, forensic verification, OFPL validation, altitude compliance, FIR sequencing, etc.) is covered by the 545-test suite.
 - None of these are exploitable attack vectors on their own — they are availability and consistency risks.
 - The evidence chain remains **tamper-detectable** even if these risks materialize. The gap is in **tamper-resistance** (external anchoring) and **availability** (HSM, clock, AFTN gateway).
 - Manned aircraft risks (OPS-RISK-05, 06, 08) are pre-flight/filing risks — they affect service availability, not evidence integrity.
