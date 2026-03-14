@@ -12,6 +12,7 @@ import { AAIDataSyncJob }      from './AAIDataSyncJob'
 import { AnnualReconfirmJob }  from './AnnualReconfirmJob'
 import { EvidenceLedgerJob }   from './EvidenceLedgerJob'
 import { CredentialSyncJob }   from './CredentialSyncJob'
+import { AAIeAIPPollJob }     from './AAIeAIPPollJob'
 import { createServiceLogger } from '../logger'
 
 const log = createServiceLogger('JobScheduler')
@@ -35,6 +36,7 @@ export class JobScheduler {
       annualReconfirm: new AnnualReconfirmJob(prisma),
       evidenceLedger:  new EvidenceLedgerJob(prisma),
       credentialSync:  new CredentialSyncJob(prisma),      // Daily — TWO_WAY
+      aaiEaipPoll:     new AAIeAIPPollJob(prisma),          // Daily 04:00 UTC — ONE_WAY import
     }
   }
 

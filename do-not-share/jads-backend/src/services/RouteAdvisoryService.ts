@@ -425,7 +425,7 @@ export class RouteAdvisoryService {
     cruisingLevel: string,
   ): { corridorNote: string; maxAltitude: string; requiresSpecialVfr: boolean } {
     // Check if either aerodrome is in controlled airspace (major airports)
-    const majorAerodromes = ['VIDP', 'VABB', 'VECC', 'VOMF', 'VOBL', 'VOHS', 'VOCI', 'VEGY', 'VAAH', 'VAGO']
+    const majorAerodromes = ['VIDP', 'VABB', 'VECC', 'VOMF', 'VOBL', 'VOHS', 'VOCI', 'VEGT', 'VAAH', 'VAGO']
     const nearControlled = majorAerodromes.includes(adep) || majorAerodromes.includes(ades)
 
     // Build corridor advisory text

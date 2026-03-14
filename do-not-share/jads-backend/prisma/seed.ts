@@ -626,7 +626,7 @@ async function main() {
   await prisma.adcRecord.deleteMany({})
   await prisma.mannedFlightPlan.deleteMany({})
 
-  // FPL1: VIDP→VIAL, IFR, GANDO DCT PAKER DCT, FL330, RVSM equipment W
+  // FPL1: VIDP→VEAB, IFR, GANDO DCT PAKER DCT, FL330, RVSM equipment W
   const fpl1 = await prisma.mannedFlightPlan.create({
     data: {
       filedBy:       civilianAircraft.id,
@@ -640,15 +640,15 @@ async function main() {
       equipment:     'SDRWY/LB1',   // W = RVSM approved
       surveillance:  'S',
       adep:          'VIDP',
-      ades:          'VIAL',
+      ades:          'VEAB',
       eobt:          new Date(Date.now() + 3600000),
       eet:           '0145',
       route:         'GANDO DCT PAKER DCT',
       cruisingLevel: 'F330',
       cruisingSpeed: 'N0450',
       item18:        'DOF/260305 PBN/A1B1C1D1S1S2 REG/VTABC OPR/DEMO AIRLINES',
-      aftnMessage:   '(FPL-VT-ABC-IG\n-B738/M-SDRWY/LB1\n-VIDP0100\n-N0450F330 GANDO DCT PAKER DCT\n-VIAL0145 VIAG\n-DOF/260305 PBN/A1B1C1D1S1S2 REG/VTABC OPR/DEMO AIRLINES)',
-      aftnAddressees:'VIDPZQZX VIDPZPZX VIDFZQZX VIALZQZX',
+      aftnMessage:   '(FPL-VT-ABC-IG\n-B738/M-SDRWY/LB1\n-VIDP0100\n-N0450F330 GANDO DCT PAKER DCT\n-VEAB0145 VIAG\n-DOF/260305 PBN/A1B1C1D1S1S2 REG/VTABC OPR/DEMO AIRLINES)',
+      aftnAddressees:'VIDPZQZX VIDPZPZX VIDFZQZX VEABZQZX',
       notifyEmail:   'pilot.demo@jads.dev',
       notifyMobile:  '9999000001',
       filedAt:       new Date(),
@@ -663,13 +663,13 @@ async function main() {
             to:   { identifier: 'PAKER', type: 'WAYPOINT',  latDeg: 26.5000, lonDeg: 80.0000 },
             distanceNm: 95 },
           { from: { identifier: 'PAKER', type: 'WAYPOINT',  latDeg: 26.5000, lonDeg: 80.0000 },
-            to:   { identifier: 'VIAL',  type: 'AERODROME', latDeg: 25.4401, lonDeg: 81.7340 },
+            to:   { identifier: 'VEAB',  type: 'AERODROME', latDeg: 25.4401, lonDeg: 81.7340 },
             distanceNm: 105 },
         ],
       }),
     },
   })
-  console.log(`  ✓ Flight Plan 1 (FILED, IFR VT-ABC VIDP→VIAL F330 RVSM): ${fpl1.id}`)
+  console.log(`  ✓ Flight Plan 1 (FILED, IFR VT-ABC VIDP→VEAB F330 RVSM): ${fpl1.id}`)
 
   // FPL2: VIGG→VIDP, VFR, DIRECT, F080, FULLY_CLEARED with ADC
   const fpl2 = await prisma.mannedFlightPlan.create({
@@ -691,7 +691,7 @@ async function main() {
       cruisingLevel: 'F080',
       cruisingSpeed: 'N0250',
       item18:        'DOF/260305 STS/STATE RMK/IAF TRAINING SORTIE',
-      aftnMessage:   '(FPL-VT-DEF-MG\n-K8/L-S/C\n-VIGG0800\n-N0250F080 DIRECT\n-VIDP0055 VIAL\n-DOF/260305 STS/STATE RMK/IAF TRAINING SORTIE)',
+      aftnMessage:   '(FPL-VT-DEF-MG\n-K8/L-S/C\n-VIGG0800\n-N0250F080 DIRECT\n-VIDP0055 VEAB\n-DOF/260305 STS/STATE RMK/IAF TRAINING SORTIE)',
       aftnAddressees:'VIDPZQZX VIGGZPZX VIDFZQZX',
       ficNumber:     'FIC/DEL/2024/4421',
       adcNumber:     'ADC/AFMLU/DEL/2024/1837',

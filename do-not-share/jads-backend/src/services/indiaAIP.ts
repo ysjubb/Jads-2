@@ -30,7 +30,7 @@ export interface AerodromeTransitionData {
   lonDeg:             number   // WGS-84 longitude (decimal degrees)
 }
 
-// ── 127 Civil Aerodromes ──────────────────────────────────────────────────────
+// ── 126 Civil Aerodromes (VIAL retired→VEAB, VILD duplicate removed) ─────────
 
 export const INDIA_AIP_AERODROMES: Record<string, AerodromeTransitionData> = {
   // ── Delhi FIR (VIDF) ───────────────────────────────────────────────────────
@@ -38,14 +38,14 @@ export const INDIA_AIP_AERODROMES: Record<string, AerodromeTransitionData> = {
   VIDD: { icao: 'VIDD', name: 'Hindon Air Force Station',                     transitionAltitude: 13000, transitionLevel: 'FL140', elevation:  715, latDeg: 28.7084, lonDeg: 77.3590 },
   VILK: { icao: 'VILK', name: 'Chaudhary Charan Singh Intl, Lucknow',        transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  410, latDeg: 26.7606, lonDeg: 80.8893 },
   VIAG: { icao: 'VIAG', name: 'Agra Airport (Kheria)',                        transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  551, latDeg: 27.1557, lonDeg: 77.9609 },
-  VIAL: { icao: 'VIAL', name: 'Allahabad Airport (Bamrauli)',                 transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  322, latDeg: 25.4401, lonDeg: 81.7340 },
+  // VIAL retired → replaced by VEAB (Prayagraj, formerly Allahabad) — moved to Kolkata FIR section
   VIAR: { icao: 'VIAR', name: 'Sri Guru Ram Dass Jee Intl, Amritsar',        transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  756, latDeg: 31.7096, lonDeg: 74.7973 },
   VIBN: { icao: 'VIBN', name: 'Lal Bahadur Shastri Intl, Varanasi',          transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  266, latDeg: 25.4524, lonDeg: 82.8593 },
   VIBK: { icao: 'VIBK', name: 'Bareilly Air Force Station',                   transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  580, latDeg: 28.4221, lonDeg: 79.4508 },
   VIBY: { icao: 'VIBY', name: 'Bareilly Civil Airport',                       transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  580, latDeg: 28.4221, lonDeg: 79.4508 },
   VIDX: { icao: 'VIDX', name: 'Dehradun (Jolly Grant) Airport',              transitionAltitude: 11000, transitionLevel: 'FL120', elevation: 1831, latDeg: 30.1897, lonDeg: 78.1803 },
   VIGG: { icao: 'VIGG', name: 'Gwalior Air Force Station',                    transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  617, latDeg: 26.2933, lonDeg: 78.2278 },
-  VIGR: { icao: 'VIGR', name: 'Gorakhpur Airport',                            transitionAltitude:  9000, transitionLevel: 'FL100', elevation:  259, latDeg: 26.7397, lonDeg: 83.4497 },
+  VIGR: { icao: 'VIGR', name: 'Rajmata Vijaya Raje Scindia Airport, Gwalior',  transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  617, latDeg: 26.2933, lonDeg: 78.2278 },
   VIHR: { icao: 'VIHR', name: 'Hisar Airport',                                transitionAltitude:  9000, transitionLevel: 'FL100', elevation:  700, latDeg: 29.1794, lonDeg: 75.7553 },
   VIJP: { icao: 'VIJP', name: 'Jaipur International Airport',                 transitionAltitude: 11000, transitionLevel: 'FL120', elevation: 1263, latDeg: 26.8242, lonDeg: 75.8122 },
   VIJR: { icao: 'VIJR', name: 'Jodhpur Air Force Station',                    transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  717, latDeg: 26.2511, lonDeg: 73.0489 },
@@ -60,7 +60,7 @@ export const INDIA_AIP_AERODROMES: Record<string, AerodromeTransitionData> = {
   VIUT: { icao: 'VIUT', name: 'Udaipur Airport (Dabok)',                       transitionAltitude: 11000, transitionLevel: 'FL120', elevation: 1684, latDeg: 24.6177, lonDeg: 73.8961 },
   VIJU: { icao: 'VIJU', name: 'Jammu Airport (Satwari)',                       transitionAltitude: 11000, transitionLevel: 'FL120', elevation: 1029, latDeg: 32.6891, lonDeg: 74.8374 },
   VISR: { icao: 'VISR', name: 'Sheikh ul-Alam Intl, Srinagar',                transitionAltitude: 13000, transitionLevel: 'FL140', elevation: 5429, latDeg: 33.9871, lonDeg: 74.7742 },
-  VILD: { icao: 'VILD', name: 'Saharan Airport, Ludhiana',                    transitionAltitude:  9000, transitionLevel: 'FL100', elevation:  834, latDeg: 30.8548, lonDeg: 75.9526 },
+  // VILD removed — duplicate of VISP (Sahnewal Airport, Ludhiana) with near-identical coordinates
   VICG: { icao: 'VICG', name: 'Chandigarh Airport',                           transitionAltitude: 11000, transitionLevel: 'FL120', elevation: 1012, latDeg: 30.6735, lonDeg: 76.7885 },
   VIAX: { icao: 'VIAX', name: 'Adampur Airport',                              transitionAltitude:  9000, transitionLevel: 'FL100', elevation:  776, latDeg: 31.4338, lonDeg: 75.7588 },
   VIPG: { icao: 'VIPG', name: 'Pathankot Airport',                            transitionAltitude:  9000, transitionLevel: 'FL100', elevation: 1025, latDeg: 32.2337, lonDeg: 75.6345 },
@@ -141,8 +141,9 @@ export const INDIA_AIP_AERODROMES: Record<string, AerodromeTransitionData> = {
   // ── Kolkata FIR (VECC) ─────────────────────────────────────────────────────
   VECC: { icao: 'VECC', name: 'Netaji Subhas Chandra Bose Intl, Kolkata',     transitionAltitude: 11000, transitionLevel: 'FL120', elevation:   16, latDeg: 22.6547, lonDeg: 88.4467 },
   VEPB: { icao: 'VEPB', name: 'Biju Patnaik International, Bhubaneswar',      transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  138, latDeg: 20.2444, lonDeg: 85.8178 },
-  VEGK: { icao: 'VEGK', name: 'Gaya Airport',                                 transitionAltitude:  9000, transitionLevel: 'FL100', elevation:  380, latDeg: 24.7443, lonDeg: 84.9512 },
-  VEGY: { icao: 'VEGY', name: 'Guwahati Airport (Lokpriya Gopinath Bordoloi)', transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  162, latDeg: 26.1061, lonDeg: 91.5859 },
+  VEAB: { icao: 'VEAB', name: 'Prayagraj Airport (Bamrauli)',                  transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  322, latDeg: 25.4401, lonDeg: 81.7340 },
+  VEGK: { icao: 'VEGK', name: 'Gorakhpur Airport',                            transitionAltitude:  9000, transitionLevel: 'FL100', elevation:  259, latDeg: 26.7397, lonDeg: 83.4497 },
+  VEGY: { icao: 'VEGY', name: 'Gaya Airport (Bodhgaya)',                      transitionAltitude:  9000, transitionLevel: 'FL100', elevation:  380, latDeg: 24.7443, lonDeg: 84.9512 },
   VEBS: { icao: 'VEBS', name: 'Bagdogra Airport',                             transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  412, latDeg: 26.6812, lonDeg: 88.3286 },
   VEBP: { icao: 'VEBP', name: 'Birsa Munda Airport, Ranchi',                  transitionAltitude: 11000, transitionLevel: 'FL120', elevation: 2148, latDeg: 23.3143, lonDeg: 85.3217 },
   VEJH: { icao: 'VEJH', name: 'Jharsuguda Airport (Veer Surendra Sai)',       transitionAltitude:  9000, transitionLevel: 'FL100', elevation:  751, latDeg: 21.9135, lonDeg: 84.0504 },
@@ -175,7 +176,7 @@ export const INDIA_AIP_AERODROMES: Record<string, AerodromeTransitionData> = {
   VEMR: { icao: 'VEMR', name: 'Cooch Behar Airport',                          transitionAltitude:  9000, transitionLevel: 'FL100', elevation:  138, latDeg: 26.3305, lonDeg: 89.4672 },
   VERU: { icao: 'VERU', name: 'Pasighat Airport',                             transitionAltitude:  9000, transitionLevel: 'FL100', elevation:  477, latDeg: 28.0661, lonDeg: 95.3367 },
   VEZO: { icao: 'VEZO', name: 'Ziro Airport, Arunachal Pradesh',              transitionAltitude:  9000, transitionLevel: 'FL100', elevation: 5420, latDeg: 27.5883, lonDeg: 93.8283 },
-  VEGT: { icao: 'VEGT', name: 'Sarsawa (near Saharanpur)',                    transitionAltitude:  9000, transitionLevel: 'FL100', elevation:  275, latDeg: 29.9939, lonDeg: 77.4253 },
+  VEGT: { icao: 'VEGT', name: 'Lokpriya Gopinath Bordoloi Intl, Guwahati',    transitionAltitude: 11000, transitionLevel: 'FL120', elevation:  162, latDeg: 26.1061, lonDeg: 91.5859 },
   VEHK: { icao: 'VEHK', name: 'Hashimara Air Force Station',                  transitionAltitude:  9000, transitionLevel: 'FL100', elevation:  222, latDeg: 26.6981, lonDeg: 89.3637 },
 }
 
