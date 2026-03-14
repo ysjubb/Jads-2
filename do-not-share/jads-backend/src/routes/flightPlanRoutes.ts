@@ -5,6 +5,8 @@ import { ClearanceService, registerSseClient, unregisterSseClient } from '../ser
 import { FlightPlanService }   from '../services/FlightPlanService'
 import { RoutePlanningService } from '../services/RoutePlanningService'
 import { RouteAdvisoryService } from '../services/RouteAdvisoryService'
+import { FlightPlanFieldValidator } from '../services/FlightPlanFieldValidator'
+import { AftnAddresseeService, FIR_ACC_ADDRESSES, AFTN_ADDRESS_BOOK } from '../services/AftnAddresseeService'
 import { createServiceLogger } from '../logger'
 import { env } from '../env'
 import { prisma } from '../lib/prisma'
@@ -14,6 +16,8 @@ const service      = new ClearanceService(prisma)
 const fplService   = new FlightPlanService(prisma)
 const routeService   = new RoutePlanningService()
 let advisoryService: RouteAdvisoryService = new RouteAdvisoryService()
+const fieldValidator = new FlightPlanFieldValidator()
+const addresseeService = new AftnAddresseeService()
 const log          = createServiceLogger('FlightPlanRoutes')
 
 /** Override the RouteAdvisoryService instance (for testing/DI). */
@@ -73,7 +77,7 @@ router.post('/route-plan', requireAuth, requireDomain('AIRCRAFT'), requireRole(F
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/route-advisory', requireAuth, requireDomain('AIRCRAFT'), async (req, res) => {
   try {
-    const { adep, ades, cruisingLevel, cruisingSpeed } = req.body
+    const { adep, ades, cruisingLevel, cruisingSpeed, flightRules } = req.body
 
     if (!adep || !ades) {
       res.status(400).json({ error: 'ADEP_AND_ADES_REQUIRED' })
@@ -85,6 +89,7 @@ router.post('/route-advisory', requireAuth, requireDomain('AIRCRAFT'), async (re
       ades: String(ades).toUpperCase(),
       cruisingLevel: cruisingLevel || 'VFR',
       cruisingSpeed: cruisingSpeed || 'N0240',
+      flightRules: flightRules || undefined,
     })
 
     res.json({ success: true, advisory })
@@ -92,6 +97,69 @@ router.post('/route-advisory', requireAuth, requireDomain('AIRCRAFT'), async (re
     const msg = e instanceof Error ? e.message : String(e)
     log.error('route_advisory_error', { data: { error: msg } })
     res.status(500).json({ error: 'ROUTE_ADVISORY_FAILED', ...(env.NODE_ENV !== 'production' ? { detail: msg } : {}) })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/flight-plans/validate
+// Pre-filing validation dry-run. Returns errors/warnings without filing.
+// All three clients (Android, iOS, Web Portal) call this before POST /flight-plans.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/validate', requireAuth, requireDomain('AIRCRAFT'), requireRole(FPL_ROLES), async (req, res) => {
+  try {
+    const result = fieldValidator.validate({
+      eobt:             req.body.eobt || '',
+      dof:              req.body.dof,
+      adep:             (req.body.adep || req.body.departureIcao || '').toUpperCase(),
+      ades:             (req.body.ades || req.body.destinationIcao || '').toUpperCase(),
+      route:            req.body.route || '',
+      item18:           req.body.item18 || req.body.otherInfo || '',
+      cruisingSpeed:    req.body.cruisingSpeed || '',
+      cruisingLevel:    req.body.cruisingLevel || '',
+      flightRules:      req.body.flightRules || '',
+      flightType:       req.body.flightType || '',
+      eet:              req.body.eet || '',
+      endurance:        req.body.endurance || req.body.enduranceHHmm || '',
+      personsOnBoard:   req.body.personsOnBoard,
+      notifyEmail:      req.body.notifyEmail || req.body.pilotEmail || '',
+      notifyMobile:     req.body.notifyMobile || req.body.pilotMobile || '',
+      additionalEmails: req.body.additionalEmails,
+      filedByType:      req.auth!.userType,
+      userRole:         req.auth!.role,
+    })
+
+    res.json({ success: result.valid, ...result })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('flight_plan_validate_error', { data: { error: msg } })
+    res.status(500).json({ error: 'VALIDATION_FAILED', ...(env.NODE_ENV !== 'production' ? { detail: msg } : {}) })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/flight-plans/addressees
+// Returns the structured AFTN addressee flow for a given route.
+// Used by the Info Addressee tab in the user portal.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/addressees', requireAuth, requireDomain('AIRCRAFT'), async (req, res) => {
+  try {
+    const adep = String(req.query.adep || '').toUpperCase()
+    const ades = String(req.query.ades || '').toUpperCase()
+    const altn1 = req.query.altn1 ? String(req.query.altn1).toUpperCase() : undefined
+    const altn2 = req.query.altn2 ? String(req.query.altn2).toUpperCase() : undefined
+
+    if (!adep || !ades) {
+      res.status(400).json({ error: 'ADEP_AND_ADES_REQUIRED' })
+      return
+    }
+
+    // Build structured addressee flow
+    const flow = addresseeService.generateStructuredFlow(adep, ades, altn1, altn2)
+    res.json({ success: true, flow })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('addressees_error', { data: { error: msg } })
+    res.status(500).json({ error: 'ADDRESSEES_FAILED', ...(env.NODE_ENV !== 'production' ? { detail: msg } : {}) })
   }
 })
 

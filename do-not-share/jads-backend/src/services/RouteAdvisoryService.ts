@@ -36,6 +36,7 @@ export interface RouteAdvisoryInput {
   ades:           string   // ICAO 4-letter code
   cruisingLevel:  string   // "F350", "VFR", "A045"
   cruisingSpeed:  string   // "N0480"
+  flightRules?:   string   // "I", "V", "Y", "Z" — determines IFR/VFR route recommendation
 }
 
 export interface RouteAdvisorySegment {
@@ -49,6 +50,9 @@ export interface RouteAdvisorySegment {
 
 export interface RouteAdvisory {
   hasRecommendation: boolean
+
+  /** 'IFR' = published airway recommended, 'VFR' = direct route recommended with corridor advisory */
+  routeType: 'IFR' | 'VFR'
 
   recommended: {
     routeString:    string
@@ -67,6 +71,13 @@ export interface RouteAdvisory {
     direction:         'EASTBOUND' | 'WESTBOUND'
     rule:              string
   }
+
+  /** VFR-specific advisory (null for IFR flights) */
+  vfrAdvisory: {
+    corridorNote:     string   // VFR corridor advisory text
+    maxAltitude:      string   // e.g. "FL150" or "A045"
+    requiresSpecialVfr: boolean // True if near controlled airspace
+  } | null
 
   reportingPoints: Array<{ identifier: string; name: string; distanceFromDepNm: number }>
 
@@ -112,7 +123,10 @@ export class RouteAdvisoryService {
   private altitudeEngine = new AltitudeComplianceEngine()
 
   generateAdvisory(input: RouteAdvisoryInput): RouteAdvisory {
-    const { adep, ades, cruisingLevel, cruisingSpeed } = input
+    const { adep, ades, cruisingLevel, cruisingSpeed, flightRules } = input
+
+    // Determine if this is a VFR flight
+    const isVfr = flightRules === 'V' || cruisingLevel === 'VFR'
 
     // 1. Resolve ADEP/ADES coordinates
     const depCoords = this.resolveAerodrome(adep)
@@ -120,7 +134,7 @@ export class RouteAdvisoryService {
 
     if (!depCoords || !destCoords) {
       log.warn('advisory_aerodrome_not_found', { data: { adep, ades, depFound: !!depCoords, destFound: !!destCoords } })
-      return this.buildNoRecommendation(adep, ades, depCoords, destCoords, cruisingLevel, cruisingSpeed)
+      return this.buildNoRecommendation(adep, ades, depCoords, destCoords, cruisingLevel, cruisingSpeed, isVfr)
     }
 
     // 2. Parse speed for EET calculation
@@ -146,6 +160,32 @@ export class RouteAdvisoryService {
     // 6. Try to find published airway route
     const found = this.routeService.findRoute(adep, ades)
 
+    // 6a. VFR flights — recommend direct route with VFR corridor advisory
+    if (isVfr) {
+      const firCrossings = this.computeFirCrossings(
+        [{ identifier: adep, lat: depCoords.lat, lon: depCoords.lon },
+         { identifier: ades, lat: destCoords.lat, lon: destCoords.lon }],
+        groundspeedKts
+      )
+
+      const vfrAdvisory = this.buildVfrAdvisory(adep, ades, depCoords, destCoords, cruisingLevel)
+
+      log.info('advisory_generated_vfr', {
+        data: { adep, ades, distNm: Math.round(directDistNm), routeType: 'VFR' }
+      })
+
+      return {
+        hasRecommendation: true,
+        routeType: 'VFR' as const,
+        recommended: null,
+        flightLevelAdvisory,
+        vfrAdvisory,
+        reportingPoints: [],
+        firCrossings,
+        directRoute,
+      }
+    }
+
     if (!found) {
       // No published route — return advisory with direct route info only
       const firCrossings = this.computeFirCrossings(
@@ -156,8 +196,10 @@ export class RouteAdvisoryService {
 
       return {
         hasRecommendation: false,
+        routeType: 'IFR' as const,
         recommended: null,
         flightLevelAdvisory,
+        vfrAdvisory: null,
         reportingPoints: [],
         firCrossings,
         directRoute,
@@ -245,8 +287,10 @@ export class RouteAdvisoryService {
 
     return {
       hasRecommendation: true,
+      routeType: 'IFR' as const,
       recommended,
       flightLevelAdvisory,
+      vfrAdvisory: null,
       reportingPoints,
       firCrossings,
       directRoute,
@@ -374,11 +418,47 @@ export class RouteAdvisoryService {
     return crossings
   }
 
+  private buildVfrAdvisory(
+    adep: string, ades: string,
+    depCoords: { lat: number; lon: number },
+    destCoords: { lat: number; lon: number },
+    cruisingLevel: string,
+  ): { corridorNote: string; maxAltitude: string; requiresSpecialVfr: boolean } {
+    // Check if either aerodrome is in controlled airspace (major airports)
+    const majorAerodromes = ['VIDP', 'VABB', 'VECC', 'VOMF', 'VOBL', 'VOHS', 'VOCI', 'VEGY', 'VAAH', 'VAGO']
+    const nearControlled = majorAerodromes.includes(adep) || majorAerodromes.includes(ades)
+
+    // Build corridor advisory text
+    let corridorNote = 'VFR flight — direct route recommended. '
+    if (nearControlled) {
+      corridorNote += `Departure or arrival at a controlled aerodrome (${adep}/${ades}). `
+      corridorNote += 'Special VFR clearance may be required within CTR. '
+      corridorNote += 'Contact ATC for VFR corridor assignment before entering controlled airspace. '
+    }
+    corridorNote += 'Maintain VMC at all times. Comply with right-of-way rules (AIP ENR 1.2). '
+    corridorNote += 'Monitor appropriate FIS frequency for traffic information.'
+
+    // Determine max altitude advisory
+    const level = cruisingLevel.toUpperCase()
+    let maxAltitude = 'FL150'
+    if (level.startsWith('A')) {
+      const altVal = parseInt(level.substring(1))
+      if (!isNaN(altVal) && altVal <= 180) maxAltitude = `A${String(altVal).padStart(3, '0')}`
+    }
+
+    return {
+      corridorNote,
+      maxAltitude,
+      requiresSpecialVfr: nearControlled,
+    }
+  }
+
   private buildNoRecommendation(
     adep: string, ades: string,
     depCoords: { lat: number; lon: number } | null,
     destCoords: { lat: number; lon: number } | null,
-    cruisingLevel: string, cruisingSpeed: string
+    cruisingLevel: string, cruisingSpeed: string,
+    isVfr: boolean = false,
   ): RouteAdvisory {
     const directDistNm = depCoords && destCoords ? haversineNm(depCoords.lat, depCoords.lon, destCoords.lat, destCoords.lon) : 0
     const gs = this.parseSpeed(cruisingSpeed)
@@ -387,10 +467,16 @@ export class RouteAdvisoryService {
       ? ((greatCircleBearing(depCoords.lat, depCoords.lon, destCoords.lat, destCoords.lon) + getMagneticVariation(depCoords.lat, depCoords.lon) + 360) % 360)
       : 0
 
+    const vfrAdvisory = isVfr && depCoords && destCoords
+      ? this.buildVfrAdvisory(adep, ades, depCoords, destCoords, cruisingLevel)
+      : null
+
     return {
       hasRecommendation: false,
+      routeType: isVfr ? 'VFR' : 'IFR',
       recommended: null,
       flightLevelAdvisory: this.buildFlightLevelAdvisory(cruisingLevel, magTrack),
+      vfrAdvisory,
       reportingPoints: [],
       firCrossings: depCoords && destCoords
         ? this.computeFirCrossings(

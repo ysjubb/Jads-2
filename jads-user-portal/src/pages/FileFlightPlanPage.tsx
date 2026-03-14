@@ -1,15 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { userApi } from '../api/client'
 import { T } from '../theme'
 import { AerodromeAutocomplete } from '../components/portal/AerodromeAutocomplete'
 import { AircraftTypeDropdown } from '../components/portal/AircraftTypeDropdown'
 import { ZZZZCoordinatePanel } from '../components/portal/ZZZZCoordinatePanel'
+import { AddresseeFlowPanel } from '../components/portal/AddresseeFlowPanel'
 
 // ── Route Advisory types (mirror backend RouteAdvisory) ─────────────────────
 
 interface RouteAdvisory {
   hasRecommendation: boolean
+  routeType?: 'IFR' | 'VFR'
   recommended: {
     routeString: string
     airwayName: string
@@ -26,6 +28,11 @@ interface RouteAdvisory {
     direction: 'EASTBOUND' | 'WESTBOUND'
     rule: string
   }
+  vfrAdvisory?: {
+    corridorNote: string
+    maxAltitude: string
+    requiresSpecialVfr: boolean
+  } | null
   reportingPoints: Array<{ identifier: string; name: string; distanceFromDepNm: number }>
   firCrossings: Array<{ firCode: string; firName: string; entryPoint: string; exitPoint: string; distanceNm: number; eetMinutes: number }>
   directRoute: { routeString: string; totalDistanceNm: number; totalEetMinutes: number }
@@ -68,6 +75,82 @@ export function FileFlightPlanPage() {
   // ZZZZ coordinate state
   const [depCoord, setDepCoord] = useState<string | null>(null)
   const [destCoord, setDestCoord] = useState<string | null>(null)
+
+  // ── Inline field validation state (O2–O10) ─────────────────────────────
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  // Pre-submit validation results (O12)
+  const [validationResult, setValidationResult] = useState<{
+    valid: boolean
+    errors: Array<{ field: string; code: string; message: string }>
+    warnings: Array<{ field: string; code: string; message: string }>
+  } | null>(null)
+
+  // ── Inline validation (runs on field change — frontend-only for instant UX) ──
+  const validateInline = useCallback(() => {
+    const errs: Record<string, string> = {}
+
+    // O2: EOBT cannot be in the past
+    if (form.eobt) {
+      const eobtDate = new Date(form.eobt)
+      if (!isNaN(eobtDate.getTime()) && eobtDate.getTime() < Date.now() - 15 * 60 * 1000) {
+        errs.eobt = 'EOBT is in the past. You cannot file a flight plan for a past date/time.'
+      }
+    }
+
+    // O6: Speed caps
+    if (form.cruisingSpeed) {
+      const ind = form.cruisingSpeed.charAt(0).toUpperCase()
+      const val = parseInt(form.cruisingSpeed.substring(1))
+      if (!isNaN(val)) {
+        if (ind === 'N' && val > 600) errs.cruisingSpeed = `Speed ${val} knots exceeds max 600 knots.`
+        if (ind === 'K' && val > 900) errs.cruisingSpeed = `Speed ${val} km/h exceeds max 900 km/h.`
+        if (ind === 'M' && val > 35)  errs.cruisingSpeed = `Mach ${(val/10).toFixed(1)} exceeds max Mach 3.5.`
+      }
+    }
+
+    // O7: EET and endurance
+    const parseHHMM = (s: string): number | null => {
+      if (!/^\d{4}$/.test(s)) return null
+      return parseInt(s.substring(0, 2)) * 60 + parseInt(s.substring(2, 4))
+    }
+    if (form.eet) {
+      const eetMin = parseHHMM(form.eet)
+      if (eetMin !== null && eetMin > 1080) errs.eet = `EET ${form.eet} exceeds maximum 1800 (18 hours).`
+      if (form.endurance) {
+        const endMin = parseHHMM(form.endurance)
+        if (eetMin !== null && endMin !== null && eetMin > endMin) {
+          errs.eet = `EET (${form.eet}) exceeds fuel endurance (${form.endurance}).`
+        }
+      }
+    }
+    if (form.endurance && !/^\d{4}$/.test(form.endurance)) {
+      errs.endurance = 'Endurance must be in HHMM format (e.g. 0500).'
+    }
+
+    // O8: POB
+    const pob = parseInt(form.personsOnBoard)
+    if (form.personsOnBoard && (isNaN(pob) || pob <= 0)) {
+      errs.personsOnBoard = 'Persons on board must be at least 1.'
+    } else if (pob > 600) {
+      errs.personsOnBoard = 'Persons on board exceeds maximum 600.'
+    }
+
+    // O9: Email
+    if (form.notifyEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.notifyEmail.trim())) {
+      errs.notifyEmail = 'Invalid email address.'
+    }
+
+    // O10: Mobile
+    if (form.notifyMobile) {
+      const m = form.notifyMobile.trim().replace(/\s/g, '')
+      if (m && !m.startsWith('+91')) errs.notifyMobile = 'Must be Indian number (+91).'
+      else if (m && !/^\+91[6-9]\d{9}$/.test(m)) errs.notifyMobile = 'Invalid Indian mobile (+91XXXXXXXXXX).'
+    }
+
+    setFieldErrors(errs)
+  }, [form])
+
+  useEffect(() => { validateInline() }, [validateInline])
 
   // Flight level advisory from backend API
   const [flAdvisory, setFlAdvisory] = useState<any>(null)
@@ -123,6 +206,7 @@ export function FileFlightPlanPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setValidationResult(null)
 
     // Auto-build Item 18 ZZZZ entries
     let item18Extra = ''
@@ -136,23 +220,57 @@ export function FileFlightPlanPage() {
       setForm(f => ({ ...f, item18: (item18Extra + f.item18).trim() }))
     }
 
+    // ── O12: Pre-submit validation gate — call backend validator ──────────
     setAdvisoryLoading(true); setError(null)
+    try {
+      const payload = {
+        ...form,
+        personsOnBoard: parseInt(form.personsOnBoard) || 0,
+        additionalEmails: form.additionalEmails
+          ? form.additionalEmails.split(',').map(s => s.trim()).filter(Boolean)
+          : [],
+      }
+      const { data: valData } = await userApi().post('/flight-plans/validate', payload)
+
+      if (!valData.valid) {
+        // Show validation errors — block filing
+        setValidationResult({
+          valid: false,
+          errors: valData.errors || [],
+          warnings: valData.warnings || [],
+        })
+        setAdvisoryLoading(false)
+        return
+      }
+
+      // Validation passed — show warnings if any, then proceed
+      if (valData.warnings?.length > 0) {
+        setValidationResult({
+          valid: true,
+          errors: [],
+          warnings: valData.warnings,
+        })
+      }
+    } catch {
+      // Validation endpoint failed — proceed anyway (don't block on validator outage)
+    }
+
+    // ── Fetch route advisory ─────────────────────────────────────────────
     try {
       const { data } = await userApi().post('/flight-plans/route-advisory', {
         adep: form.adep.toUpperCase(),
         ades: form.ades.toUpperCase(),
         cruisingLevel: form.cruisingLevel,
         cruisingSpeed: form.cruisingSpeed,
+        flightRules: form.flightRules,
       })
       if (data.success && data.advisory) {
         setAdvisory(data.advisory)
         setShowModal(true)
       } else {
-        // Advisory failed — file directly
         await filePlan()
       }
     } catch {
-      // Advisory call failed — silently proceed to file (advisory failure never blocks)
       await filePlan()
     } finally {
       setAdvisoryLoading(false)
@@ -164,6 +282,8 @@ export function FileFlightPlanPage() {
     border: `1px solid ${T.border}`, borderRadius: '4px', fontSize: '0.75rem',
   }
   const labelStyle: React.CSSProperties = { fontSize: '0.65rem', color: T.muted, marginBottom: '2px', display: 'block' }
+  const errHintStyle: React.CSSProperties = { fontSize: '0.6rem', color: T.red, marginTop: '2px' }
+  const FieldErr = ({ name }: { name: string }) => fieldErrors[name] ? <div style={errHintStyle}>{fieldErrors[name]}</div> : null
 
   return (
     <div style={{ padding: '1.5rem', maxWidth: '800px' }}>
@@ -172,6 +292,45 @@ export function FileFlightPlanPage() {
       {error && (
         <div style={{ background: T.red + '15', border: `1px solid ${T.red}30`, borderRadius: '4px', padding: '0.5rem', marginBottom: '1rem', color: T.red, fontSize: '0.7rem' }}>
           {typeof error === 'string' ? error : JSON.stringify(error)}
+        </div>
+      )}
+
+      {/* ── O12: Validation Results Panel (pre-submit errors/warnings) ──── */}
+      {validationResult && !validationResult.valid && (
+        <div style={{ background: T.red + '10', border: `1px solid ${T.red}40`, borderRadius: '6px', padding: '0.8rem', marginBottom: '1rem' }}>
+          <div style={{ color: T.red, fontWeight: 700, fontSize: '0.8rem', marginBottom: '0.5rem' }}>
+            ✗ Flight plan validation failed — {validationResult.errors.length} error{validationResult.errors.length !== 1 ? 's' : ''} must be corrected
+          </div>
+          {validationResult.errors.map((err, i) => (
+            <div key={i} style={{ display: 'flex', gap: '0.5rem', padding: '0.3rem 0', fontSize: '0.7rem', borderBottom: `1px solid ${T.red}15` }}>
+              <span style={{ color: T.red, fontWeight: 700, minWidth: '6rem' }}>{err.code}</span>
+              <span style={{ color: T.textBright }}>{err.message}</span>
+            </div>
+          ))}
+          {validationResult.warnings.length > 0 && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <div style={{ color: T.amber, fontWeight: 700, fontSize: '0.7rem', marginBottom: '0.3rem' }}>Warnings:</div>
+              {validationResult.warnings.map((w, i) => (
+                <div key={i} style={{ fontSize: '0.65rem', color: T.amber, padding: '0.15rem 0' }}>
+                  {w.code}: {w.message}
+                </div>
+              ))}
+            </div>
+          )}
+          <button onClick={() => setValidationResult(null)} style={{
+            marginTop: '0.5rem', padding: '0.3rem 1rem', background: T.red, color: '#fff',
+            border: 'none', borderRadius: '4px', fontSize: '0.7rem', cursor: 'pointer',
+          }}>Fix and Retry</button>
+        </div>
+      )}
+      {validationResult && validationResult.valid && validationResult.warnings.length > 0 && (
+        <div style={{ background: T.amber + '10', border: `1px solid ${T.amber}40`, borderRadius: '6px', padding: '0.5rem', marginBottom: '1rem' }}>
+          <div style={{ color: T.amber, fontWeight: 700, fontSize: '0.7rem', marginBottom: '0.3rem' }}>Warnings (non-blocking):</div>
+          {validationResult.warnings.map((w, i) => (
+            <div key={i} style={{ fontSize: '0.65rem', color: T.amber, padding: '0.15rem 0' }}>
+              {w.code}: {w.message}
+            </div>
+          ))}
         </div>
       )}
 
@@ -267,22 +426,27 @@ export function FileFlightPlanPage() {
                 </div>
               )}
             </div>
-            <div><label style={labelStyle}>Cruising Speed</label><input value={form.cruisingSpeed} onChange={set('cruisingSpeed')} placeholder="N0480" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Cruising Speed</label><input value={form.cruisingSpeed} onChange={set('cruisingSpeed')} placeholder="N0480" style={inputStyle} /><FieldErr name="cruisingSpeed" /></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.6rem' }}>
-            <div><label style={labelStyle}>EOBT (UTC)</label><input type="datetime-local" value={form.eobt} onChange={set('eobt')} style={inputStyle} required /></div>
-            <div><label style={labelStyle}>EET</label><input value={form.eet} onChange={set('eet')} placeholder="0130" style={inputStyle} /></div>
-            <div><label style={labelStyle}>Endurance</label><input value={form.endurance} onChange={set('endurance')} placeholder="0400" style={inputStyle} /></div>
-            <div><label style={labelStyle}>POB</label><input value={form.personsOnBoard} onChange={set('personsOnBoard')} type="number" min="1" style={inputStyle} /></div>
+            <div><label style={labelStyle}>EOBT (UTC)</label><input type="datetime-local" value={form.eobt} onChange={set('eobt')} style={inputStyle} required /><FieldErr name="eobt" /></div>
+            <div><label style={labelStyle}>EET</label><input value={form.eet} onChange={set('eet')} placeholder="0130" style={inputStyle} /><FieldErr name="eet" /></div>
+            <div><label style={labelStyle}>Endurance</label><input value={form.endurance} onChange={set('endurance')} placeholder="0400" style={inputStyle} /><FieldErr name="endurance" /></div>
+            <div><label style={labelStyle}>POB</label><input value={form.personsOnBoard} onChange={set('personsOnBoard')} type="number" min="1" style={inputStyle} /><FieldErr name="personsOnBoard" /></div>
           </div>
         </fieldset>
+
+        {/* ── O11: AFTN Addressee Flow ─────────────────────────────────── */}
+        {form.adep && form.ades && form.adep.length === 4 && form.ades.length === 4 && (
+          <AddresseeFlowPanel adep={form.adep} ades={form.ades} altn1={form.altn1} altn2={form.altn2} />
+        )}
 
         {/* Notifications */}
         <fieldset style={{ border: `1px solid ${T.border}`, borderRadius: '6px', padding: '1rem', marginBottom: '1rem' }}>
           <legend style={{ color: T.primary, fontSize: '0.75rem', padding: '0 0.4rem' }}>Notifications</legend>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '0.6rem' }}>
-            <div><label style={labelStyle}>Email</label><input value={form.notifyEmail} onChange={set('notifyEmail')} placeholder="pilot@email.com" style={inputStyle} /></div>
-            <div><label style={labelStyle}>Mobile</label><input value={form.notifyMobile} onChange={set('notifyMobile')} placeholder="+919800000001" style={inputStyle} /></div>
+            <div><label style={labelStyle}>Email</label><input value={form.notifyEmail} onChange={set('notifyEmail')} placeholder="pilot@email.com" style={inputStyle} /><FieldErr name="notifyEmail" /></div>
+            <div><label style={labelStyle}>Mobile</label><input value={form.notifyMobile} onChange={set('notifyMobile')} placeholder="+919800000001" style={inputStyle} /><FieldErr name="notifyMobile" /></div>
           </div>
           <div><label style={labelStyle}>Additional Emails (comma-separated)</label><input value={form.additionalEmails} onChange={set('additionalEmails')} placeholder="ops@airline.com, dispatch@airline.com" style={inputStyle} /></div>
         </fieldset>
@@ -355,6 +519,35 @@ function RouteAdvisoryModal({ advisory, adep, ades, onUseRecommended, onContinue
         </div>
 
         <div style={s.body}>
+          {/* ── Route Type Badge ──────────────────────────────────────── */}
+          {advisory.routeType && (
+            <div style={{ marginBottom: '0.5rem' }}>
+              <span style={{
+                display: 'inline-block', padding: '0.15rem 0.5rem', borderRadius: '3px',
+                fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.05em',
+                background: advisory.routeType === 'VFR' ? T.amber : T.primary,
+                color: T.bg,
+              }}>
+                {advisory.routeType} ROUTE
+              </span>
+            </div>
+          )}
+
+          {/* ── VFR Advisory ──────────────────────────────────────────── */}
+          {advisory.vfrAdvisory && (
+            <Section title="VFR Flight Advisory">
+              <div style={{ fontSize: '0.7rem', color: T.text, lineHeight: '1.5' }}>
+                {advisory.vfrAdvisory.corridorNote}
+              </div>
+              <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.65rem', color: T.muted, marginTop: '0.3rem' }}>
+                <span>Max Altitude: <strong style={{ color: T.textBright }}>{advisory.vfrAdvisory.maxAltitude}</strong></span>
+                {advisory.vfrAdvisory.requiresSpecialVfr && (
+                  <span style={{ color: T.red, fontWeight: 700 }}>Special VFR may be required</span>
+                )}
+              </div>
+            </Section>
+          )}
+
           {/* ── Recommended Route ─────────────────────────────────────── */}
           {advisory.hasRecommendation && advisory.recommended ? (
             <Section title={`Recommended: Airway ${advisory.recommended.airwayName}`}>
@@ -385,13 +578,13 @@ function RouteAdvisoryModal({ advisory, adep, ades, onUseRecommended, onContinue
                 </tbody>
               </table>
             </Section>
-          ) : (
+          ) : !advisory.vfrAdvisory ? (
             <Section title="No Published Airway Found">
               <div style={{ fontSize: '0.7rem', color: T.muted }}>
                 No published ATS airway connects {adep} to {ades}. You may file a direct (DCT) route.
               </div>
             </Section>
-          )}
+          ) : null}
 
           {/* ── Flight Level Advisory ────────────────────────────────── */}
           <Section title="Flight Level Advisory">

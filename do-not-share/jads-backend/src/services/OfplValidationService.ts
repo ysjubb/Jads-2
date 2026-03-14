@@ -8,6 +8,7 @@
 
 import { PrismaClient }      from '@prisma/client'
 import { Item18Parser }      from './Item18Parser'
+import { FlightPlanFieldValidator } from './FlightPlanFieldValidator'
 import { createServiceLogger } from '../logger'
 import { RVSM_LOWER_FL, RVSM_UPPER_FL } from '../constants'
 
@@ -67,6 +68,7 @@ export interface ValidationResult {
 
 export class OfplValidationService {
   private item18Parser = new Item18Parser()
+  private fieldValidator = new FlightPlanFieldValidator()
 
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -79,6 +81,32 @@ export class OfplValidationService {
     const warnings:       ValidationWarning[] = []
     const usedVersionIds: string[]            = []
     const computedData:   ValidationResult['computedData'] = {}
+
+    // ── STEP 0: BUSINESS RULE VALIDATION (O2–O10) ──────────────────────
+    // Run FlightPlanFieldValidator first — covers temporal, speed caps,
+    // EET/endurance, POB, email, mobile, and route endpoint checks.
+    const fieldResult = this.fieldValidator.validate({
+      eobt:           input.estimatedOffBlock,
+      dof:            undefined,  // DOF checked separately from Item 18 below
+      adep:           input.departureIcao,
+      ades:           input.destinationIcao,
+      route:          input.route,
+      item18:         input.otherInfo,
+      cruisingSpeed:  `${input.speedIndicator}${input.speedValue}`,
+      cruisingLevel:  input.levelIndicator === 'VFR' ? 'VFR' : `${input.levelIndicator}${input.levelValue}`,
+      flightRules:    input.flightRules,
+      flightType:     input.flightType,
+      eet:            input.eet,
+      endurance:      input.enduranceHHmm,
+      personsOnBoard: input.personsOnBoard,
+      notifyEmail:    undefined,  // Not in OfplInput — validated at route level
+      notifyMobile:   undefined,
+      filedByType:    undefined,
+      userRole:       filingUserRole,
+    })
+
+    errors.push(...fieldResult.errors)
+    warnings.push(...fieldResult.warnings)
 
     // ── STEP 1: FIELD SYNTAX ─────────────────────────────────────────────
 
