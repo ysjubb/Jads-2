@@ -16,6 +16,10 @@ import { DataSourceReconciliationService } from '../services/DataSourceReconcili
 import { DataSourceManagerService }        from '../services/DataSourceManagerService'
 import { AAIeAIPAdapterStub }              from '../adapters/stubs/AAIeAIPAdapterStub'
 import { JeppesenAdapterStub }             from '../adapters/stubs/JeppesenAdapterStub'
+import { ConflictDetectionService }        from '../services/ConflictDetectionService'
+import { AfmluAdapterStub }               from '../adapters/stubs/AfmluAdapterStub'
+import { FirAdapterStub }                  from '../adapters/stubs/FirAdapterStub'
+import { AAIDataAdapterStub }              from '../adapters/stubs/AAIDataAdapterStub'
 import { prisma }        from '../lib/prisma'
 
 const router                = express.Router()
@@ -29,6 +33,7 @@ const eaipAdapter            = new AAIeAIPAdapterStub()
 const jeppesenAdapter        = new JeppesenAdapterStub()
 const reconciliationService  = new DataSourceReconciliationService(eaipAdapter, jeppesenAdapter)
 const dataSourceManager      = new DataSourceManagerService(reconciliationService)
+const conflictService        = new ConflictDetectionService(prisma, new AfmluAdapterStub(), new FirAdapterStub(), new AAIDataAdapterStub())
 
 // ── ADMIN LOGIN (no auth required) ────────────────────────────────────────
 
@@ -2128,7 +2133,7 @@ router.post('/broadcast', requireAdminAuth, async (req, res) => {
     await prisma.auditLog.create({
       data: {
         actorType:    'ADMIN_USER',
-        actorId:      req.adminAuth!.adminId,
+        actorId:      req.adminAuth!.adminUserId,
         action:       'BROADCAST_NOTIFICATION',
         resourceType: 'notification',
         detailJson:   JSON.stringify({ title, recipientCount: userIds.length }),
