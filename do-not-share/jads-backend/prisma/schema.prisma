@@ -163,6 +163,7 @@ enum PAStatus {
   EXPIRED
   REJECTED
   REVOKED
+  CANCELLED
 }
 
 enum FlightPlanStatus {
@@ -1239,4 +1240,19 @@ model Navaid {
 
   @@index([firCode])
   @@index([type])
+}
+
+// DS-12: UIN verification cache — stores DS verification results for 24h
+model UINVerificationCache {
+  uinNumber        String   @id
+  droneCategory    String
+  manufacturerName String
+  modelName        String
+  operatorId       String
+  uaopValid        Boolean
+  verifiedAt       DateTime
+  expiresAt        DateTime
+  sourceMode       String   // LIVE | MOCK
+
+  @@index([expiresAt])
 }

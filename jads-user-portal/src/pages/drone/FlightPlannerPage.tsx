@@ -212,6 +212,10 @@ export function FlightPlannerPage() {
   const [zoneCheckLoading, setZoneCheckLoading] = useState(false)
   const [airspaceZones, setAirspaceZones] = useState<AirspaceZone[]>([])
 
+  // DS-15: Pre-flight compliance check state
+  const [complianceReport, setComplianceReport] = useState<any>(null)
+  const [complianceLoading, setComplianceLoading] = useState(false)
+
   // Altitude
   const [altitude, setAltitude] = useState(120)
 
@@ -674,6 +678,174 @@ export function FlightPlannerPage() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [handleUndo])
+
+  // ── DS-15: Pre-flight compliance check ──────────────────────────────────
+  const handlePreFlightCheck = useCallback(async (uinNumber: string) => {
+    if (!uinNumber.trim()) return
+    setComplianceLoading(true)
+    setComplianceReport(null)
+    try {
+      // Build polygon from drawn shapes
+      let polygon: Array<{ lat: number; lng: number }> | undefined
+      if (drawnShapes.length > 0) {
+        const firstShape = drawnShapes[0]
+        const geo = firstShape.geoJson
+        if (geo?.geometry?.coordinates?.[0]) {
+          polygon = geo.geometry.coordinates[0].map((c: number[]) => ({ lat: c[1], lng: c[0] }))
+        }
+      }
+
+      const { data } = await userApi().post('/drone/pre-flight-check', {
+        uinNumber: uinNumber.trim(),
+        polygon,
+        altitudeM: altitude,
+        flightTime: startDate ? new Date(startDate).toISOString() : undefined,
+      })
+      setComplianceReport(data)
+    } catch (err: any) {
+      setComplianceReport({
+        verdict: 'NO_GO',
+        checks: [{
+          code: 'SYSTEM_ERROR',
+          name: 'System Error',
+          status: 'FAIL',
+          detail: err.response?.data?.error ?? 'Pre-flight check failed',
+          remediation: 'Try again or contact support.',
+        }],
+        checkedAt: new Date().toISOString(),
+      })
+    } finally {
+      setComplianceLoading(false)
+    }
+  }, [drawnShapes, altitude, startDate])
+
+  const renderCompliancePanel = () => {
+    const verdictColors: Record<string, string> = {
+      GO: '#22C55E',
+      NO_GO: '#EF4444',
+      ADVISORY: '#EAB308',
+    }
+    const statusIcons: Record<string, string> = {
+      PASS: '\u2713',
+      FAIL: '\u2717',
+      WARN: '\u26A0',
+      SKIP: '\u23ED',
+    }
+    const statusColors: Record<string, string> = {
+      PASS: '#22C55E',
+      FAIL: '#EF4444',
+      WARN: '#EAB308',
+      SKIP: T.muted,
+    }
+
+    return (
+      <div style={{ ...cardStyle, borderColor: T.border }}>
+        <div style={{ ...labelStyle, marginBottom: '0.4rem' }}>PRE-FLIGHT COMPLIANCE CHECK</div>
+
+        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
+          <input
+            id="preflight-uin"
+            placeholder="UIN-DEMO-001"
+            style={{ ...inputStyle, flex: 1 }}
+          />
+          <button
+            onClick={() => {
+              const inp = document.getElementById('preflight-uin') as HTMLInputElement
+              if (inp?.value) handlePreFlightCheck(inp.value)
+            }}
+            disabled={complianceLoading}
+            style={{
+              ...btnBase,
+              background: T.primary,
+              color: T.bg,
+              border: 'none',
+              whiteSpace: 'nowrap',
+              opacity: complianceLoading ? 0.7 : 1,
+            }}
+          >
+            {complianceLoading ? 'Checking...' : 'Run Check'}
+          </button>
+        </div>
+
+        {complianceReport && (
+          <div>
+            {/* Verdict banner */}
+            <div style={{
+              padding: '0.5rem 0.7rem',
+              borderRadius: '4px',
+              background: (verdictColors[complianceReport.verdict] ?? T.muted) + '15',
+              border: `1px solid ${(verdictColors[complianceReport.verdict] ?? T.muted)}40`,
+              marginBottom: '0.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}>
+              <span style={{
+                fontSize: '1.2rem',
+                fontWeight: 700,
+                color: verdictColors[complianceReport.verdict] ?? T.muted,
+              }}>
+                {complianceReport.verdict === 'GO' ? '\u2713' : complianceReport.verdict === 'NO_GO' ? '\u2717' : '\u26A0'}
+              </span>
+              <div>
+                <div style={{
+                  fontWeight: 700,
+                  fontSize: '0.8rem',
+                  color: verdictColors[complianceReport.verdict] ?? T.muted,
+                }}>
+                  {complianceReport.verdict === 'GO' ? 'GO — Clear for Takeoff'
+                   : complianceReport.verdict === 'NO_GO' ? 'NO-GO — Do Not Fly'
+                   : 'ADVISORY — Proceed with Caution'}
+                </div>
+                <div style={{ fontSize: '0.55rem', color: T.muted }}>
+                  Checked at {new Date(complianceReport.checkedAt).toLocaleTimeString()}
+                </div>
+              </div>
+            </div>
+
+            {/* Individual checks */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              {(complianceReport.checks ?? []).map((check: any, i: number) => (
+                <div key={i} style={{
+                  padding: '0.4rem 0.5rem',
+                  background: T.bg,
+                  borderRadius: '4px',
+                  border: `1px solid ${T.border}`,
+                  fontSize: '0.65rem',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.15rem' }}>
+                    <span style={{
+                      width: '16px',
+                      textAlign: 'center',
+                      fontWeight: 700,
+                      color: statusColors[check.status] ?? T.muted,
+                    }}>
+                      {statusIcons[check.status] ?? '?'}
+                    </span>
+                    <span style={{ fontWeight: 600, color: T.textBright }}>{check.name}</span>
+                    <span style={{
+                      marginLeft: 'auto',
+                      fontSize: '0.55rem',
+                      fontWeight: 600,
+                      color: statusColors[check.status] ?? T.muted,
+                    }}>
+                      {check.status}
+                    </span>
+                  </div>
+                  <div style={{ marginLeft: '20px', color: T.text }}>{check.detail}</div>
+                  {check.remediation && check.status !== 'PASS' && (
+                    <div style={{ marginLeft: '20px', marginTop: '0.15rem', color: T.muted, fontStyle: 'italic' }}>
+                      {check.remediation}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   // ── Zone status banner ──────────────────────────────────────────────────
   const renderZoneBanner = () => {
@@ -1284,6 +1456,9 @@ export function FlightPlannerPage() {
             )}
           </div>
         </div>
+
+        {/* ── DS-15: Pre-flight compliance check ────────────────── */}
+        {renderCompliancePanel()}
 
         {/* ── Summary ─────────────────────────────────────────────── */}
         <div style={{

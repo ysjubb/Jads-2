@@ -1,16 +1,23 @@
 import express              from 'express'
+import jwt                  from 'jsonwebtoken'
 import { CivilianAuthService }   from '../services/CivilianAuthService'
 import { SpecialUserAuthService } from '../services/SpecialUserAuthService'
+import { UINVerificationService } from '../services/UINVerificationService'
+import { DigitalSkyAdapterStub }  from '../adapters/stubs/DigitalSkyAdapterStub'
 import { requireAuth }           from '../middleware/authMiddleware'
 import { authLoginRateLimit }    from '../middleware/rateLimiter'
 import { serializeForJson }      from '../utils/bigintSerializer'
 import { createServiceLogger }   from '../logger'
+import { env }                   from '../env'
+import { USER_SESSION_HOURS }    from '../constants'
 import { prisma }                from '../lib/prisma'
 
-const router       = express.Router()
-const civilianAuth = new CivilianAuthService(prisma)
-const specialAuth  = new SpecialUserAuthService(prisma)
-const log          = createServiceLogger('AuthRoutes')
+const router          = express.Router()
+const civilianAuth    = new CivilianAuthService(prisma)
+const specialAuth     = new SpecialUserAuthService(prisma)
+const dsAdapter       = new DigitalSkyAdapterStub()
+const uinVerification = new UINVerificationService(prisma, dsAdapter)
+const log             = createServiceLogger('AuthRoutes')
 
 // ── Civilian registration ─────────────────────────────────────────────────────
 
@@ -255,6 +262,106 @@ router.get('/me', requireAuth, async (req, res) => {
   } catch (e: unknown) {
     log.error('profile_fetch_failed', { data: { error: e instanceof Error ? e.message : String(e) } })
     res.status(500).json({ error: 'PROFILE_FETCH_FAILED' })
+  }
+})
+
+// ── Drone operator login via UIN (DS-14) ─────────────────────────────────────
+// Single-step login — no OTP needed because Digital Sky already verified identity.
+// POST /api/auth/drone/login
+// Body: { uinNumber: string } OR { email: string, uinNumber: string }
+router.post('/drone/login', authLoginRateLimit, async (req, res) => {
+  try {
+    const { uinNumber, email } = req.body as { uinNumber?: string; email?: string }
+
+    if (!uinNumber || typeof uinNumber !== 'string' || uinNumber.trim().length === 0) {
+      res.status(400).json({ error: 'MISSING_UIN', detail: 'uinNumber is required' })
+      return
+    }
+
+    const uin = uinNumber.trim()
+
+    // Step a: Verify UIN against Digital Sky
+    const verification = await uinVerification.verifyUIN(uin)
+    if (!verification.valid) {
+      res.status(401).json({
+        error: 'UIN_NOT_VERIFIED',
+        detail: verification.advisory ?? `UIN '${uin}' not verified on Digital Sky`,
+      })
+      return
+    }
+
+    // Step b: Find or create CivilianUser linked to this UIN
+    let user = await prisma.civilianUser.findFirst({
+      where: { uinNumber: uin },
+    })
+
+    if (!user) {
+      // Create minimal user — verified via Digital Sky
+      user = await prisma.civilianUser.create({
+        data: {
+          role:                'DRONE_OPERATOR',
+          credentialDomain:    'DRONE',
+          issuingAuthority:    'DIGITAL_SKY',
+          verificationStatus:  'VERIFIED',
+          accountStatus:       'ACTIVE',
+          uinNumber:           uin,
+          email:               email ?? null,
+        },
+      })
+      log.info('drone_operator_created_via_uin', { data: { userId: user.id, uin } })
+    }
+
+    // Step c: Issue JWT
+    const token = jwt.sign(
+      {
+        userId:           user.id,
+        role:             user.role,
+        userType:         'CIVILIAN',
+        credentialDomain: user.credentialDomain,
+      },
+      env.JWT_SECRET,
+      { expiresIn: `${USER_SESSION_HOURS}h` }
+    )
+    const expiresAt = new Date(Date.now() + USER_SESSION_HOURS * 3600000).toISOString()
+
+    // Update last login
+    await prisma.civilianUser.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    })
+
+    // Audit log
+    await prisma.auditLog.create({
+      data: {
+        actorType:    'CIVILIAN_USER',
+        actorId:      user.id,
+        actorRole:    user.role,
+        action:       'drone_operator_uin_login',
+        resourceType: 'user',
+        resourceId:   user.id,
+        ipAddress:    req.ip ?? 'unknown',
+        detailJson:   JSON.stringify({
+          uin,
+          source: verification.source,
+          droneCategory: verification.droneCategory,
+          sessionExpiry: expiresAt,
+        }),
+      },
+    })
+
+    log.info('drone_operator_login_complete', { data: { userId: user.id, uin, source: verification.source } })
+
+    res.json({
+      accessToken:   token,
+      expiresAt,
+      operatorId:    verification.operatorId,
+      uinNumber:     uin,
+      droneCategory: verification.droneCategory,
+      uaopValid:     verification.uaopValid,
+    })
+  } catch (e: unknown) {
+    log.error('drone_login_error', { data: { error: e instanceof Error ? e.message : String(e) } })
+    res.status(500).json({ error: 'DRONE_LOGIN_FAILED' })
   }
 })
 
