@@ -1,10 +1,9 @@
 import express from 'express'
-import { PrismaClient } from '@prisma/client'
 import { requireAuth } from '../middleware/authMiddleware'
 import { serializeForJson } from '../utils/bigintSerializer'
+import { prisma } from '../lib/prisma'
 
 const router = express.Router()
-const prisma = new PrismaClient()
 
 // GET /api/notams?fir=VIDF&active=true
 router.get('/', requireAuth, async (req, res) => {

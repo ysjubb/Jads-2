@@ -1,14 +1,13 @@
 import express              from 'express'
-import { PrismaClient }    from '@prisma/client'
 import { CivilianAuthService }   from '../services/CivilianAuthService'
 import { SpecialUserAuthService } from '../services/SpecialUserAuthService'
 import { requireAuth }           from '../middleware/authMiddleware'
 import { authLoginRateLimit }    from '../middleware/rateLimiter'
 import { serializeForJson }      from '../utils/bigintSerializer'
 import { createServiceLogger }   from '../logger'
+import { prisma }                from '../lib/prisma'
 
 const router       = express.Router()
-const prisma       = new PrismaClient()
 const civilianAuth = new CivilianAuthService(prisma)
 const specialAuth  = new SpecialUserAuthService(prisma)
 const log          = createServiceLogger('AuthRoutes')
@@ -121,7 +120,7 @@ router.post('/civilian/login/initiate', authLoginRateLimit, async (req, res) => 
 })
 
 // POST /api/auth/civilian/login/complete
-router.post('/civilian/login/complete', async (req, res) => {
+router.post('/civilian/login/complete', authRateLimit, async (req, res) => {
   try {
     const { userId, otp } = req.body
     if (!userId || !otp) { res.status(400).json({ error: 'MISSING_REQUIRED_FIELDS' }); return }
@@ -132,9 +131,9 @@ router.post('/civilian/login/complete', async (req, res) => {
   }
 })
 
-// Legacy paths — kept for backward compat
-router.post('/login/initiate',  (req, res, next) => { req.url = '/civilian/login/initiate';  next() })
-router.post('/login/complete',  (req, res, next) => { req.url = '/civilian/login/complete';  next() })
+// Legacy paths — redirect to canonical endpoints
+router.post('/login/initiate',  (req, res) => { res.redirect(307, '/api/auth/civilian/login/initiate') })
+router.post('/login/complete',  (req, res) => { res.redirect(307, '/api/auth/civilian/login/complete') })
 
 // ── Civilian reverification ───────────────────────────────────────────────────
 

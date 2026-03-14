@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { createServiceLogger } from '../logger'
+import { prisma as sharedPrisma } from '../lib/prisma'
 
 const log = createServiceLogger('AdcFicService')
 
@@ -19,7 +20,7 @@ const GOVT_ENTITY_ROLES = new Set([
 const CIVILIAN_VISIBLE_ADC_TYPES = new Set(['PERMANENT', 'TEMPORARY', 'NOTAM_LINKED'])
 
 export class AdcFicService {
-  constructor(private readonly prisma: PrismaClient = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = sharedPrisma) {}
 
   async getActiveAdcForRole(role: string, entityCode?: string) {
     const isGovt = GOVT_ENTITY_ROLES.has(role)

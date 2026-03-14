@@ -1,5 +1,4 @@
 import express           from 'express'
-import { PrismaClient }  from '@prisma/client'
 import { requireAuth, requireRole, requireDomain } from '../middleware/authMiddleware'
 import { serializeForJson } from '../utils/bigintSerializer'
 import { ClearanceService, registerSseClient, unregisterSseClient } from '../services/ClearanceService'
@@ -7,17 +6,15 @@ import { FlightPlanService }   from '../services/FlightPlanService'
 import { RoutePlanningService } from '../services/RoutePlanningService'
 import { RouteAdvisoryService } from '../services/RouteAdvisoryService'
 import { createServiceLogger } from '../logger'
+import { env } from '../env'
+import { prisma } from '../lib/prisma'
 
 const router       = express.Router()
-const prisma       = new PrismaClient()
 const service      = new ClearanceService(prisma)
 const fplService   = new FlightPlanService(prisma)
 const routeService   = new RoutePlanningService()
-const advisoryService = new RouteAdvisoryService()
-const log          = createServiceLogger('FlightPlanRoutes')
-
-// DI-wirable service — replace via setAdvisoryService() for testing.
 let advisoryService: RouteAdvisoryService = new RouteAdvisoryService()
+const log          = createServiceLogger('FlightPlanRoutes')
 
 /** Override the RouteAdvisoryService instance (for testing/DI). */
 export function setAdvisoryService(svc: RouteAdvisoryService): void {
@@ -64,7 +61,7 @@ router.post('/route-plan', requireAuth, requireDomain('AIRCRAFT'), requireRole(F
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     log.error('route_plan_error', { data: { error: msg } })
-    res.status(500).json({ error: 'ROUTE_PLAN_FAILED', detail: msg })
+    res.status(500).json({ error: 'ROUTE_PLAN_FAILED', ...(env.NODE_ENV !== 'production' ? { detail: msg } : {}) })
   }
 })
 
@@ -94,7 +91,7 @@ router.post('/route-advisory', requireAuth, requireDomain('AIRCRAFT'), async (re
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     log.error('route_advisory_error', { data: { error: msg } })
-    res.status(500).json({ error: 'ROUTE_ADVISORY_FAILED', detail: msg })
+    res.status(500).json({ error: 'ROUTE_ADVISORY_FAILED', ...(env.NODE_ENV !== 'production' ? { detail: msg } : {}) })
   }
 })
 
@@ -185,7 +182,7 @@ router.post('/', requireAuth, requireDomain('AIRCRAFT'), requireRole(FPL_ROLES),
     const msg = e instanceof Error ? e.message : String(e)
     const stack = e instanceof Error ? e.stack : undefined
     log.error('flight_plan_file_error', { data: { error: msg, stack } })
-    res.status(500).json({ error: 'FLIGHT_PLAN_FILE_FAILED', detail: msg })
+    res.status(500).json({ error: 'FLIGHT_PLAN_FILE_FAILED', ...(env.NODE_ENV !== 'production' ? { detail: msg } : {}) })
   }
 })
 
@@ -471,6 +468,7 @@ router.get('/:id', requireAuth, async (req, res) => {
   try {
     const plan = await prisma.mannedFlightPlan.findUnique({ where: { id: req.params.id } })
     if (!plan) { res.status(404).json({ error: 'FLIGHT_PLAN_NOT_FOUND' }); return }
+    if (plan.filedBy !== req.auth!.userId) { res.status(403).json({ error: 'NOT_YOUR_FLIGHT_PLAN' }); return }
     res.json(serializeForJson({ success: true, plan }))
   } catch {
     res.status(500).json({ error: 'FLIGHT_PLAN_FETCH_FAILED' })

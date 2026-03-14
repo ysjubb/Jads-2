@@ -3,7 +3,6 @@
 // All outputs are ADVISORY only — JADS is a compliance intermediary.
 
 import { PrismaClient } from '@prisma/client'
-import { createHash }   from 'crypto'
 import { routeToCoords } from '../data/indianWaypoints'
 import { createServiceLogger } from '../logger'
 
@@ -276,14 +275,12 @@ export class DeconflictionEngine {
     return advisories
   }
 
-  private async writeAuditLog(actorId: string, action: string, resourceId: string, meta: Record<string, any>) {
+  private async writeAuditLog(actorId: string, action: string, resourceId: string, meta: Record<string, unknown>) {
     try {
       const sequenceResult = await this.prisma.$queryRaw<{ nextval: bigint }[]>`SELECT nextval('audit_log_sequence')`
       const seq = sequenceResult[0]?.nextval ?? BigInt(0)
-      const rowHash = createHash('sha256')
-        .update(`${seq}|${actorId}|${action}|${resourceId}|${JSON.stringify(meta)}`)
-        .digest('hex')
 
+      // rowHash is auto-computed by PostgreSQL BEFORE INSERT trigger (trg_audit_log_row_hash)
       await this.prisma.auditLog.create({
         data: {
           sequenceNumber: seq,
@@ -293,7 +290,6 @@ export class DeconflictionEngine {
           resourceType: 'Deconfliction',
           resourceId,
           detailJson: JSON.stringify(meta),
-          rowHash,
         },
       })
     } catch (e) {

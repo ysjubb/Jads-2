@@ -64,8 +64,13 @@ function setupSubscription(
       return
     }
   } else {
-    // Subscribe to specific missions
-    const missions = subscribeParam.split(',').filter(Boolean)
+    // Subscribe to specific missions (capped to prevent abuse)
+    const MAX_SUBSCRIPTIONS = 50
+    const missions = subscribeParam.split(',').filter(Boolean).slice(0, MAX_SUBSCRIPTIONS)
+    if (missions.length === 0) {
+      ws.close(4400, 'No mission IDs provided')
+      return
+    }
     missions.forEach((mId) => {
       if (!missionSubscribers.has(mId)) missionSubscribers.set(mId, new Set())
       missionSubscribers.get(mId)!.add(ws)

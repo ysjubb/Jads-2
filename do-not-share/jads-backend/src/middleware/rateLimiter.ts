@@ -78,3 +78,25 @@ export const globalRateLimit = createSlidingWindowLimiter(
   (req) => req.ip ?? 'unknown',
   'Global rate limit exceeded',
 )
+
+// Legacy alias — authRoutes imports this name
+export const authRateLimit = authLoginRateLimit
+
+// ── Periodic cleanup of expired buckets (prevents memory leak) ──────────────
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000 // every 5 minutes
+
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, bucket] of uploadBuckets) {
+    if (bucket.resetAt < now) uploadBuckets.delete(key)
+  }
+  for (const [key, bucket] of authLoginBuckets) {
+    if (bucket.resetAt < now) authLoginBuckets.delete(key)
+  }
+  for (const [key, bucket] of adminLoginBuckets) {
+    if (bucket.resetAt < now) adminLoginBuckets.delete(key)
+  }
+  for (const [key, bucket] of globalBuckets) {
+    if (bucket.resetAt < now) globalBuckets.delete(key)
+  }
+}, CLEANUP_INTERVAL_MS).unref()

@@ -1,5 +1,4 @@
 import express           from 'express'
-import { PrismaClient }  from '@prisma/client'
 import bcrypt            from 'bcryptjs'
 import jwt               from 'jsonwebtoken'
 import { env }           from '../env'
@@ -13,9 +12,9 @@ import { ClearanceService } from '../services/ClearanceService'
 import { decodeCanonical } from '../telemetry/telemetryDecoder'
 import { resolveEgcaAdapter, EgcaAdapterMock, EgcaAdapterImpl } from '../adapters/egca'
 import { DroneNotificationService } from '../services/DroneNotificationService'
+import { prisma }        from '../lib/prisma'
 
 const router                = express.Router()
-const prisma                = new PrismaClient()
 const log                   = createServiceLogger('AdminRoutes')
 const specialUserAuthService = new SpecialUserAuthService(prisma)
 const clearanceService       = new ClearanceService(prisma)

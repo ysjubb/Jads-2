@@ -4,6 +4,7 @@
 // before and during drone missions.
 
 import { PrismaClient }        from '@prisma/client'
+import { env }                 from '../env'
 import { createServiceLogger } from '../logger'
 import { verifyPaSignature }   from './npnt/XmlDsigSigner'
 
@@ -158,8 +159,9 @@ export class NpntVerificationService {
     if (!xml || xml.trim().length === 0) {
       throw new Error('EMPTY_PA_XML: Permission Artefact XML must not be empty')
     }
-
-    // TODO: Replace stub with real DGCA DigitalSky XML parsing.
+    if (env.NODE_ENV === 'production') {
+      throw new Error('NPNT_STUB_IN_PRODUCTION: parseXml stub must be replaced with real DGCA PA parser before production deployment')
+    }
     const now = new Date()
     const oneHourLater = new Date(now.getTime() + 3600000)
     return {

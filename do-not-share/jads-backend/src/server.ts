@@ -76,8 +76,6 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 if (require.main === module) {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { PrismaClient } = require('@prisma/client')
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { JobScheduler } = require('./jobs/JobScheduler')
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { AuditIntegrityService } = require('./services/AuditIntegrityService')
@@ -85,8 +83,9 @@ if (require.main === module) {
   const { RuntimeIntegrityService } = require('./services/KeyManagementService')
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const path = require('path')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { prisma } = require('./lib/prisma')
 
-  const prisma    = new PrismaClient()
   const scheduler = new JobScheduler(prisma)
 
   app.listen(env.PORT, async () => {

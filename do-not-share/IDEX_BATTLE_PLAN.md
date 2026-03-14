@@ -942,7 +942,7 @@ The Open Challenge accepts unsolicited proposals. Submit under:
 | 2 | **Problem:** No tamper-proof chain-of-custody for drone telemetry. No unified manned + unmanned flight plan system. NPNT compliance is theoretical. |
 | 3 | **Solution:** Cryptographically signed, hash-chained telemetry. Real NPNT enforcement. ICAO flight plan filing. Forensic audit trail. |
 | 4 | **Demo screenshot:** Show the Audit Portal with a verified mission — all 8 invariants passing |
-| 5 | **Architecture:** One-page diagram: Android app → Backend → Forensic Verifier → Audit Portal. Highlight: ECDSA, hash chains, Merkle trees |
+| 5 | **Architecture:** Lead with: "JADS sits in the planning and oversight layer, not the control layer." One-page diagram: Android app → Backend → Forensic Verifier → Audit Portal. Highlight: ECDSA, hash chains, Merkle trees. Pre-empt the misread — JADS does not command drones or direct aircraft. It validates, records, and proves. |
 | 6 | **NPNT Compliance:** Show the RED/YELLOW/GREEN zone gate, airport proximity check, Digital Sky integration path |
 | 7 | **Flight Plan Filing:** Show the ICAO flight plan with proper AFTN messaging. "This was filed by an IAF pilot for a real helicopter sortie." |
 | 8 | **Live Demo Video:** The 3-minute video from Phase 3 |

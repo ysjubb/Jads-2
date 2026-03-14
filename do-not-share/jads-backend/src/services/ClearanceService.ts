@@ -10,9 +10,10 @@ import { PrismaClient }        from '@prisma/client'
 import { createServiceLogger } from '../logger'
 import { FlightPlanNotificationService } from './FlightPlanNotificationService'
 import type { Response }       from 'express'
+import { prisma as sharedPrisma } from '../lib/prisma'
 
 const log    = createServiceLogger('ClearanceService')
-const notifS = new FlightPlanNotificationService(new PrismaClient())
+const notifS = new FlightPlanNotificationService(sharedPrisma)
 
 // ── SSE Connection Registry ────────────────────────────────────────────────
 // Maps flightPlanDbId → Set of active SSE response objects.

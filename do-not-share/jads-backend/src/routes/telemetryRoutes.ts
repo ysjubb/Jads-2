@@ -1,15 +1,14 @@
 // T01 — Live telemetry REST endpoints
 
 import express from 'express'
-import { PrismaClient } from '@prisma/client'
 import { TelemetryService } from '../services/telemetryService'
 import { requireAuth } from '../middleware/authMiddleware'
 import { serializeForJson } from '../utils/bigintSerializer'
 import { TelemetryPoint, TelemetryBatch } from '../types/telemetry'
 import { Request, Response, NextFunction } from 'express'
+import { prisma } from '../lib/prisma'
 
 const router = express.Router()
-const prisma = new PrismaClient()
 const service = new TelemetryService(prisma)
 
 // ── Rate limiter: 100 req/min per missionId ──
