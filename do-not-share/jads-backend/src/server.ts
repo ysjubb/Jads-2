@@ -20,6 +20,7 @@ import droneOperationPlanRoutes from './routes/droneOperationPlanRoutes'
 import verificationRoutes       from './routes/verificationRoutes'
 import demoRoutes               from './routes/demoRoutes'
 import fplRoutes                from './routes/fplRoutes'
+import lookupRoutes             from './routes/lookupRoutes'
 
 const app = express()
 
@@ -63,6 +64,7 @@ api.use('/drone-plans', droneOperationPlanRoutes)
 api.use('/verify',      verificationRoutes)
 api.use('/demo',        demoRoutes)
 api.use('/fpl',         fplRoutes)
+api.use('/lookup',      lookupRoutes)
 app.use('/api', api)
 
 app.use((_req, res) => {
