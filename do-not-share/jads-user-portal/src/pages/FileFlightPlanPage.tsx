@@ -1,7 +1,10 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { userApi } from '../api/client'
 import { T } from '../theme'
+import { AerodromeAutocomplete } from '../components/portal/AerodromeAutocomplete'
+import { AircraftTypeDropdown } from '../components/portal/AircraftTypeDropdown'
+import { ZZZZCoordinatePanel } from '../components/portal/ZZZZCoordinatePanel'
 
 // ── Route Advisory types (mirror backend RouteAdvisory) ─────────────────────
 
@@ -62,6 +65,34 @@ export function FileFlightPlanPage() {
     setForm(f => ({ ...f, [field]: e.target.value }))
   }
 
+  // ZZZZ coordinate state
+  const [depCoord, setDepCoord] = useState<string | null>(null)
+  const [destCoord, setDestCoord] = useState<string | null>(null)
+
+  // Flight level advisory from backend API
+  const [flAdvisory, setFlAdvisory] = useState<any>(null)
+  const flDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!form.cruisingLevel) { setFlAdvisory(null); return }
+    if (flDebounceRef.current) clearTimeout(flDebounceRef.current)
+    flDebounceRef.current = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({
+          level: form.cruisingLevel,
+          rules: form.flightRules,
+          adep: form.adep,
+          ades: form.ades,
+          equipment: form.equipment,
+        })
+        const { data } = await userApi().get(`/lookup/flight-level/check?${params}`)
+        if (data.success) setFlAdvisory(data.advisory)
+        else setFlAdvisory(null)
+      } catch { setFlAdvisory(null) }
+    }, 400)
+    return () => { if (flDebounceRef.current) clearTimeout(flDebounceRef.current) }
+  }, [form.cruisingLevel, form.flightRules, form.adep, form.ades, form.equipment])
+
   // ── File the flight plan (POST /flight-plans) ─────────────────────────────
 
   const filePlan = async (overrides?: { route?: string; cruisingLevel?: string }) => {
@@ -92,6 +123,19 @@ export function FileFlightPlanPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Auto-build Item 18 ZZZZ entries
+    let item18Extra = ''
+    if (form.adep.toUpperCase() === 'ZZZZ' && depCoord) {
+      item18Extra += `DEP/${depCoord} `
+    }
+    if (form.ades.toUpperCase() === 'ZZZZ' && destCoord) {
+      item18Extra += `DEST/${destCoord} `
+    }
+    if (item18Extra) {
+      setForm(f => ({ ...f, item18: (item18Extra + f.item18).trim() }))
+    }
+
     setAdvisoryLoading(true); setError(null)
     try {
       const { data } = await userApi().post('/flight-plans/route-advisory', {
@@ -137,12 +181,16 @@ export function FileFlightPlanPage() {
           <legend style={{ color: T.primary, fontSize: '0.75rem', padding: '0 0.4rem' }}>Aircraft</legend>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.6rem' }}>
             <div><label style={labelStyle}>Aircraft ID</label><input value={form.aircraftId} onChange={set('aircraftId')} placeholder="VT-ABC" style={inputStyle} required /></div>
-            <div><label style={labelStyle}>Type</label><input value={form.aircraftType} onChange={set('aircraftType')} placeholder="C172" style={inputStyle} required /></div>
+            <AircraftTypeDropdown
+              value={form.aircraftType}
+              onChange={(icao, wake) => setForm(f => ({ ...f, aircraftType: icao, wakeTurbulence: wake }))}
+            />
             <div><label style={labelStyle}>Wake Turbulence</label>
               <select value={form.wakeTurbulence} onChange={set('wakeTurbulence')} style={inputStyle}>
                 <option value="L">L (Light)</option>
                 <option value="M">M (Medium)</option>
                 <option value="H">H (Heavy)</option>
+                <option value="J">J (Super)</option>
               </select>
             </div>
           </div>
@@ -171,14 +219,54 @@ export function FileFlightPlanPage() {
         <fieldset style={{ border: `1px solid ${T.border}`, borderRadius: '6px', padding: '1rem', marginBottom: '1rem' }}>
           <legend style={{ color: T.primary, fontSize: '0.75rem', padding: '0 0.4rem' }}>Route</legend>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.6rem', marginBottom: '0.6rem' }}>
-            <div><label style={labelStyle}>Departure (ADEP)</label><input value={form.adep} onChange={set('adep')} placeholder="VIDP" style={inputStyle} required /></div>
-            <div><label style={labelStyle}>Destination (ADES)</label><input value={form.ades} onChange={set('ades')} placeholder="VABB" style={inputStyle} required /></div>
-            <div><label style={labelStyle}>Alternate 1</label><input value={form.altn1} onChange={set('altn1')} placeholder="VOBL" style={inputStyle} /></div>
-            <div><label style={labelStyle}>Alternate 2</label><input value={form.altn2} onChange={set('altn2')} placeholder="" style={inputStyle} /></div>
+            <div>
+              <AerodromeAutocomplete value={form.adep} onChange={v => setForm(f => ({ ...f, adep: v }))} placeholder="VIDP" required label="Departure (ADEP)" />
+              {form.adep.toUpperCase() === 'ZZZZ' && <ZZZZCoordinatePanel field="DEP" onCoordinateChange={setDepCoord} />}
+            </div>
+            <div>
+              <AerodromeAutocomplete value={form.ades} onChange={v => setForm(f => ({ ...f, ades: v }))} placeholder="VABB" required label="Destination (ADES)" />
+              {form.ades.toUpperCase() === 'ZZZZ' && <ZZZZCoordinatePanel field="DEST" onCoordinateChange={setDestCoord} />}
+            </div>
+            <AerodromeAutocomplete value={form.altn1} onChange={v => setForm(f => ({ ...f, altn1: v }))} placeholder="VOBL" label="Alternate 1" />
+            <AerodromeAutocomplete value={form.altn2} onChange={v => setForm(f => ({ ...f, altn2: v }))} placeholder="" label="Alternate 2" />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '0.6rem', marginBottom: '0.6rem' }}>
             <div><label style={labelStyle}>Route</label><input value={form.route} onChange={set('route')} placeholder="DCT VNS DCT" style={inputStyle} required /></div>
-            <div><label style={labelStyle}>Cruising Level</label><input value={form.cruisingLevel} onChange={set('cruisingLevel')} placeholder="F350 or VFR" style={inputStyle} /></div>
+            <div>
+              <label style={labelStyle}>Cruising Level</label>
+              <input value={form.cruisingLevel} onChange={set('cruisingLevel')} placeholder="F350 or VFR" style={inputStyle} />
+              {/* Inline Flight Level Advisory (from backend) */}
+              {flAdvisory && (
+                <div style={{
+                  marginTop: '0.3rem', padding: '0.4rem', borderRadius: '4px', fontSize: '0.6rem',
+                  background: flAdvisory.semicircular?.isCompliant === false ? T.red + '12' :
+                    (flAdvisory.rvsm && !flAdvisory.rvsm.equipmentOk) ? T.amber + '12' : '#4CAF5012',
+                  border: `1px solid ${
+                    flAdvisory.semicircular?.isCompliant === false ? T.red + '40' :
+                    (flAdvisory.rvsm && !flAdvisory.rvsm.equipmentOk) ? T.amber + '40' : '#4CAF5040'
+                  }`,
+                }}>
+                  <div style={{ fontWeight: 700, marginBottom: '0.2rem', color: T.textBright }}>
+                    {flAdvisory.levelDisplay} — {flAdvisory.altitudeFt?.toLocaleString() ?? '?'} ft
+                  </div>
+                  {flAdvisory.semicircular?.applicable && (
+                    <div style={{
+                      color: flAdvisory.semicircular.isCompliant ? '#4CAF50' : T.red,
+                    }}>
+                      {flAdvisory.semicircular.isCompliant ? '\u2713' : '\u2717'} {flAdvisory.semicircular.rule}
+                    </div>
+                  )}
+                  {flAdvisory.rvsm && (
+                    <div style={{ color: flAdvisory.rvsm.equipmentOk ? '#4CAF50' : T.amber }}>
+                      {flAdvisory.rvsm.message}
+                    </div>
+                  )}
+                  {flAdvisory.transitionInfo && (
+                    <div style={{ color: T.muted }}>{flAdvisory.transitionInfo}</div>
+                  )}
+                </div>
+              )}
+            </div>
             <div><label style={labelStyle}>Cruising Speed</label><input value={form.cruisingSpeed} onChange={set('cruisingSpeed')} placeholder="N0480" style={inputStyle} /></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.6rem' }}>
