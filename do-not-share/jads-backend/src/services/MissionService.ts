@@ -312,7 +312,7 @@ export class MissionService {
         }
       })})
 
-      if (input.violations.length > 0) {
+      if ((input.violations ?? []).length > 0) {
         await tx.droneViolation.createMany({ data: input.violations.map(v => ({
           missionId:      m.id,
           sequence:       v.sequence,

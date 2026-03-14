@@ -13,6 +13,7 @@ const prisma       = new PrismaClient()
 const service      = new ClearanceService(prisma)
 const fplService   = new FlightPlanService(prisma)
 const routeService   = new RoutePlanningService()
+const advisoryService = new RouteAdvisoryService()
 const log          = createServiceLogger('FlightPlanRoutes')
 
 // DI-wirable service — replace via setAdvisoryService() for testing.
