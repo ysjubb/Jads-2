@@ -1,3 +1,8 @@
+# Claude Code
+.claude/worktrees/
+.claude/plans/
+.claude/settings.local.json
+
 # Environment files (contain secrets)
 .env
 *.env.local
@@ -8,9 +13,9 @@ dist/
 *.tgz
 
 # Android
-do-not-share/jads-android/.gradle/
-do-not-share/jads-android/build/
-do-not-share/jads-android/app/build/
+jads-android/.gradle/
+jads-android/build/
+jads-android/app/build/
 *.apk
 local.properties
 
