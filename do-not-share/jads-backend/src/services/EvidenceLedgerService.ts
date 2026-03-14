@@ -304,6 +304,24 @@ export class EvidenceLedgerService {
 
   // ─── Public API ──────────────────────────────────────────────────────
 
+  /**
+   * Fire-and-forget TSA timestamping.
+   * Queues the TSA call without blocking the caller.  TSA failures are
+   * logged and audited but never propagate to the caller — mission upload
+   * or ledger anchoring is never delayed by an unreachable TSA.
+   *
+   * The timestamp is stored on the EvidenceLedger row when it eventually
+   * arrives; if it never arrives, the row is left without an RFC 3161 token
+   * and can be retried later by the cron job.
+   */
+  stampRecordAsync(evidenceLedgerId: string): void {
+    this.stampRecord(evidenceLedgerId).catch(err => {
+      log.warn('tsa_stamp_async_failed', {
+        data: { evidenceLedgerId, error: err instanceof Error ? err.message : String(err) },
+      })
+    })
+  }
+
   async stampRecord(evidenceLedgerId: string): Promise<TsaResponse> {
     const row = await this.prisma.evidenceLedger.findUnique({
       where: { id: evidenceLedgerId }

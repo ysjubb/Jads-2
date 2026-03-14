@@ -293,6 +293,38 @@ Key endpoints:
 - Review changes with `git diff` before committing
 - Use imperative mood in commit messages, keep subject under 72 characters
 
+## Architecture Decision Records (ADR)
+
+### ADR-1: Two Mobile Apps
+
+**Decision:** JADS uses two separate mobile applications instead of one.
+
+| App | Tech | Purpose |
+|-----|------|---------|
+| `jads-user-app/` | React Native (Expo) | Pilot-facing app for flight plan filing, clearance monitoring, PA verification. Cross-platform (iOS + Android). |
+| `jads-android/` | Kotlin (native Android) | Drone telemetry engine. Requires Android Keystore (StrongBox), foreground service, SQLCipher, and direct hardware access for forensic-grade evidence generation. |
+
+**Rationale:** The drone telemetry engine requires capabilities that React Native cannot provide:
+- **Android Keystore / StrongBox** — private key generation inside hardware security module (HSM). Keys never leave the chip. React Native's expo-secure-store doesn't support HSM-backed key generation.
+- **Foreground service** — continuous 1Hz telemetry capture that survives app backgrounding. Android kills background tasks aggressively; a foreground service with notification is the only reliable mechanism.
+- **SQLCipher** — encrypted local DB for mission data at rest. React Native SQLite libraries don't support SQLCipher's ByteArray passphrase API correctly.
+- **Hash chain performance** — 96-byte canonical serialization + SHA-256 chain at 1Hz must complete in <5ms. JNI overhead from React Native bridge adds unacceptable latency.
+- **Device attestation** — Play Integrity API and key attestation certificate chains require native Android API access.
+
+The pilot app (`jads-user-app`) doesn't need any of these — it's a standard CRUD app with forms, maps, and notifications. React Native is ideal for cross-platform delivery.
+
+### ADR-2: RouteAdvisoryService — Advisory Only
+
+**Decision:** The route advisory system is purely informational. It never blocks flight plan filing.
+
+**Behaviour:**
+1. Pilot clicks "File Flight Plan" → advisory API is called
+2. Modal shows recommended airway, flight level, reporting points, FIR crossings
+3. Pilot can choose "Use Recommended Route" or "Continue with Direct"
+4. If the advisory API fails (network, timeout, bug) → filing proceeds silently with the pilot's original input
+
+**Rationale:** Indian airspace management is pilot-in-command authority. JADS is a compliance intermediary, not a decision-maker. Blocking a filing because the advisory service is unavailable would violate this principle.
+
 ## Known Issues and Pending Work
 
 1. **CI pipeline path inconsistency (FIXED)** — All pipeline job paths referenced bare `jads-backend/` instead of `do-not-share/jads-backend/`. Corrected in commit `bca0e6d`.

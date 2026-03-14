@@ -86,8 +86,8 @@ These 4 settings MUST be set. If any is missing, the server will print an error 
 | Variable name | What it is (in plain English) | Example value | What happens if you get it wrong |
 |---------------|-------------------------------|---------------|----------------------------------|
 | `DATABASE_URL` | The address of your PostgreSQL database — tells the server where to store data | `postgresql://jads:YourPassword@localhost:5432/jads` | **CRITICAL:** The server can't store or read any data. Nothing works |
-| `JWT_SECRET` | A long random password used to create login tokens for pilots and operators. Must be at least 64 characters of random letters and numbers | `a3b7f9...` (64+ hex characters) | **CRITICAL:** If this is too short or guessable, attackers can fake login tokens and impersonate users |
-| `ADMIN_JWT_SECRET` | A DIFFERENT long random password for admin login tokens. **MUST be different from JWT_SECRET** | `f2e8d1...` (64+ hex characters) | **CRITICAL:** If this equals JWT_SECRET, a regular user's token could work as an admin token |
+| `JWT_SECRET` | A long random password used to create login tokens for pilots and operators. Must be at least 64 characters of random letters and numbers | `a3b7f9...` (64+ hex characters) | **CRITICAL:** If this is too short or guessable, attackers can fake login tokens and impersonate users. The server validates minimum length at startup via `env.ts` |
+| `ADMIN_JWT_SECRET` | A DIFFERENT long random password for admin login tokens. **MUST be different from JWT_SECRET** | `f2e8d1...` (64+ hex characters) | **CRITICAL:** If this equals JWT_SECRET, a regular user's token could work as an admin token. The server asserts `JWT_SECRET !== ADMIN_JWT_SECRET` at startup |
 | `ADAPTER_INBOUND_KEY` | A shared secret that government systems (AFMLU, FIR) use when sending clearance data to JADS | `deadbeef...` (32+ hex characters) | **HIGH:** Without this, anyone could send fake clearance data to the system |
 
 **How to generate a random secret:**
@@ -244,9 +244,9 @@ This creates all the database tables. You should see:
 All migrations have been successfully applied.
 ```
 
-#### Step 3.1.3 — About Audit Log Triggers (Automatic)
+#### Step 3.1.3 — About Audit Log Triggers (Migration-Deployed)
 
-JADS automatically installs three security triggers on the `AuditLog` table the first time the server starts. You do NOT need to install them manually. Here's what they do:
+Three security triggers on the `AuditLog` table are deployed automatically as part of the Prisma migration (`20260314000000_add_audit_log_immutability_triggers`). When you run `npx prisma migrate deploy` in Step 3.1.2, these triggers are created as part of the database schema. You do NOT need to install them manually or start the server first.
 
 | Trigger name | What it does |
 |-------------|-------------|
@@ -254,11 +254,11 @@ JADS automatically installs three security triggers on the `AuditLog` table the 
 | `trg_audit_log_no_update` | Blocks ALL updates to audit log rows. Once written, they can never be changed — not even by a database administrator |
 | `trg_audit_log_no_delete` | Blocks ALL deletes from the audit log. Once written, rows can never be removed |
 
-These triggers are installed by the code in `server.ts` every time the backend starts. It's safe to restart the server — the installation is idempotent (running it twice doesn't cause problems).
+This is a schema-level guarantee — the triggers exist as soon as migrations complete, regardless of whether the application server has ever started. This is stronger than the previous approach of installing triggers at server startup.
 
 #### Step 3.1.4 — Verify Triggers (Optional)
 
-After the server has started at least once, you can verify the triggers exist:
+After running `npx prisma migrate deploy`, you can verify the triggers exist:
 
 ```bash
 psql -U jads -d jads -c "
@@ -268,7 +268,7 @@ psql -U jads -d jads -c "
 "
 ```
 
-You should see **3 rows** — one for each trigger listed above. If you see 0 rows, the backend server hasn't been started yet. Start it (see Step 3.2), then check again.
+You should see **3 rows** — one for each trigger listed above. If you see 0 rows, the migrations have not been applied yet. Run `npx prisma migrate deploy` (see Step 3.1.2), then check again.
 
 ---
 
@@ -609,7 +609,7 @@ This section lists everything that can fail, how to detect it, and what to do.
 | **Server crashes during EvidenceLedgerJob** | Evidence anchor for that day is missing from external backends | **MEDIUM** — gap in the evidence chain for that day | Set `terminationGracePeriodSeconds ≥ 30` in Kubernetes/Docker. Monitor for daily anchor completion |
 | **Clock skew between servers** | NTP monitoring shows drift | **MEDIUM** — missions might get assigned to the wrong day's evidence ledger | Use `chrony` for NTP synchronization. Pin the EvidenceLedgerJob to a single server (see Section 4.2) |
 | **PostgreSQL without TLS** | Network security audit | **HIGH** — database passwords and data are sent in plain text over the network | Add `?sslmode=require` to the end of your `DATABASE_URL` |
-| **Server never started against DB** | Run the trigger verification query (Step 3.1.4) and get 0 rows | **CRITICAL** — audit log is NOT protected by triggers. It can be modified by anyone with database access | Start the backend server at least once. Verify triggers exist |
+| **Migrations not applied** | Run the trigger verification query (Step 3.1.4) and get 0 rows | **CRITICAL** — audit log is NOT protected by triggers. It can be modified by anyone with database access | Run `npx prisma migrate deploy`. Verify triggers exist |
 
 ### 4.2 Multi-Server Deployment Risks
 
@@ -914,7 +914,7 @@ Before going live, verify every item on this list. Check each box:
 ### Database & Triggers
 - [ ] PostgreSQL 16+ is installed and running
 - [ ] TLS is enabled on PostgreSQL (`sslmode=require` in DATABASE_URL)
-- [ ] Backend server has been started at least once (auto-installs audit triggers)
+- [ ] Prisma migrations applied (`npx prisma migrate deploy` — installs audit triggers via migration)
 - [ ] All 3 audit log triggers verified active (run the trigger query — expect 3 rows)
 
 ### Secrets & Security
@@ -935,7 +935,7 @@ Before going live, verify every item on this list. Check each box:
 - [ ] Anchor log file is backed up to a SEPARATE system from the database backup
 
 ### Application
-- [ ] Test suite passes: 522 tests across 18 suites, 0 failures (`npm test`)
+- [ ] Test suite passes: 545 tests across 19 suites, 0 failures (`npm test`)
 - [ ] Agent microservices health checks responding (ports 3101–3104) — optional but recommended
 - [ ] First admin account provisioned via database seed (`npx prisma db seed`)
 - [ ] Genesis anchor created and published to external backends

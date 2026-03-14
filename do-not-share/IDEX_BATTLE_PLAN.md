@@ -113,7 +113,21 @@ ip addr show wlan0 | grep "inet "
 
 In the Android app, the backend URL is set via `JADS_BACKEND_URL`. You'll need to update the `JadsApiClient.kt` to point to `http://192.168.1.100:8080` (your laptop's local IP). Your phone and laptop must be on the same WiFi network.
 
-### Step 1.6: What "Success" Looks Like for Phase 1
+### Step 1.6: Verify Tests Pass
+
+Before demoing, run the full test suite to confirm nothing is broken:
+```bash
+cd jads-backend
+npm test
+```
+
+Expected: **545 tests, 19 suites, 0 failures** (including route advisory tests).
+
+Also verify the CI pipeline configuration:
+- 7 stages, 26 jobs (including SBOM generation and route advisory tests)
+- SBOM artifacts (CycloneDX for npm, Gradle dependency report for Android) are uploaded to CI
+
+### Step 1.7: What "Success" Looks Like for Phase 1
 
 You should have **four terminal windows** running:
 
@@ -832,7 +846,7 @@ This is a visual enhancement — show the zone classification on an actual map, 
 
 ### Step 4.5b: What to Say at iDEX About NPNT
 
-> **What to say at iDEX about NPNT:** "NPNT compliance in JADS enforces the Permission Artefact structure, time bounds, geofence polygon containment, and weight-category rules per DGCA UAS Rules 2021. PKI signature verification against the DGCA root CA requires DSP certification — a 6–12 month government process we have initiated. In demo mode, the PA is signed with a self-signed certificate to prove the complete workflow end-to-end."
+> **What to say at iDEX about NPNT:** "NPNT compliance in JADS enforces the Permission Artefact structure, time bounds, and weight-category rules per DGCA UAS Rules 2021. We now verify XMLDSig signatures on Permission Artefacts (RSA-SHA256, exclusive C14N canonicalization) — the same standard Digital Sky uses. Full PKI chain verification against the DGCA root CA requires DSP certification — a 6–12 month government process. In demo mode, the PA is signed with a self-signed certificate to prove the complete cryptographic workflow end-to-end. The moment DGCA publishes the root CA certificate, our verification pipeline trusts it without code changes."
 
 ### Step 4.6: What to Say at iDEX About Digital Sky
 

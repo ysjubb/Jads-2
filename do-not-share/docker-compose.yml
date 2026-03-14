@@ -25,6 +25,58 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── Agent Microservices ─────────────────────────────────────────────────
+  # Deterministic, rule-based services. No LLM/Ollama dependency.
+  # Backend does not depend on agents — they are optional advisory services.
+
+  notam-interpreter:
+    build: ./agents/notam-interpreter
+    container_name: jads_notam_interpreter
+    restart: unless-stopped
+    ports:
+      - "3101:3101"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3101/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  forensic-narrator:
+    build: ./agents/forensic-narrator
+    container_name: jads_forensic_narrator
+    restart: unless-stopped
+    ports:
+      - "3102:3102"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3102/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  aftn-draft:
+    build: ./agents/aftn-draft
+    container_name: jads_aftn_draft
+    restart: unless-stopped
+    ports:
+      - "3103:3103"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3103/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  anomaly-advisor:
+    build: ./agents/anomaly-advisor
+    container_name: jads_anomaly_advisor
+    restart: unless-stopped
+    ports:
+      - "3104:3104"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3104/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
 volumes:
   jads_pgdata:
     driver: local

@@ -31,6 +31,13 @@ export function unregisterSseClient(flightPlanDbId: string, res: Response): void
   if (sseClients.get(flightPlanDbId)?.size === 0) sseClients.delete(flightPlanDbId)
 }
 
+/** Total active SSE connections across all flight plans. */
+export function getActiveSseConnectionCount(): number {
+  let total = 0
+  for (const clients of sseClients.values()) total += clients.size
+  return total
+}
+
 function broadcastSseEvent(flightPlanDbId: string, event: string, data: object): void {
   const clients = sseClients.get(flightPlanDbId)
   if (!clients || clients.size === 0) return

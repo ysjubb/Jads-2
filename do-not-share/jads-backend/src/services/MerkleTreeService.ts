@@ -185,6 +185,17 @@ export async function verifyFullChain(prisma: PrismaClient): Promise<{
   let prevHash = GENESIS
   let prevDate: string | null = null
 
+  // Explicit genesis check: the very first ledger entry MUST chain from
+  // the known genesis hash (64 zero bytes).  If it doesn't, the entire
+  // chain is untrustworthy — someone may have replaced the genesis anchor.
+  if (entries.length > 0 && entries[0].prevAnchorHash !== GENESIS) {
+    const firstDate = entries[0].anchorDate.toISOString().slice(0, 10)
+    mismatches.push(
+      `GENESIS_VIOLATION at ${firstDate}: first entry prevAnchorHash must be GENESIS (${GENESIS.slice(0, 16)}...) ` +
+      `but found ${entries[0].prevAnchorHash.slice(0, 16)}...`
+    )
+  }
+
   for (const entry of entries) {
     const dateStr = entry.anchorDate.toISOString().slice(0, 10)
 

@@ -42,6 +42,12 @@ class KeyStoreSigningProvider private constructor(
     companion object {
         private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
         private const val KEY_ALIAS = "jads_ecdsa_p256_mission"
+
+        // Thread-safe StrongBox tracking.  Written exactly once during
+        // generateKey() inside the synchronized createInternal() block,
+        // then read once to construct the instance.  @Volatile prevents
+        // stale reads if a second thread enters after the lock is released.
+        @Volatile
         private var generatedWithStrongBox = false
 
         /**
@@ -69,6 +75,7 @@ class KeyStoreSigningProvider private constructor(
             return createInternal("jads-attestation".toByteArray())
         }
 
+        @Synchronized
         private fun createInternal(challenge: ByteArray): KeyStoreSigningProvider? {
             return try {
                 val ks = KeyStore.getInstance(KEYSTORE_PROVIDER)

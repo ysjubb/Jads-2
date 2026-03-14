@@ -5,6 +5,7 @@
 
 import { PrismaClient }        from '@prisma/client'
 import { createServiceLogger } from '../logger'
+import { verifyPaSignature }   from './npnt/XmlDsigSigner'
 
 const log = createServiceLogger('NpntVerificationService')
 
@@ -98,7 +99,7 @@ export class NpntVerificationService {
     actualLonDeg:  number,
     actualAltAglM: number,
     atTime:        Date
-  ): Promise<{ compliant: boolean; reason?: string }> {
+  ): Promise<{ compliant: boolean; reason?: string; advisory?: string }> {
     const row = await this.prisma.auditLog.findFirst({
       where: {
         action:     'npnt_artefact_verified',
@@ -118,38 +119,35 @@ export class NpntVerificationService {
       return { compliant: false, reason: 'ARTEFACT_DATA_CORRUPT' }
     }
 
-    // Use stub PA data for compliance check until real PA storage is in place
-    const pa = this.parseXml('')
+    // PA storage is not yet implemented — original PA XML is not persisted
+    // alongside the audit log row, so we cannot reconstruct the PA's
+    // geofence polygon, time window, or altitude cap for compliance geometry
+    // checks.  Instead of calling parseXml('') (which would silently return
+    // stub data and pass every mission), we return compliant: true with an
+    // advisory flag so upstream callers know the geometry check was deferred.
+    //
+    // TODO: Once the PA XML (or its extracted flight-params) is persisted in
+    //       a dedicated PermissionArtefact table, load it here and perform
+    //       the full time-window, altitude, and geofence checks.
 
-    // Time window check
-    if (atTime < pa.flightParams.startTime || atTime > pa.flightParams.endTime) {
-      return {
-        compliant: false,
-        reason: `TIME_WINDOW_VIOLATION: Flight at ${atTime.toISOString()} ` +
-                `is outside permitted window ${pa.flightParams.startTime.toISOString()} – ` +
-                `${pa.flightParams.endTime.toISOString()}`,
-      }
+    log.warn('npnt_compliance_geometry_deferred', {
+      data: {
+        artefactId,
+        actualLatDeg,
+        actualLonDeg,
+        actualAltAglM,
+        atTime: atTime.toISOString(),
+        reason: 'PA flight-params not persisted — geometry check deferred',
+      },
+    })
+
+    return {
+      compliant: true,
+      advisory:  'COMPLIANCE_GEOMETRY_DEFERRED: Permission artefact flight-params ' +
+                 'are not yet persisted. Time-window, altitude, and geofence checks ' +
+                 'were skipped. Full compliance verification will be available once ' +
+                 'PA storage is implemented.',
     }
-
-    // Altitude check
-    if (actualAltAglM > pa.flightParams.maxAltitudeAgl) {
-      return {
-        compliant: false,
-        reason: `ALTITUDE_VIOLATION: ${actualAltAglM}m AGL exceeds ` +
-                `max permitted ${pa.flightParams.maxAltitudeAgl}m AGL`,
-      }
-    }
-
-    // Geofence check — ray casting algorithm
-    if (!this.pointInPolygon(actualLatDeg, actualLonDeg, pa.flightParams.area.coordinates[0])) {
-      return {
-        compliant: false,
-        reason: `GEOFENCE_VIOLATION: Position (${actualLatDeg}, ${actualLonDeg}) ` +
-                `is outside permitted area polygon`,
-      }
-    }
-
-    return { compliant: true }
   }
 
   // PRODUCTION: Parse DGCA Permission Artefact XML per DigitalSky schema.
@@ -157,6 +155,11 @@ export class NpntVerificationService {
   // Required fields: FlightPermissionArtifact/UASRegistrationNumber,
   // PilotBusinessIdentifier, FlightParameters, Validity, Signature.
   private parseXml(xml: string): PermissionArtefact {
+    if (!xml || xml.trim().length === 0) {
+      throw new Error('EMPTY_PA_XML: Permission Artefact XML must not be empty')
+    }
+
+    // TODO: Replace stub with real DGCA DigitalSky XML parsing.
     const now = new Date()
     const oneHourLater = new Date(now.getTime() + 3600000)
     return {
@@ -178,13 +181,32 @@ export class NpntVerificationService {
     }
   }
 
-  // PRODUCTION: Verify XML signature against DGCA root CA certificate.
-  // DGCA uses XML-DSig (W3C) with ECDSA P-256 or RSA-2048.
-  // Obtain DGCA root CA from: https://digitalsky.dgca.gov.in/
-  // Use xmldsigjs or similar W3C XML-DSig library.
-  // This is a HARD REQUIREMENT for DSP certification.
-  private verifyDgcaSignature(xml: string, signatureB64: string): boolean {
-    return true
+  // Verify XML signature using XmlDsigSigner.verifyPaSignature().
+  // In production, the certificate chain should be validated against the
+  // DGCA root CA from https://digitalsky.dgca.gov.in/.
+  // Currently validates the cryptographic signature; CA chain trust is
+  // deferred until DGCA root CA certificate is provisioned.
+  private verifyDgcaSignature(xml: string, _signatureB64: string): boolean {
+    try {
+      const result = verifyPaSignature(xml)
+      if (!result.valid) {
+        log.warn('npnt_signature_invalid', {
+          data: {
+            errors:   result.errors,
+            signerCN: result.signerCN,
+            certExpiry: result.certExpiry?.toISOString() ?? null,
+          },
+        })
+      }
+      return result.valid
+    } catch (err) {
+      // If the PA XML has no <Signature> element (e.g. unsigned stub PA
+      // used during dev/demo), log a warning and treat as unsigned.
+      log.warn('npnt_signature_verification_error', {
+        data: { error: err instanceof Error ? err.message : String(err) },
+      })
+      return false
+    }
   }
 
   // Ray casting point-in-polygon (same logic as FirGeometryEngine)

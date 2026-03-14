@@ -5,7 +5,7 @@
       "name": "backend",
       "runtimeExecutable": "cmd",
       "runtimeArgs": ["/c", "npm run dev"],
-      "port": 8080,
+      "port": 8081,
       "cwd": "do-not-share/jads-backend"
     },
     {

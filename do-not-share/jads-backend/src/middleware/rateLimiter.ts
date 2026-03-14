@@ -1,55 +1,80 @@
 import { Request, Response, NextFunction } from 'express'
 
-// ── In-process sliding window rate limiter ────────────────────────────────────
-// VULN-03 FIX: Prevents mission upload flooding.
-// For HA deployments: replace with Redis-backed implementation.
+// ── Sliding window rate limiter factory ──────────────────────────────────────
+// In-process implementation. For HA deployments: replace with Redis-backed.
+
+function createSlidingWindowLimiter(
+  bucketMap: Map<string, { count: number; resetAt: number }>,
+  maxRequests: number,
+  windowMs: number,
+  keyFn: (req: Request) => string,
+  errorDetail: string,
+): (req: Request, res: Response, next: NextFunction) => void {
+  return (req, res, next) => {
+    const key = keyFn(req)
+    if (!key) { next(); return }
+
+    const now    = Date.now()
+    const bucket = bucketMap.get(key)
+
+    if (!bucket || bucket.resetAt < now) {
+      bucketMap.set(key, { count: 1, resetAt: now + windowMs })
+      next(); return
+    }
+
+    bucket.count++
+    if (bucket.count > maxRequests) {
+      const retryAfter = Math.ceil((bucket.resetAt - now) / 1000)
+      res.status(429).json({
+        error: 'RATE_LIMIT_EXCEEDED',
+        detail: errorDetail,
+        retryAfterSeconds: retryAfter,
+      })
+      return
+    }
+    next()
+  }
+}
+
+// ── Mission upload rate limiter ──────────────────────────────────────────────
+// VULN-03 FIX: 10 uploads/min per IP.
 const uploadBuckets = new Map<string, { count: number; resetAt: number }>()
-const UPLOAD_RATE_LIMIT = 20          // max uploads per window per operator
-const UPLOAD_WINDOW_MS  = 60 * 1000  // 1 minute
+export const missionUploadRateLimit = createSlidingWindowLimiter(
+  uploadBuckets,
+  10,                   // max 10 uploads per minute per IP
+  60 * 1000,            // 1-minute window
+  (req) => req.ip ?? 'unknown',
+  'Max 10 mission uploads/minute per IP',
+)
 
-export function missionUploadRateLimit(req: Request, res: Response, next: NextFunction): void {
-  const operatorId = (req as any).auth?.userId
-  if (!operatorId) { next(); return }
+// ── Auth login rate limiters ─────────────────────────────────────────────────
+// Brute-force protection: 5 login attempts/min per IP.
 
-  const now    = Date.now()
-  const bucket = uploadBuckets.get(operatorId)
+const authLoginBuckets = new Map<string, { count: number; resetAt: number }>()
+export const authLoginRateLimit = createSlidingWindowLimiter(
+  authLoginBuckets,
+  5,                    // max 5 login attempts per minute per IP
+  60 * 1000,
+  (req) => req.ip ?? 'unknown',
+  'Max 5 login attempts/minute per IP',
+)
 
-  if (!bucket || bucket.resetAt < now) {
-    uploadBuckets.set(operatorId, { count: 1, resetAt: now + UPLOAD_WINDOW_MS })
-    next(); return
-  }
+const adminLoginBuckets = new Map<string, { count: number; resetAt: number }>()
+export const adminLoginRateLimit = createSlidingWindowLimiter(
+  adminLoginBuckets,
+  5,                    // max 5 admin login attempts per minute per IP
+  60 * 1000,
+  (req) => req.ip ?? 'unknown',
+  'Max 5 admin login attempts/minute per IP',
+)
 
-  bucket.count++
-  if (bucket.count > UPLOAD_RATE_LIMIT) {
-    const retryAfter = Math.ceil((bucket.resetAt - now) / 1000)
-    res.status(429).json({
-      error: 'RATE_LIMIT_EXCEEDED',
-      detail: `Max ${UPLOAD_RATE_LIMIT} mission uploads/minute per operator`,
-      retryAfterSeconds: retryAfter,
-    })
-    return
-  }
-  next()
-}
-
-// Global rate limiter for all /api routes (DoS protection)
+// ── Global rate limiter ──────────────────────────────────────────────────────
+// DoS protection: 500 req/min per IP across all /api routes.
 const globalBuckets = new Map<string, { count: number; resetAt: number }>()
-const GLOBAL_RATE_LIMIT = 500          // req/min per IP
-const GLOBAL_WINDOW_MS  = 60 * 1000
-
-export function globalRateLimit(req: Request, res: Response, next: NextFunction): void {
-  const ip = req.ip ?? 'unknown'
-  const now = Date.now()
-  const bucket = globalBuckets.get(ip)
-
-  if (!bucket || bucket.resetAt < now) {
-    globalBuckets.set(ip, { count: 1, resetAt: now + GLOBAL_WINDOW_MS })
-    next(); return
-  }
-  bucket.count++
-  if (bucket.count > GLOBAL_RATE_LIMIT) {
-    res.status(429).json({ error: 'GLOBAL_RATE_LIMIT_EXCEEDED' })
-    return
-  }
-  next()
-}
+export const globalRateLimit = createSlidingWindowLimiter(
+  globalBuckets,
+  500,
+  60 * 1000,
+  (req) => req.ip ?? 'unknown',
+  'Global rate limit exceeded',
+)

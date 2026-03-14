@@ -5,14 +5,23 @@ import { serializeForJson } from '../utils/bigintSerializer'
 import { ClearanceService, registerSseClient, unregisterSseClient } from '../services/ClearanceService'
 import { FlightPlanService }   from '../services/FlightPlanService'
 import { RoutePlanningService } from '../services/RoutePlanningService'
+import { RouteAdvisoryService } from '../services/RouteAdvisoryService'
 import { createServiceLogger } from '../logger'
 
 const router       = express.Router()
 const prisma       = new PrismaClient()
 const service      = new ClearanceService(prisma)
 const fplService   = new FlightPlanService(prisma)
-const routeService = new RoutePlanningService()
+const routeService   = new RoutePlanningService()
 const log          = createServiceLogger('FlightPlanRoutes')
+
+// DI-wirable service — replace via setAdvisoryService() for testing.
+let advisoryService: RouteAdvisoryService = new RouteAdvisoryService()
+
+/** Override the RouteAdvisoryService instance (for testing/DI). */
+export function setAdvisoryService(svc: RouteAdvisoryService): void {
+  advisoryService = svc
+}
 
 // Roles authorised for manned flight plan filing and lifecycle operations
 const FPL_ROLES = ['PILOT', 'PILOT_AND_DRONE', 'GOVT_PILOT', 'GOVT_DRONE_OPERATOR', 'PLATFORM_SUPER_ADMIN']
@@ -55,6 +64,36 @@ router.post('/route-plan', requireAuth, requireDomain('AIRCRAFT'), requireRole(F
     const msg = e instanceof Error ? e.message : String(e)
     log.error('route_plan_error', { data: { error: msg } })
     res.status(500).json({ error: 'ROUTE_PLAN_FAILED', detail: msg })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/flight-plans/route-advisory
+// Advisory-only route recommendation. Returns recommended airway route,
+// flight level advisory, reporting points, FIR crossings, and direct route
+// comparison. Purely computational — no DB writes, no audit log.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/route-advisory', requireAuth, requireDomain('AIRCRAFT'), async (req, res) => {
+  try {
+    const { adep, ades, cruisingLevel, cruisingSpeed } = req.body
+
+    if (!adep || !ades) {
+      res.status(400).json({ error: 'ADEP_AND_ADES_REQUIRED' })
+      return
+    }
+
+    const advisory = advisoryService.generateAdvisory({
+      adep: String(adep).toUpperCase(),
+      ades: String(ades).toUpperCase(),
+      cruisingLevel: cruisingLevel || 'VFR',
+      cruisingSpeed: cruisingSpeed || 'N0240',
+    })
+
+    res.json({ success: true, advisory })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('route_advisory_error', { data: { error: msg } })
+    res.status(500).json({ error: 'ROUTE_ADVISORY_FAILED', detail: msg })
   }
 })
 

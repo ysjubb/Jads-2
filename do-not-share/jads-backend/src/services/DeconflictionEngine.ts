@@ -140,7 +140,10 @@ export class DeconflictionEngine {
       let polygon: number[][]
       try {
         polygon = JSON.parse(dp.areaGeoJson as string)
-      } catch {
+      } catch (e) {
+        log.warn('deconfliction_geojson_parse_failed', {
+          data: { droneRecordId: dp.id, error: e instanceof Error ? e.message : String(e) },
+        })
         continue
       }
 
@@ -199,7 +202,10 @@ export class DeconflictionEngine {
     let polygon: number[][]
     try {
       polygon = JSON.parse(dp.areaGeoJson as string)
-    } catch {
+    } catch (e) {
+      log.warn('deconfliction_geojson_parse_failed', {
+        data: { droneRecordId: droneId, error: e instanceof Error ? e.message : String(e) },
+      })
       return []
     }
 

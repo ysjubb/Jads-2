@@ -53,7 +53,7 @@ The runtime guard `assertPostFlightScope()` rejects any mission with status othe
 | 3. Merkle Tree Evidence Chain | Record deletion/insertion | Daily Merkle roots, inclusion proofs, genesis anchor |
 | 4. Device Attestation | Compromised Android device | Play Integrity API + Key Attestation cert chain |
 | 5. Admin Collusion Prevention | Insider threat (admin pair) | Two-person rule + provisioning lineage tracking |
-| 6. Audit Log Immutability | Evidence tampering | PostgreSQL triggers block UPDATE/DELETE on audit tables (auto-installed at server startup) |
+| 6. Audit Log Immutability | Evidence tampering | PostgreSQL triggers block UPDATE/DELETE on audit tables (deployed via Prisma migration — schema-level guarantee) |
 
 ### 1.3 Adapter Pattern for Sovereign Integration
 
@@ -273,7 +273,21 @@ The full chain from genesis to present can be walked and verified by `verifyFull
 
 **Key Enforcement:** `AuditService.assertDroneMissionAccess()` throws `AuditScopeError` for AAI_AUDITOR accessing drone data. Returns 403, never an empty list — an empty list would silently mask a permission error.
 
-### 5.3 Investigation Access Grants
+### 5.3 Rate Limiting
+
+Authentication endpoints are protected by sliding-window rate limiters to prevent brute-force attacks:
+
+| Endpoint | Limit | Window |
+|----------|-------|--------|
+| `POST /auth/civilian/login/initiate` | 5 requests/IP | 60 seconds |
+| `POST /auth/special/login` | 5 requests/IP | 60 seconds |
+| `POST /admin/login` | 5 requests/IP | 60 seconds |
+| `POST /drone/missions/upload` | 10 requests/IP | 60 seconds |
+| All endpoints (global) | 500 requests/IP | 60 seconds |
+
+Rate limiters use an in-process sliding window Map (replaceable with Redis for multi-node deployments). Exceeded limits return HTTP 429 with `retryAfterSeconds`.
+
+### 5.4 Investigation Access Grants
 
 - Scoped to specific missionId or flightPlanId
 - Time-limited (expiresAt field)
@@ -287,7 +301,7 @@ The full chain from genesis to present can be walked and verified by `verifyFull
 
 ### 6.1 Database-Level Enforcement
 
-Three PostgreSQL triggers protect the audit log. These triggers are **automatically installed on every server startup** via `AuditIntegrityService.installTriggers()` called from `server.ts`. The install is idempotent — safe to run repeatedly.
+Three PostgreSQL triggers protect the audit log. These triggers are **deployed via Prisma migration** (`20260314000000_add_audit_log_immutability_triggers`), making them part of the database schema rather than runtime initialization. This is a stronger guarantee — triggers are present as soon as `npx prisma migrate deploy` completes, regardless of whether the application server has started.
 
 ```sql
 -- Trigger 1: Auto-compute row hash on INSERT
@@ -383,9 +397,11 @@ Maximum:                       100
 | swarm-scale | 8 | 100 drones × 1,000 records each, throughput SLAs (<15s for 100K records) |
 | AuditService | 6 | Role scoping, AAI_AUDITOR access denial, investigation grants |
 
-**Total: 522 tests, 18 suites, 0 failures.**
+| route-advisory | 23 | Route advisory system — airway recommendation, flight level selection, reporting points |
 
-Additionally: 7-stage CI pipeline with 23 jobs. Determinism gates (Stage 2) verify Kotlin↔TypeScript byte-identical output before any functional test runs. Security scanning (Stage 1) includes gitleaks, npm audit, and CodeQL SAST. Stage 3 includes Android APK build with artifact upload. Stage 3b includes dedicated PQC degradation logging job that catches silent ML-DSA-65 fallback to ECDSA-only.
+**Total: 545 tests, 19 suites, 0 failures.**
+
+Additionally: 7-stage CI pipeline with 26 jobs. Determinism gates (Stage 2) verify Kotlin↔TypeScript byte-identical output before any functional test runs. Security scanning (Stage 1) includes gitleaks, npm audit, CodeQL SAST, and SBOM generation (CycloneDX for npm, Gradle dependency report for Android). Stage 3 includes Android APK build with artifact upload. Stage 3b includes dedicated PQC degradation logging job that catches silent ML-DSA-65 fallback to ECDSA-only.
 
 ---
 
@@ -399,7 +415,7 @@ Additionally: 7-stage CI pipeline with 23 jobs. Determinism gates (Stage 2) veri
 | DGCA UAS Rules 2021 Rule 36(1) | 5km inner / 8km outer airport proximity zones | `AirportProximityGate.ts` — haversine distance against 26 Indian airports |
 | NIST FIPS 204 | ML-DSA-65 post-quantum signatures (I-10) | `MlDsaSigner.kt` + `ForensicVerifier.checkPqcSignatures()` — 12 dedicated tests |
 | Indian Evidence Act Section 65B | Forensic report as electronic evidence certificate | All 10 invariants produce chain-of-custody documentation |
-| IT Act 2000 (India) | Audit trail immutability | PostgreSQL triggers block UPDATE/DELETE — auto-installed at startup |
+| IT Act 2000 (India) | Audit trail immutability | PostgreSQL triggers block UPDATE/DELETE — deployed via Prisma migration |
 
 ### Manned Aircraft Operations
 
@@ -434,13 +450,13 @@ JADS Platform v4.0 is a **dual-purpose airspace platform** providing:
 **For drones:**
 - **Forensic-grade evidence integrity** through cryptographic chaining (SHA-256 + ECDSA + ML-DSA-65 hybrid)
 - **External trust anchoring** (HMAC-signed files + HTTPS webhooks to DGCA)
-- **Database-level immutability** (PostgreSQL triggers on audit log — auto-installed, no manual setup)
+- **Database-level immutability** (PostgreSQL triggers on audit log — deployed via Prisma migration, schema-level guarantee)
 - **Device attestation** (Play Integrity + key attestation + trust scoring 0–100)
 - **Admin collusion prevention** (two-person rule + provisioning lineage tracking)
 
 **Across both domains:**
-- **522 tests, 18 suites, 0 failures** — including 108-test chaos suite, PQC verification, swarm scale
-- **7-stage CI pipeline, 23 jobs** — determinism gates verify Kotlin↔TypeScript byte-identical output before anything else runs
+- **545 tests, 19 suites, 0 failures** — including 108-test chaos suite, PQC verification, swarm scale, route advisory
+- **7-stage CI pipeline, 26 jobs** — determinism gates verify Kotlin↔TypeScript byte-identical output before anything else runs; SBOM generation for supply chain transparency
 - **4 deterministic agent microservices** — NOTAM interpretation, forensic narration, AFTN drafting, anomaly detection
 - **7 government adapter interfaces** — stubbed and interface-frozen, ready for live integration without core logic changes
 

@@ -1,0 +1,723 @@
+openapi: 3.0.3
+info:
+  title: JADS Platform API
+  version: 4.0.0
+  description: >
+    Joint Airspace Drone System — India's sovereign airspace management
+    and forensic audit platform. Handles ICAO-compliant flight plan filing
+    for manned aircraft and forensic-grade drone mission telemetry.
+  contact:
+    name: JADS Platform Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://localhost:8080/api
+    description: Local development server
+
+# ── Global header requirement ───────────────────────────────────────────────
+# All requests must include X-JADS-Version: 4.0
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        User JWT (signed with JWT_SECRET, 8h expiry) or
+        Admin JWT (signed with ADMIN_JWT_SECRET, 2h expiry).
+  parameters:
+    JadsVersion:
+      name: X-JADS-Version
+      in: header
+      required: true
+      schema:
+        type: string
+        enum: ['4.0']
+      description: API version header — must be '4.0'
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 20
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+    Success:
+      type: object
+      properties:
+        success:
+          type: boolean
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RateLimited:
+      description: Rate limit exceeded (429)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: RATE_LIMIT_EXCEEDED
+              detail:
+                type: string
+              retryAfterSeconds:
+                type: integer
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # AUTH — Civilian OTP login
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  /auth/civilian/register/initiate:
+    post:
+      tags: [Auth]
+      summary: Initiate civilian registration
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, mobileNumber, role, credentialDomain, issuingAuthority]
+              properties:
+                email: { type: string, format: email }
+                mobileNumber: { type: string }
+                role: { type: string }
+                credentialDomain: { type: string }
+                issuingAuthority: { type: string }
+                pilotLicenceNumber: { type: string }
+                uinNumber: { type: string }
+      responses:
+        '200':
+          description: Registration initiated — OTPs sent
+        '409':
+          description: Email or mobile already registered
+
+  /auth/civilian/login/initiate:
+    post:
+      tags: [Auth]
+      summary: Initiate civilian OTP login
+      description: Rate limited to 5 attempts/minute per IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                emailOrMobile: { type: string }
+      responses:
+        '200':
+          description: OTP sent to registered email/mobile
+        '404':
+          description: User not found
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/civilian/login/complete:
+    post:
+      tags: [Auth]
+      summary: Complete civilian login with OTP
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, otp]
+              properties:
+                userId: { type: string }
+                otp: { type: string }
+      responses:
+        '200':
+          description: Login successful — JWT returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  accessToken: { type: string }
+                  expiresAt: { type: string, format: date-time }
+        '401':
+          description: Invalid OTP
+
+  /auth/special/login:
+    post:
+      tags: [Auth]
+      summary: Government/military unit login (username + password)
+      description: Rate limited to 5 attempts/minute per IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Login successful — JWT returned
+        '401':
+          description: Invalid credentials
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user profile
+      responses:
+        '200':
+          description: User profile (never returns full Aadhaar number)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ADMIN
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  /admin/login:
+    post:
+      tags: [Admin]
+      summary: Admin portal login
+      description: Rate limited to 5 attempts/minute per IP. Issues JWT signed with ADMIN_JWT_SECRET.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: Admin login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+                  expiresAt: { type: string, format: date-time }
+                  adminRole: { type: string }
+        '401':
+          description: Invalid credentials
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # DRONE — Mission upload & telemetry
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  /drone/missions:
+    post:
+      tags: [Drone]
+      summary: Upload drone mission telemetry
+      description: >
+        Accepts a full mission payload with cryptographic hash chain,
+        device attestation, and telemetry records. Rate limited to
+        10 uploads/minute per IP. Runs 10-point forensic verification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [missionId, records, deviceInfo]
+              properties:
+                missionId: { type: string }
+                records:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      sequence: { type: integer }
+                      canonicalPayloadHex: { type: string }
+                      signatureHex: { type: string }
+                      hashHex: { type: string }
+                deviceInfo:
+                  type: object
+                  properties:
+                    manufacturer: { type: string }
+                    model: { type: string }
+                    osVersion: { type: string }
+      responses:
+        '201':
+          description: Mission accepted — forensic verification complete
+        '202':
+          description: Duplicate (safe retry — same missionId already accepted)
+        '409':
+          description: Replay attack detected (same missionId, different operator)
+        '422':
+          description: Hash chain verification failed
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /drone/missions/{id}:
+    get:
+      tags: [Drone]
+      summary: Get mission details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Mission details with telemetry summary
+        '404':
+          description: Mission not found
+
+  /drone/missions/{id}/forensic:
+    get:
+      tags: [Drone]
+      summary: Run 10-point forensic verification on a mission
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Forensic verification report
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # FLIGHT PLANS — Manned aircraft OFPL filing
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  /flight-plans:
+    post:
+      tags: [Flight Plans]
+      summary: File a manned aircraft flight plan
+      description: >
+        Validates ICAO OFPL fields, builds AFTN message (FPL format),
+        generates AFTN addressees, transmits via AFTN gateway.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [aircraftId, adep, ades, eobt, cruisingSpeed, cruisingLevel, route]
+              properties:
+                aircraftId: { type: string, description: 'Aircraft registration (callsign)' }
+                adep: { type: string, description: 'Departure ICAO code (4 chars)' }
+                ades: { type: string, description: 'Destination ICAO code (4 chars)' }
+                eobt: { type: string, description: 'Estimated off-block time (ISO 8601 or DDHHmm)' }
+                cruisingSpeed: { type: string, description: 'ICAO speed (e.g. N0480, K0890, M080)' }
+                cruisingLevel: { type: string, description: 'Flight level (e.g. F350, VFR)' }
+                route: { type: string, description: 'Route string (airways or DCT)' }
+                flightRules: { type: string, enum: [IFR, VFR, Y, Z] }
+                flightType: { type: string }
+                aircraftType: { type: string }
+                wakeTurbulence: { type: string, enum: [L, M, H, J] }
+                equipment: { type: string }
+                surveillance: { type: string }
+                altn1: { type: string }
+                altn2: { type: string }
+                endurance: { type: string }
+                personsOnBoard: { type: integer }
+                item18: { type: string, description: 'Other info (DOF, REG, OPR, etc.)' }
+      responses:
+        '201':
+          description: Flight plan filed successfully
+        '422':
+          description: OFPL validation failed
+
+    get:
+      tags: [Flight Plans]
+      summary: List filed flight plans for current user
+      responses:
+        '200':
+          description: List of flight plans (max 50, newest first)
+
+  /flight-plans/{id}:
+    get:
+      tags: [Flight Plans]
+      summary: Get flight plan details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Full flight plan with ADC/FIC references
+        '404':
+          description: Flight plan not found
+
+    put:
+      tags: [Flight Plans]
+      summary: Amend a filed flight plan (before clearance only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                eobt: { type: string }
+                route: { type: string }
+                cruisingLevel: { type: string }
+                cruisingSpeed: { type: string }
+                altn1: { type: string }
+                altn2: { type: string }
+      responses:
+        '200':
+          description: Flight plan amended
+        '409':
+          description: Cannot edit after clearance
+
+  /flight-plans/{id}/cancel:
+    post:
+      tags: [Flight Plans]
+      summary: Cancel a filed flight plan (generates AFTN CNL)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200':
+          description: Plan cancelled — AFTN CNL transmitted
+        '409':
+          description: Cannot cancel in current status
+
+  /flight-plans/{id}/delay:
+    post:
+      tags: [Flight Plans]
+      summary: Delay a filed flight plan (generates AFTN DLA)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newEobt, reason]
+              properties:
+                newEobt: { type: string, description: 'New EOBT in DDHHmm format' }
+                reason: { type: string }
+      responses:
+        '200':
+          description: Plan delayed — AFTN DLA transmitted
+
+  /flight-plans/{id}/events:
+    get:
+      tags: [Flight Plans]
+      summary: SSE stream for real-time clearance updates
+      description: >
+        Server-Sent Events stream. Pushes events as AFMLU/FIR issue
+        ADC and FIC clearance numbers. Events: connected, adc_issued,
+        fic_issued, clearance_rejected, keepalive (every 25s).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: SSE stream opened
+          content:
+            text/event-stream: {}
+
+  /flight-plans/route-advisory:
+    post:
+      tags: [Flight Plans]
+      summary: Get route advisory (recommended airway, FL, reporting points)
+      description: >
+        Advisory-only. Returns recommended airway route, flight level
+        compliance (semicircular rule), reporting points, FIR crossings,
+        and direct route comparison. No DB writes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [adep, ades]
+              properties:
+                adep: { type: string }
+                ades: { type: string }
+                cruisingLevel: { type: string, default: VFR }
+                cruisingSpeed: { type: string, default: N0240 }
+      responses:
+        '200':
+          description: Route advisory generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  advisory:
+                    type: object
+                    properties:
+                      hasRecommendation: { type: boolean }
+                      recommended:
+                        type: object
+                        nullable: true
+                        properties:
+                          routeString: { type: string }
+                          totalDistanceNm: { type: number }
+                          totalEetMinutes: { type: number }
+                      flightLevelAdvisory:
+                        type: object
+                        properties:
+                          requestedLevel: { type: string }
+                          isCompliant: { type: boolean }
+                          recommendedLevel: { type: string }
+                          direction: { type: string, enum: [EASTBOUND, WESTBOUND] }
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # AUDIT — Forensic audit & evidence
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  /audit/missions:
+    get:
+      tags: [Audit]
+      summary: List missions (scoped by auditor role)
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: dateFrom
+          in: query
+          schema: { type: string, format: date }
+        - name: dateTo
+          in: query
+          schema: { type: string, format: date }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated mission list (role-scoped)
+
+  /audit/missions/{id}:
+    get:
+      tags: [Audit]
+      summary: Get mission detail with forensic verification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Mission detail + 10-point forensic report
+        '403':
+          description: Role does not have access to this mission
+        '404':
+          description: Mission not found
+
+  /audit/missions/{id}/forensic:
+    get:
+      tags: [Audit]
+      summary: Run full 10-point forensic verification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Forensic verification result
+
+  /audit/missions/{id}/bsa-certificate:
+    get:
+      tags: [Audit]
+      summary: Generate BSA 2023 Section 63 Part A certificate
+      description: Court-admissible evidence certificate under Indian Evidence Act.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: BSA certificate data
+
+  /audit/violations:
+    get:
+      tags: [Audit]
+      summary: List violations (role-scoped)
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: violationType
+          in: query
+          schema: { type: string }
+        - name: severity
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated violation list
+
+  /audit/flight-plans:
+    get:
+      tags: [Audit]
+      summary: List flight plans (auditor view)
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: callsign
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated flight plan list
+
+  /audit/audit-log:
+    get:
+      tags: [Audit]
+      summary: View audit log (PLATFORM_SUPER_ADMIN only)
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: actorType
+          in: query
+          schema: { type: string }
+        - name: action
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Audit log entries
+        '403':
+          description: Insufficient role
+
+  /audit/sequence-integrity:
+    get:
+      tags: [Audit]
+      summary: Check audit log sequence integrity (tamper detection)
+      description: >
+        Detects gaps in AuditLog sequenceNumber column.
+        A gap indicates deleted entries — a tamper indicator.
+        PLATFORM_SUPER_ADMIN only.
+      responses:
+        '200':
+          description: Sequence integrity result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  gapDetected: { type: boolean }
+                  minSeq: { type: integer }
+                  maxSeq: { type: integer }
+                  count: { type: integer }
+                  expectedCount: { type: integer }
+                  missingEntries: { type: integer }
+                  assessment: { type: string }
+
+  /audit/ledger:
+    get:
+      tags: [Audit]
+      summary: List evidence ledger anchor entries
+      description: Most recent first. DGCA/IAF auditors and super admin only.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 90, maximum: 365 }
+      responses:
+        '200':
+          description: Evidence ledger entries
+
+  /audit/ledger/{date}:
+    get:
+      tags: [Audit]
+      summary: Verify a single day's evidence anchor
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+          description: Date in YYYY-MM-DD format
+      responses:
+        '200':
+          description: Anchor verification result
+
+  /audit/ledger/{date}/external-verify:
+    get:
+      tags: [Audit]
+      summary: Verify anchor against external trust stores
+      description: >
+        Cross-checks the anchor hash for a given date against external
+        backends (DGCA timestamp authority, HMAC webhooks). Key defense
+        against full backend compromise.
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Internal + external verification result
+
+  /audit/export/missions:
+    get:
+      tags: [Audit]
+      summary: Export missions as CSV or JSON
+      parameters:
+        - name: format
+          in: query
+          schema: { type: string, enum: [CSV, JSON], default: JSON }
+      responses:
+        '200':
+          description: Mission export data
