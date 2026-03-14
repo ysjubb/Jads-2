@@ -38,6 +38,11 @@ export interface PACreatePayload {
   flightStartTime:   Date
   flightEndTime:     Date
   geofencePolygon:   GeoPoint[]
+  /**
+   * Max altitude in meters AGL (JADS internal convention).
+   * Converted to feet at DS adapter boundary (1m ≈ 3.28084ft).
+   * DS PA uses feet: maxAltitude attribute in FlightParameters.
+   */
   maxAltitudeMeters: number
 }
 
@@ -198,7 +203,7 @@ export class PALifecycleService {
         primaryZone:       payload.primaryZone,
         flightStartTime:   payload.flightStartTime,
         flightEndTime:     payload.flightEndTime,
-        geofencePolygon:   payload.geofencePolygon,
+        geofencePolygon:   payload.geofencePolygon as unknown as any,
         maxAltitudeMeters: payload.maxAltitudeMeters,
         submittedAt:       new Date(),
       },
@@ -498,7 +503,7 @@ export class PALifecycleService {
         status:              newStatus,
         flightLogUploadedAt: new Date(),
         flightLogHash:       logHash,
-        violations:          report as unknown as Record<string, unknown>,
+        violations:          report as any,
       },
     })
 

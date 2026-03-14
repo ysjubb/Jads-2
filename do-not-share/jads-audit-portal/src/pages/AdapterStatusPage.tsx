@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuditAuth } from '../hooks/useAuditAuth'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8080'
@@ -24,7 +24,7 @@ interface AdapterEntry {
 export function AdapterStatusPage() {
   const { token } = useAuditAuth()
   const [adapters, setAdapters] = useState<AdapterEntry[]>([])
-  const [useLive, setUseLive] = useState(false)
+  const [, setUseLive] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {

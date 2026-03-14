@@ -27,9 +27,9 @@ const app = express()
 app.use(helmet())
 app.use(cors({
   origin:         env.NODE_ENV === 'production'
-    ? ['https://admin.jads.gov.in', 'https://audit.jads.gov.in']
+    ? ['https://admin.jads.gov.in', 'https://audit.jads.gov.in', 'https://app.jads.gov.in']
     : true,
-  methods:        ['GET', 'POST', 'PUT', 'PATCH'],  // No DELETE — platform invariant
+  methods:        ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-JADS-Version'],
 }))
 app.use(express.json({ limit: '10mb' }))

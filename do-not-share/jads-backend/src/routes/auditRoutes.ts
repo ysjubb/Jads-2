@@ -675,7 +675,7 @@ router.get('/zone-compliance/stats',
       const zoneLogs = await prisma.auditLog.findMany({
         where: {
           action: { in: ['zone_check_completed', 'drone_plan_submitted', 'flight_permission_submitted'] },
-          createdAt: { gte: thirtyDaysAgo },
+          timestamp: { gte: thirtyDaysAgo },
         },
         select: { detailJson: true },
       })
@@ -701,7 +701,7 @@ router.get('/zone-compliance/stats',
       const violationCount = await prisma.auditLog.count({
         where: {
           action: { in: ['geofence_breach', 'zone_violation'] },
-          createdAt: { gte: thirtyDaysAgo },
+          timestamp: { gte: thirtyDaysAgo },
         },
       })
 
@@ -735,7 +735,7 @@ router.get('/zone-compliance/violations',
       const [logs, total] = await Promise.all([
         prisma.auditLog.findMany({
           where: { action: { in: ['geofence_breach', 'zone_violation', 'zone_deviation'] } },
-          orderBy: { createdAt: 'desc' },
+          orderBy: { timestamp: 'desc' },
           skip,
           take: limit,
         }),
@@ -754,7 +754,7 @@ router.get('/zone-compliance/violations',
           permittedZone: detail.permittedZone ?? 'N/A',
           actualZone: detail.actualZone ?? 'N/A',
           deviationMeters: detail.deviationMeters ?? detail.deviation ?? 0,
-          date: log.createdAt.toISOString().slice(0, 10),
+          date: log.timestamp.toISOString().slice(0, 10),
         }
       })
 
@@ -775,7 +775,7 @@ router.get('/zone-compliance/authority-latency',
       const approvalLogs = await prisma.auditLog.findMany({
         where: {
           action: { in: ['yellow_zone_approved', 'atc_approval_completed'] },
-          createdAt: { gte: sixMonthsAgo },
+          timestamp: { gte: sixMonthsAgo },
         },
         select: { detailJson: true },
       })
@@ -921,6 +921,170 @@ router.post('/incidents/:id/assign',
     }
   }
 )
+
+// ═══════════════════════════════════════════════════════════════════════
+// Track Log endpoints
+// ═══════════════════════════════════════════════════════════════════════
+
+// GET /api/audit/track-logs — list all track logs for audit review
+router.get('/track-logs', async (req, res) => {
+  try {
+    const { role } = req.auth!
+    const page  = parseInt((req.query.page  as string) ?? '1')
+    const limit = Math.min(parseInt((req.query.limit as string) ?? '20'), 100)
+    const skip  = (page - 1) * limit
+
+    const [trackLogs, total] = await Promise.all([
+      prisma.trackLog.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.trackLog.count(),
+    ])
+
+    res.json(serializeForJson(withMeta({ trackLogs, total, page, limit }, role)))
+  } catch (e) { handleScopeError(res, e) }
+})
+
+// GET /api/audit/track-logs/:id — single track log detail
+router.get('/track-logs/:id', async (req, res) => {
+  try {
+    const { role } = req.auth!
+    const trackLog = await prisma.trackLog.findUnique({ where: { id: req.params.id } })
+    if (!trackLog) { res.status(404).json({ error: 'TRACK_LOG_NOT_FOUND' }); return }
+
+    // Parse pathPointsJson for the consumer
+    let pathPoints: unknown[] = []
+    try { pathPoints = JSON.parse(trackLog.pathPointsJson) } catch { /* malformed JSON */ }
+
+    res.json(serializeForJson(withMeta({ trackLog: { ...trackLog, pathPoints } }, role)))
+  } catch (e) { handleScopeError(res, e) }
+})
+
+// ═══════════════════════════════════════════════════════════════════════
+// PA Compliance endpoints
+// ═══════════════════════════════════════════════════════════════════════
+
+// GET /api/audit/pa/compliance-report — PA compliance report
+router.get('/pa/compliance-report', async (req, res) => {
+  try {
+    const { role } = req.auth!
+
+    const allPAs = await prisma.permissionArtefact.findMany({
+      select: { status: true, violations: true },
+    })
+
+    const totalPAs = allPAs.length
+    const byStatus = {
+      pending:   allPAs.filter(pa => pa.status === 'PENDING').length,
+      approved:  allPAs.filter(pa => pa.status === 'APPROVED').length,
+      active:    allPAs.filter(pa => pa.status === 'ACTIVE').length,
+      completed: allPAs.filter(pa => pa.status === 'COMPLETED').length,
+      expired:   allPAs.filter(pa => pa.status === 'EXPIRED').length,
+      revoked:   allPAs.filter(pa => pa.status === 'REVOKED').length,
+    }
+
+    // Compliant = COMPLETED with no violations
+    const completedPAs = allPAs.filter(pa => pa.status === 'COMPLETED')
+    const compliant = completedPAs.filter(pa => {
+      if (!pa.violations) return true
+      try {
+        const v = typeof pa.violations === 'string' ? JSON.parse(pa.violations as string) : pa.violations
+        return !v || (Array.isArray(v) && v.length === 0)
+      } catch { return true }
+    }).length
+    const nonCompliant = totalPAs - compliant
+    const complianceRate = totalPAs > 0 ? Math.round((compliant / totalPAs) * 10000) / 100 : 0
+
+    res.json(serializeForJson(withMeta({
+      totalPAs, compliant, nonCompliant, complianceRate, byStatus,
+    }, role)))
+  } catch (e) { handleScopeError(res, e) }
+})
+
+// GET /api/audit/pa/:id/verification-detail — detailed PA verification for audit
+router.get('/pa/:id/verification-detail', async (req, res) => {
+  try {
+    const { role } = req.auth!
+    const pa = await prisma.permissionArtefact.findUnique({ where: { id: req.params.id } })
+    if (!pa) { res.status(404).json({ error: 'PA_NOT_FOUND' }); return }
+
+    res.json(serializeForJson(withMeta({ permissionArtefact: pa }, role)))
+  } catch (e) { handleScopeError(res, e) }
+})
+
+// ═══════════════════════════════════════════════════════════════════════
+// Drone Category Compliance endpoints
+// ═══════════════════════════════════════════════════════════════════════
+
+// GET /api/audit/drone/category-compliance — category compliance breakdown
+router.get('/drone/category-compliance', async (req, res) => {
+  try {
+    const { role } = req.auth!
+    const categoryNames = ['NANO', 'MICRO', 'SMALL', 'MEDIUM', 'LARGE'] as const
+
+    const categories = await Promise.all(categoryNames.map(async (category) => {
+      const total = await prisma.droneMission.count({
+        where: { droneWeightCategory: category },
+      })
+      const nonCompliant = await prisma.droneMission.count({
+        where: {
+          droneWeightCategory: category,
+          violations: { some: {} },
+        },
+      })
+      const compliant = total - nonCompliant
+      const complianceRate = total > 0 ? Math.round((compliant / total) * 10000) / 100 : 0
+
+      return { category, total, compliant, nonCompliant, complianceRate }
+    }))
+
+    res.json(serializeForJson(withMeta({ categories }, role)))
+  } catch (e) { handleScopeError(res, e) }
+})
+
+// GET /api/audit/drone/category-monthly — monthly category trend data (last 6 months)
+router.get('/drone/category-monthly', async (req, res) => {
+  try {
+    const { role } = req.auth!
+    const months: { month: string; nano: number; micro: number; small: number; medium: number; large: number }[] = []
+
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date()
+      d.setMonth(d.getMonth() - i)
+      const year  = d.getFullYear()
+      const month = d.getMonth() // 0-indexed
+      const startOfMonth = new Date(year, month, 1)
+      const endOfMonth   = new Date(year, month + 1, 1)
+      const label = `${year}-${String(month + 1).padStart(2, '0')}`
+
+      const counts = await prisma.droneMission.groupBy({
+        by: ['droneWeightCategory'],
+        where: {
+          uploadedAt: { gte: startOfMonth, lt: endOfMonth },
+        },
+        _count: true,
+      })
+
+      const countMap: Record<string, number> = {}
+      for (const c of counts) {
+        countMap[c.droneWeightCategory] = c._count
+      }
+
+      months.push({
+        month: label,
+        nano:   countMap['NANO']   ?? 0,
+        micro:  countMap['MICRO']  ?? 0,
+        small:  countMap['SMALL']  ?? 0,
+        medium: countMap['MEDIUM'] ?? 0,
+        large:  countMap['LARGE']  ?? 0,
+      })
+    }
+
+    res.json(serializeForJson(withMeta({ months }, role)))
+  } catch (e) { handleScopeError(res, e) }
+})
 
 // POST /api/audit/access-log — immutable access audit trail
 router.post('/access-log',

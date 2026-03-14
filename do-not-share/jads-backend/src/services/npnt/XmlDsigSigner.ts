@@ -41,7 +41,7 @@ export interface XmlDsigVerifyResult {
 function canonicalize(xml: string): string {
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
   const c14n = new ExclusiveCanonicalization();
-  return c14n.process(doc.documentElement).toString();
+  return c14n.process(doc.documentElement, {}).toString();
 }
 
 /**
@@ -97,8 +97,17 @@ export function signPaXml(
     .replace(/-----END CERTIFICATE-----/g, '')
     .replace(/\s+/g, '');
 
-  // Step 7: Build complete Signature block
-  const signatureBlock = buildSignatureXml(signedInfo, signatureValue, certBase64);
+  // Step 6b: Extract X509SubjectName for DS-compliant KeyInfo
+  let subjectName: string | undefined;
+  try {
+    const cert = new crypto.X509Certificate(certificatePem);
+    subjectName = cert.subject; // e.g. "CN=JADS Demo PA Signer, O=JADS Platform, C=IN"
+  } catch {
+    // If cert parsing fails, omit SubjectName — signature still valid
+  }
+
+  // Step 7: Build complete Signature block (includes X509SubjectName per DS spec)
+  const signatureBlock = buildSignatureXml(signedInfo, signatureValue, certBase64, subjectName);
 
   // Step 8: Insert before closing </UAPermission>
   const signedXml = unsignedXml.replace(
@@ -134,33 +143,57 @@ function buildSignedInfoXml(digestValue: string): string {
 
 /**
  * Build the complete Signature XML block.
+ *
+ * DS contract requires KeyInfo to include both X509SubjectName
+ * and X509Certificate. This aligns with the iSPIRT PA signing template.
  */
 function buildSignatureXml(
   signedInfo: string,
   signatureValue: string,
-  certBase64: string
+  certBase64: string,
+  subjectName?: string
 ): string {
+  // DS KeyInfo includes X509SubjectName + X509Certificate
+  const subjectNameElement = subjectName
+    ? `\n      <X509SubjectName>${escapeXmlText(subjectName)}</X509SubjectName>`
+    : '';
+
   return `<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
   ${signedInfo}
   <SignatureValue>${signatureValue}</SignatureValue>
   <KeyInfo>
-    <X509Data>
+    <X509Data>${subjectNameElement}
       <X509Certificate>${certBase64}</X509Certificate>
     </X509Data>
   </KeyInfo>
 </Signature>`;
 }
 
+/**
+ * Escape text content for XML elements (not attributes).
+ */
+function escapeXmlText(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 // ── Verifier ───────────────────────────────────────────────────────────
 
 /**
  * Verify the XMLDSig signature on a signed PA XML.
+ *
+ * Supports both SHA-256 (JADS / UFAMS spec) and SHA-1 (DS iSPIRT source)
+ * for backward compatibility. Detects the algorithm from the SignedInfo.
  */
 export function verifyPaSignature(signedXml: string): XmlDsigVerifyResult {
   const errors: string[] = [];
   let signerCN = '';
   let signerIssuer = '';
   let certExpiry: Date | null = null;
+  let detectedDigestAlg = 'http://www.w3.org/2001/04/xmlenc#sha256';
+  let detectedSigAlg = 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256';
 
   try {
     // Extract SignatureValue
@@ -193,10 +226,8 @@ export function verifyPaSignature(signedXml: string): XmlDsigVerifyResult {
       const cert = new crypto.X509Certificate(certPem);
       signerCN = cert.subject.split('CN=')[1]?.split(',')[0] ?? 'Unknown';
       signerIssuer = cert.issuer;
-      // cert.validTo is a string like "Jan  1 00:00:00 2027 GMT"
       certExpiry = new Date(cert.validTo);
 
-      // Check expiry
       if (new Date() > certExpiry) {
         errors.push(`Certificate expired on ${certExpiry.toISOString()}`);
       }
@@ -204,25 +235,42 @@ export function verifyPaSignature(signedXml: string): XmlDsigVerifyResult {
       errors.push('Failed to parse X.509 certificate');
     }
 
+    // Detect digest algorithm from SignedInfo (SHA-256 or SHA-1)
+    const digestMethodMatch = signedXml.match(/<DigestMethod\s+Algorithm="([^"]+)"/);
+    const isSha1Digest = digestMethodMatch?.[1]?.includes('sha1') ?? false;
+    const hashAlg = isSha1Digest ? 'sha1' : 'sha256';
+    detectedDigestAlg = isSha1Digest
+      ? 'http://www.w3.org/2000/09/xmldsig#sha1'
+      : 'http://www.w3.org/2001/04/xmlenc#sha256';
+
+    // Detect signature algorithm
+    const sigMethodMatch = signedXml.match(/<SignatureMethod\s+Algorithm="([^"]+)"/);
+    const isSha1Sig = sigMethodMatch?.[1]?.includes('rsa-sha1') ?? false;
+    const verifyAlg = isSha1Sig ? 'SHA1' : 'SHA256';
+    detectedSigAlg = isSha1Sig
+      ? 'http://www.w3.org/2000/09/xmldsig#rsa-sha1'
+      : 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256';
+
     // Recompute digest of content (without Signature element)
     const contentToDigest = canonicalize(removeSignatureElement(signedXml));
-    const recomputedDigest = crypto.createHash('sha256').update(contentToDigest, 'utf8').digest('base64');
+    const recomputedDigest = crypto.createHash(hashAlg).update(contentToDigest, 'utf8').digest('base64');
 
     if (recomputedDigest !== storedDigest) {
       errors.push(`Digest mismatch: computed ${recomputedDigest}, stored ${storedDigest}`);
     }
 
-    // Verify RSA signature
-    // Rebuild SignedInfo with the stored digest
-    const signedInfo = buildSignedInfoXml(storedDigest);
+    // Verify RSA signature — rebuild SignedInfo with the stored digest
+    const signedInfo = isSha1Digest
+      ? buildSignedInfoXmlSha1(storedDigest)
+      : buildSignedInfoXml(storedDigest);
     const canonicalSignedInfo = canonicalize(signedInfo);
 
-    const verifier = crypto.createVerify('SHA256');
+    const verifier = crypto.createVerify(verifyAlg);
     verifier.update(canonicalSignedInfo, 'utf8');
     const sigValid = verifier.verify(certPem, signatureValue, 'base64');
 
     if (!sigValid) {
-      errors.push('RSA-SHA256 signature verification failed');
+      errors.push(`RSA-${verifyAlg} signature verification failed`);
     }
   } catch (e: any) {
     errors.push(`Verification error: ${e.message}`);
@@ -234,9 +282,27 @@ export function verifyPaSignature(signedXml: string): XmlDsigVerifyResult {
     signerCN,
     signerIssuer,
     certExpiry,
-    digestAlgorithm: 'http://www.w3.org/2001/04/xmlenc#sha256',
-    signatureAlgorithm: 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
+    digestAlgorithm: detectedDigestAlg,
+    signatureAlgorithm: detectedSigAlg,
   };
+}
+
+/**
+ * Build SignedInfo XML for SHA-1 verification (DS backward compatibility).
+ * DS iSPIRT source uses RSA-SHA1 + Inclusive C14N.
+ */
+function buildSignedInfoXmlSha1(digestValue: string): string {
+  return `<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">
+    <CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+    <SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"/>
+    <Reference URI="">
+      <Transforms>
+        <Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>
+      </Transforms>
+      <DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/>
+      <DigestValue>${digestValue}</DigestValue>
+    </Reference>
+  </SignedInfo>`;
 }
 
 // ── Demo Certificate Generator ─────────────────────────────────────────

@@ -5,7 +5,7 @@
 // Score trend chart (12 months).
 // Amber HUD theme.
 
-import React, { useState, useCallback } from 'react'
+import { type CSSProperties, useState, useCallback } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -50,16 +50,16 @@ function computeScore(log: number, geo: number, time: number, cert: number): num
   return Math.round((log * 0.4 + geo * 0.3 + time * 0.2 + cert * 0.1) * 10) / 10
 }
 
-const MOCK_OPERATORS: OperatorScore[] = [
-  { rank: 1, operatorId: 'OP-004', operatorName: 'MapIndia Surveys', logUploadRate: 99.2, geofenceCompliance: 98.5, timeCompliance: 97.8, certValidity: 100, compositeScore: 0, totalMissions: 680, trend: 'STABLE' },
-  { rank: 2, operatorId: 'OP-001', operatorName: 'SkyView Aerial Solutions', logUploadRate: 97.5, geofenceCompliance: 95.0, timeCompliance: 94.2, certValidity: 96.0, compositeScore: 0, totalMissions: 2340, trend: 'UP' },
-  { rank: 3, operatorId: 'OP-005', operatorName: 'InfraDrone Tech', logUploadRate: 95.0, geofenceCompliance: 93.8, timeCompliance: 92.5, certValidity: 98.0, compositeScore: 0, totalMissions: 890, trend: 'UP' },
-  { rank: 4, operatorId: 'OP-002', operatorName: 'DroneWorks India Pvt Ltd', logUploadRate: 92.0, geofenceCompliance: 91.5, timeCompliance: 90.0, certValidity: 95.0, compositeScore: 0, totalMissions: 1120, trend: 'STABLE' },
-  { rank: 5, operatorId: 'OP-003', operatorName: 'AgroTech Aerial Services', logUploadRate: 88.0, geofenceCompliance: 86.0, timeCompliance: 85.5, certValidity: 90.0, compositeScore: 0, totalMissions: 4560, trend: 'DOWN' },
-  { rank: 6, operatorId: 'OP-007', operatorName: 'PrecisionAir Mapping', logUploadRate: 85.2, geofenceCompliance: 82.0, timeCompliance: 80.5, certValidity: 88.0, compositeScore: 0, totalMissions: 340, trend: 'DOWN' },
-  { rank: 7, operatorId: 'OP-006', operatorName: 'Urban Air Logistics', logUploadRate: 72.0, geofenceCompliance: 68.5, timeCompliance: 75.0, certValidity: 82.0, compositeScore: 0, totalMissions: 1800, trend: 'DOWN' },
-  { rank: 8, operatorId: 'OP-008', operatorName: 'QuickDrone Delivery', logUploadRate: 65.0, geofenceCompliance: 60.0, timeCompliance: 62.5, certValidity: 70.0, compositeScore: 0, totalMissions: 520, trend: 'DOWN' },
-].map((op, i) => ({
+const MOCK_OPERATORS: OperatorScore[] = ([
+  { rank: 1, operatorId: 'OP-004', operatorName: 'MapIndia Surveys', logUploadRate: 99.2, geofenceCompliance: 98.5, timeCompliance: 97.8, certValidity: 100, compositeScore: 0, totalMissions: 680, trend: 'STABLE' as const },
+  { rank: 2, operatorId: 'OP-001', operatorName: 'SkyView Aerial Solutions', logUploadRate: 97.5, geofenceCompliance: 95.0, timeCompliance: 94.2, certValidity: 96.0, compositeScore: 0, totalMissions: 2340, trend: 'UP' as const },
+  { rank: 3, operatorId: 'OP-005', operatorName: 'InfraDrone Tech', logUploadRate: 95.0, geofenceCompliance: 93.8, timeCompliance: 92.5, certValidity: 98.0, compositeScore: 0, totalMissions: 890, trend: 'UP' as const },
+  { rank: 4, operatorId: 'OP-002', operatorName: 'DroneWorks India Pvt Ltd', logUploadRate: 92.0, geofenceCompliance: 91.5, timeCompliance: 90.0, certValidity: 95.0, compositeScore: 0, totalMissions: 1120, trend: 'STABLE' as const },
+  { rank: 5, operatorId: 'OP-003', operatorName: 'AgroTech Aerial Services', logUploadRate: 88.0, geofenceCompliance: 86.0, timeCompliance: 85.5, certValidity: 90.0, compositeScore: 0, totalMissions: 4560, trend: 'DOWN' as const },
+  { rank: 6, operatorId: 'OP-007', operatorName: 'PrecisionAir Mapping', logUploadRate: 85.2, geofenceCompliance: 82.0, timeCompliance: 80.5, certValidity: 88.0, compositeScore: 0, totalMissions: 340, trend: 'DOWN' as const },
+  { rank: 7, operatorId: 'OP-006', operatorName: 'Urban Air Logistics', logUploadRate: 72.0, geofenceCompliance: 68.5, timeCompliance: 75.0, certValidity: 82.0, compositeScore: 0, totalMissions: 1800, trend: 'DOWN' as const },
+  { rank: 8, operatorId: 'OP-008', operatorName: 'QuickDrone Delivery', logUploadRate: 65.0, geofenceCompliance: 60.0, timeCompliance: 62.5, certValidity: 70.0, compositeScore: 0, totalMissions: 520, trend: 'DOWN' as const },
+]).map((op, i) => ({
   ...op,
   rank: i + 1,
   compositeScore: computeScore(op.logUploadRate, op.geofenceCompliance, op.timeCompliance, op.certValidity),
@@ -310,7 +310,7 @@ export function ComplianceScorecardPage() {
 
 // ── Shared table styles ──────────────────────────────────────────────────────
 
-const thStyle: React.CSSProperties = {
+const thStyle: CSSProperties = {
   padding: '0.6rem 0.75rem',
   textAlign: 'left',
   background: T.surface,
@@ -324,7 +324,7 @@ const thStyle: React.CSSProperties = {
   fontFamily: "'JetBrains Mono', monospace",
 }
 
-const tdStyle: React.CSSProperties = {
+const tdStyle: CSSProperties = {
   padding: '0.55rem 0.75rem',
   borderBottom: `1px solid ${T.border}`,
   fontFamily: "'JetBrains Mono', monospace",

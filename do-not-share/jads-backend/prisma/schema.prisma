@@ -1160,3 +1160,83 @@ model AircraftFlightPlan {
   @@index([departure, eobt])
   @@index([callsign])
 }
+
+model TrackLog {
+  id                   String    @id @default(cuid())
+  operatorId           String
+  droneSerialNumber    String
+  format               String                // FILE_UPLOAD | GPS_TRACK
+  takeoffLat           Float
+  takeoffLon           Float
+  landingLat           Float
+  landingLon           Float
+  pathPointsJson       String                // JSON array of {lat, lon, alt, timestampMs}
+  maxAltitudeM         Float
+  durationSec          Float
+  breachCount          Int       @default(0)
+  violationsJson       String?               // JSON violation report
+  droneOperationPlanId String?               // optional link to DroneOperationPlan
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([operatorId])
+  @@index([droneSerialNumber])
+}
+
+model AerodromeInfo {
+  id              String    @id @default(cuid())
+  icaoCode        String    @unique
+  iataCode        String?
+  name            String
+  city            String?
+  runwaysJson     String?               // JSON array of runway data
+  operatingHours  String?
+  elevationFt     Float?
+  refLat          Float?
+  refLon          Float?
+  lastSyncedAt    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([icaoCode])
+}
+
+model JeppesenChart {
+  id              String    @id @default(cuid())
+  chartId         String    @unique
+  icaoCode        String
+  chartType       String                // SID, STAR, IAP, TAXI, etc.
+  procedureName   String?
+  revision        String?
+  effectiveDate   DateTime?
+  expiryDate      DateTime?
+  chartDataUrl    String?
+  waypointsJson   String?               // JSON array of chart waypoints
+  isActive        Boolean   @default(true)
+  lastFetchedAt   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([icaoCode])
+  @@index([chartType])
+}
+
+model Navaid {
+  id              String    @id @default(cuid())
+  navaidId        String    @unique
+  type            String                // VOR, NDB, DME, VORDME, etc.
+  name            String
+  lat             Float
+  lon             Float
+  frequency       String?
+  declination     Float?
+  icaoCode        String?
+  firCode         String?
+  isActive        Boolean   @default(true)
+  lastFetchedAt   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([firCode])
+  @@index([type])
+}
