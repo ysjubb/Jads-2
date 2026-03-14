@@ -1,11 +1,10 @@
 // ── Mission Operations Routes ───────────────────────────────────────────
 import express from 'express'
-import { PrismaClient } from '@prisma/client'
 import { OperatorService } from '../services/operatorService'
 import { requireAuth, requireRole } from '../middleware/authMiddleware'
+import { prisma } from '../lib/prisma'
 
 const router = express.Router()
-const prisma = new PrismaClient()
 const operatorService = new OperatorService(prisma)
 
 const ADMIN_ROLES = [

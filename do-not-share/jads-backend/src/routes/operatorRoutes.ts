@@ -1,10 +1,9 @@
 // ── Operator Registration Routes ────────────────────────────────────────
 import express from 'express'
-import { PrismaClient } from '@prisma/client'
 import { OperatorService } from '../services/operatorService'
+import { prisma } from '../lib/prisma'
 
 const router = express.Router()
-const prisma = new PrismaClient()
 const operatorService = new OperatorService(prisma)
 
 // POST /api/operators/register

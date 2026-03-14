@@ -3,7 +3,6 @@
 // Admin routes (approve/reject) live in adminRoutes.ts.
 
 import express          from 'express'
-import { PrismaClient } from '@prisma/client'
 import { requireAuth, requireRole, requireDomain } from '../middleware/authMiddleware'
 import { serializeForJson }         from '../utils/bigintSerializer'
 import { createServiceLogger }      from '../logger'
@@ -12,9 +11,9 @@ import { ConflictDetectionService } from '../services/ConflictDetectionService'
 import { AfmluAdapterStub }         from '../adapters/stubs/AfmluAdapterStub'
 import { FirAdapterStub }           from '../adapters/stubs/FirAdapterStub'
 import { AAIDataAdapterStub }       from '../adapters/stubs/AAIDataAdapterStub'
+import { prisma }                   from '../lib/prisma'
 
 const router = express.Router()
-const prisma = new PrismaClient()
 const log    = createServiceLogger('DroneOperationPlanRoutes')
 const digitalSkyAdapter = new DigitalSkyAdapterStub()
 const conflictService = new ConflictDetectionService(prisma, new AfmluAdapterStub(), new FirAdapterStub(), new AAIDataAdapterStub())

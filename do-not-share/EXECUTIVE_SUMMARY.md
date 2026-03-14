@@ -13,6 +13,8 @@ For drones, JADS answers one question with mathematical certainty: **"Did this d
 
 For manned aircraft, JADS provides a **complete ICAO-compliant flight plan filing system** that replaces conventional OFPL workflows — with live ADC, FIC, NOTAM, and METAR data integrated directly into the validation and filing pipeline.
 
+**JADS sits in the planning and oversight layer, not the control layer.** It does not command drones or direct aircraft — it validates, records, and cryptographically proves what happened. This is a deliberate architectural boundary: JADS is a compliance intermediary and forensic audit system, not a flight management system.
+
 ---
 
 ## The Problem JADS Solves

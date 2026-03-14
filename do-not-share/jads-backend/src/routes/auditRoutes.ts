@@ -1,7 +1,6 @@
 import fs   from 'fs'
 import path from 'path'
 import express             from 'express'
-import { PrismaClient }   from '@prisma/client'
 import { AuditService, AuditScopeError } from '../services/AuditService'
 import { ForensicVerifier }   from '../services/ForensicVerifier'
 import { Bsa2023CertificateService } from '../services/Bsa2023CertificateService'
@@ -9,9 +8,9 @@ import { EvidenceLedgerJob }  from '../jobs/EvidenceLedgerJob'
 import { createExternalAnchorService } from '../services/ExternalAnchorService'
 import { requireAuditAuth, requireRole } from '../middleware/authMiddleware'
 import { serializeForJson } from '../utils/bigintSerializer'
+import { prisma }          from '../lib/prisma'
 
 const router   = express.Router()
-const prisma   = new PrismaClient()
 const audit    = new AuditService(prisma)
 const verifier    = new ForensicVerifier(prisma)
 const bsaCertSvc  = new Bsa2023CertificateService()

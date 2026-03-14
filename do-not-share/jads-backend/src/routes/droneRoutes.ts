@@ -8,7 +8,6 @@
 
 import express                 from 'express'
 import multer                  from 'multer'
-import { PrismaClient }        from '@prisma/client'
 import { MissionService, MissionSubmissionInput } from '../services/MissionService'
 import { ForensicVerifier }    from '../services/ForensicVerifier'
 import { PALifecycleService }  from '../services/PALifecycleService'
@@ -32,9 +31,9 @@ import {
 } from '../services/DroneNotificationService'
 import { createServiceLogger } from '../logger'
 import { createDeviceAttestationService } from '../services/DeviceAttestationService'
+import { prisma }              from '../lib/prisma'
 
 const router      = express.Router()
-const prisma      = new PrismaClient()
 const service     = new MissionService(prisma)
 const verifier    = new ForensicVerifier(prisma)
 const paLifecycle = new PALifecycleService(prisma)

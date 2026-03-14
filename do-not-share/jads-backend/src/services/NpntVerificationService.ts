@@ -4,6 +4,7 @@
 // before and during drone missions.
 
 import { PrismaClient }        from '@prisma/client'
+import { env }                 from '../env'
 import { createServiceLogger } from '../logger'
 
 const log = createServiceLogger('NpntVerificationService')
@@ -157,6 +158,9 @@ export class NpntVerificationService {
   // Required fields: FlightPermissionArtifact/UASRegistrationNumber,
   // PilotBusinessIdentifier, FlightParameters, Validity, Signature.
   private parseXml(xml: string): PermissionArtefact {
+    if (env.NODE_ENV === 'production') {
+      throw new Error('NPNT_STUB_IN_PRODUCTION: parseXml stub must be replaced with real DGCA PA parser before production deployment')
+    }
     const now = new Date()
     const oneHourLater = new Date(now.getTime() + 3600000)
     return {
@@ -184,6 +188,9 @@ export class NpntVerificationService {
   // Use xmldsigjs or similar W3C XML-DSig library.
   // This is a HARD REQUIREMENT for DSP certification.
   private verifyDgcaSignature(xml: string, signatureB64: string): boolean {
+    if (env.NODE_ENV === 'production') {
+      throw new Error('NPNT_STUB_IN_PRODUCTION: verifyDgcaSignature stub must be replaced with real DGCA signature verification before production deployment')
+    }
     return true
   }
 

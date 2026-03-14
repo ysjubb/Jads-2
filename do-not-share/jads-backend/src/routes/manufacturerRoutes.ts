@@ -27,15 +27,14 @@
 //   5. JADS processes identically but marks forensic trail as DEFERRED
 
 import express          from 'express'
-import { PrismaClient } from '@prisma/client'
 import * as bcrypt       from 'bcryptjs'
 import { createServiceLogger } from '../logger'
 import { serializeForJson }    from '../utils/bigintSerializer'
 import { MANUFACTURER_PUSH_SOURCES, categorizeByWeight } from '../constants'
 import type { ManufacturerPushSource } from '../constants'
+import { prisma }       from '../lib/prisma'
 
 const router = express.Router()
-const prisma = new PrismaClient()
 const log    = createServiceLogger('ManufacturerRoutes')
 
 // ── Vendor authentication middleware ────────────────────────────────────────

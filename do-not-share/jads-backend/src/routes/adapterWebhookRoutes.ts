@@ -9,13 +9,12 @@
 // produces the same result as pushing it once.
 
 import express           from 'express'
-import { PrismaClient }  from '@prisma/client'
 import { ClearanceService } from '../services/ClearanceService'
 import { requireAdapterAuth } from '../middleware/adapterAuthMiddleware'
 import { createServiceLogger } from '../logger'
+import { prisma }        from '../lib/prisma'
 
 const router  = express.Router()
-const prisma  = new PrismaClient()
 const service = new ClearanceService(prisma)
 const log     = createServiceLogger('AdapterWebhookRoutes')
 

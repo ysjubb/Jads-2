@@ -3,14 +3,13 @@
 // JADS is a compliance intermediary — AFTN messages are returned, never transmitted.
 
 import { Router, Request, Response } from 'express'
-import { PrismaClient }       from '@prisma/client'
 import { requireAuth, requireRole } from '../middleware/authMiddleware'
 import { AircraftFPLService }  from '../services/AircraftFPLService'
 import { DeconflictionEngine } from '../services/DeconflictionEngine'
 import { serializeForJson }    from '../utils/bigintSerializer'
+import { prisma }              from '../lib/prisma'
 
 const router = Router()
-const prisma = new PrismaClient()
 const fplService = new AircraftFPLService(prisma)
 const deconfliction = new DeconflictionEngine(prisma)
 
