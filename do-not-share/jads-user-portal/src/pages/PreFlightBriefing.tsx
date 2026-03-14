@@ -140,7 +140,7 @@ export function PreFlightBriefing() {
       <Section title="2. PERMISSION ARTEFACT STATUS">
         <div style={{ fontSize: '0.8rem', color: T.muted }}>
           {fpl.status === 'FILED' || fpl.status === 'ACTIVE' ? (
-            <span style={{ color: T.green }}>Flight plan is {fpl.status} — check PA status via Digital Sky portal</span>
+            <span style={{ color: '#4CAF50' }}>Flight plan is {fpl.status} — check PA status via Digital Sky portal</span>
           ) : (
             <span>Flight plan status: {fpl.status}</span>
           )}
@@ -198,7 +198,7 @@ export function PreFlightBriefing() {
       {/* Section 5: Conflict Advisories */}
       <Section title="5. CONFLICT ADVISORIES">
         {conflicts.length === 0 ? (
-          <div style={{ fontSize: '0.8rem', color: T.green }}>
+          <div style={{ fontSize: '0.8rem', color: '#4CAF50' }}>
             No conflict advisories — route clear of known drone operations
           </div>
         ) : (

@@ -9,7 +9,7 @@
 //   - Pagination
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { T } from '../../App'
+import { T } from '../../theme'
 import { userApi } from '../../api/client'
 
 // ── Types ────────────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@
 //   - Post-submit: success card with Application ID + copy button
 
 import React, { useState, useCallback, useEffect } from 'react'
-import { T } from '../../App'
+import { T } from '../../theme'
 import { userApi } from '../../api/client'
 
 // ── Types ────────────────────────────────────────────────────────────────────

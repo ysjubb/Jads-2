@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useForm, Controller, UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { T } from '../../App'
+import { T } from '../../theme'
 import { userApi } from '../../api/client'
 import {
   FlightCategory,

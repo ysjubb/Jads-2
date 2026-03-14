@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
-import { useAuth, authAxios } from '../../hooks/useAuth'
-import { T } from '../../App'
+import { useAuth } from '../../hooks/useAuth'
+import { userApi } from '../../api/client'
+import { T } from '../../theme'
 
 /* ── Types ──────────────────────────────────────────── */
 
@@ -145,15 +146,15 @@ export function PAIntegrityVerifier() {
     setResult(null)
 
     try {
-      const api = authAxios(token)
+      const api = userApi()
 
       if (mode === 'LOOKUP') {
         if (!lookupId.trim()) { setError('Enter a PA ID to look up'); setLoading(false); return }
-        const res = await api.get(`/api/drone/permissions/${lookupId.trim()}/verify`)
+        const res = await api.get(`/drone/permissions/${lookupId.trim()}/verify`)
         setResult(res.data)
       } else {
         if (!paXml.trim()) { setError('Provide PA XML content'); setLoading(false); return }
-        const res = await api.post('/api/drone/permissions/verify-xml', { paXml })
+        const res = await api.post('/drone/permissions/verify-xml', { paXml })
         setResult(res.data)
       }
     } catch (err: any) {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { T } from '../../App'
+import { T } from '../../theme'
 import { userApi } from '../../api/client'
 
 // ── Types ────────────────────────────────────────────────────────────────────

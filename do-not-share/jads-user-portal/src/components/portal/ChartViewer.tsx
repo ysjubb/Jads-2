@@ -1,23 +1,26 @@
 import React, { useState } from 'react'
 import { T } from '../../theme'
-import { INDIAN_AERODROMES } from '../../data/icaoData'
-import { SID_STAR_DATA } from '../../data/sidStarData'
-import { getCurrentAIRACCycle, daysUntilExpiry, fetchAAIEAIPChart } from '../../services/chartService'
+import { SID_STAR_DATA, getSidStarForAirport } from '../../data/sidStarData'
+import { getCurrentAIRACCycle, daysUntilAIRACExpiry, getChartsForAirport } from '../../services/chartService'
 
 const TABS = ['SID Charts', 'STAR Charts', 'IAP Charts', 'Airport Diagrams', 'Enroute'] as const
+
+const AIRPORT_OPTIONS = Object.keys(SID_STAR_DATA).sort()
 
 export function ChartViewer() {
   const [tab, setTab] = useState<typeof TABS[number]>('SID Charts')
   const [selectedAirport, setSelectedAirport] = useState('')
   const cycle = getCurrentAIRACCycle()
-  const daysLeft = daysUntilExpiry()
+  const daysLeft = daysUntilAIRACExpiry()
 
-  const charts = SID_STAR_DATA.filter(p => {
-    if (!selectedAirport) return false
-    if (tab === 'SID Charts') return p.airport === selectedAirport && p.type === 'SID'
-    if (tab === 'STAR Charts') return p.airport === selectedAirport && p.type === 'STAR'
-    return false
-  })
+  const procs = selectedAirport ? getSidStarForAirport(selectedAirport) : undefined
+  const charts = procs
+    ? procs.procedures.filter(p => {
+        if (tab === 'SID Charts') return p.type === 'SID'
+        if (tab === 'STAR Charts') return p.type === 'STAR'
+        return false
+      })
+    : []
 
   return (
     <div style={{ padding: '1.5rem' }}>
@@ -37,7 +40,10 @@ export function ChartViewer() {
           borderRadius: '4px', color: T.textBright, fontSize: '0.7rem', fontFamily: 'inherit',
         }} value={selectedAirport} onChange={e => setSelectedAirport(e.target.value)}>
           <option value="">Select airport...</option>
-          {INDIAN_AERODROMES.map(a => <option key={a.icao} value={a.icao}>{a.icao} — {a.name}</option>)}
+          {AIRPORT_OPTIONS.map(icao => {
+            const ap = SID_STAR_DATA[icao]
+            return <option key={icao} value={icao}>{icao} — {ap?.name ?? icao}</option>
+          })}
         </select>
       </div>
 
@@ -66,28 +72,18 @@ export function ChartViewer() {
               <thead>
                 <tr style={{ borderBottom: `1px solid ${T.border}`, color: T.muted }}>
                   <th style={{ padding: '0.4rem', textAlign: 'left' }}>Procedure</th>
-                  <th style={{ padding: '0.4rem', textAlign: 'left' }}>Runways</th>
-                  <th style={{ padding: '0.4rem', textAlign: 'left' }}>Initial Fix</th>
+                  <th style={{ padding: '0.4rem', textAlign: 'left' }}>Runway</th>
+                  <th style={{ padding: '0.4rem', textAlign: 'left' }}>Transition</th>
                   <th style={{ padding: '0.4rem', textAlign: 'left' }}>AIRAC</th>
-                  <th style={{ padding: '0.4rem', textAlign: 'left' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {charts.map(c => (
-                  <tr key={c.name} style={{ borderBottom: `1px solid ${T.border}08` }}>
+                {charts.map((c, i) => (
+                  <tr key={`${c.name}-${i}`} style={{ borderBottom: `1px solid ${T.border}08` }}>
                     <td style={{ padding: '0.4rem', color: T.primary }}>{c.name}</td>
-                    <td style={{ padding: '0.4rem' }}>{c.runways.join(', ')}</td>
-                    <td style={{ padding: '0.4rem' }}>{c.initialFix}</td>
-                    <td style={{ padding: '0.4rem', fontSize: '0.6rem' }}>{cycle.cycleNumber}</td>
-                    <td style={{ padding: '0.4rem' }}>
-                      <button onClick={async () => {
-                        const url = await fetchAAIEAIPChart(selectedAirport, c.name)
-                        window.open(url, '_blank')
-                      }} style={{
-                        background: 'transparent', border: `1px solid ${T.primary}40`, color: T.primary,
-                        borderRadius: '3px', padding: '0.2rem 0.5rem', cursor: 'pointer', fontSize: '0.6rem', fontFamily: 'inherit',
-                      }}>View PDF</button>
-                    </td>
+                    <td style={{ padding: '0.4rem' }}>{c.runway ?? '—'}</td>
+                    <td style={{ padding: '0.4rem' }}>{c.transition ?? '—'}</td>
+                    <td style={{ padding: '0.4rem', fontSize: '0.6rem' }}>{cycle.cycle}</td>
                   </tr>
                 ))}
               </tbody>
@@ -103,7 +99,7 @@ export function ChartViewer() {
 
 export function AIRACBanner() {
   const cycle = getCurrentAIRACCycle()
-  const daysLeft = daysUntilExpiry()
+  const daysLeft = daysUntilAIRACExpiry()
   const bannerColor = daysLeft <= 0 ? T.red : daysLeft <= 3 ? T.amber : T.primary
 
   return (
@@ -112,11 +108,11 @@ export function AIRACBanner() {
       background: bannerColor + '15', border: `1px solid ${bannerColor}40`,
       fontSize: '0.65rem', color: bannerColor, display: 'flex', justifyContent: 'space-between',
     }}>
-      <span>AIRAC {cycle.cycleNumber} effective {cycle.effectiveDate.toLocaleDateString()}</span>
+      <span>AIRAC {cycle.cycle} effective {cycle.effective.toLocaleDateString()}</span>
       <span>
         {daysLeft <= 0 ? 'EXPIRED — NavData Update Required' :
          daysLeft <= 3 ? `Expires in ${daysLeft} days` :
-         `Next: ${cycle.expiryDate.toLocaleDateString()}`}
+         `Next: ${cycle.expiry.toLocaleDateString()}`}
       </span>
     </div>
   )

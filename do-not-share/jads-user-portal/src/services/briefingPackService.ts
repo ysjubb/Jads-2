@@ -1,6 +1,6 @@
 // UP17: Pre-flight briefing pack generator
 
-import type { ICAOFlightPlan } from '../types/flightPlan'
+import type { FlightPlan } from '../types/flightPlan'
 
 export interface BriefingSection {
   title: string
@@ -19,7 +19,7 @@ export interface BriefingPack {
   complianceStatus: 'PASS' | 'FAIL' | 'WARN'
 }
 
-export async function generateBriefingPack(fpl: Partial<ICAOFlightPlan>): Promise<BriefingPack> {
+export async function generateBriefingPack(fpl: Partial<FlightPlan>): Promise<BriefingPack> {
   await new Promise(r => setTimeout(r, 500))
 
   const adep = fpl.departureAerodrome ?? 'ZZZZ'
@@ -29,12 +29,12 @@ export async function generateBriefingPack(fpl: Partial<ICAOFlightPlan>): Promis
   const sections: BriefingSection[] = [
     {
       title: 'Flight Summary',
-      content: `${adep} → ${ades} | EOBT: ${eobt}Z | A/C: ${fpl.aircraftId ?? 'N/A'} (${fpl.aircraftType ?? 'ZZZZ'})`,
+      content: `${adep} → ${ades} | EOBT: ${eobt}Z | A/C: ${fpl.callsign ?? 'N/A'} (${fpl.aircraftType ?? 'ZZZZ'})`,
       severity: 'INFO',
     },
     {
       title: 'Weather Synopsis',
-      content: `Current METARs and TAFs for ${adep}, ${ades}${fpl.alternate1 ? `, ${fpl.alternate1}` : ''} — check IMD/AAI AIM for live data.`,
+      content: `Current METARs and TAFs for ${adep}, ${ades}${fpl.alternateAerodrome ? `, ${fpl.alternateAerodrome}` : ''} — check IMD/AAI AIM for live data.`,
       severity: 'INFO',
     },
     {
