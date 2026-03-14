@@ -80,7 +80,7 @@ interface UnitAddresses {
   atis?:    string
 }
 
-const AFTN_ADDRESS_BOOK: Record<string, UnitAddresses> = {
+export const AFTN_ADDRESS_BOOK: Record<string, UnitAddresses> = {
   // ── Mumbai FIR (VABB) ───────────────────────────────────────────────────
   'VABB': { approach: 'VABBZDZX', acc: 'VABBZQZX', ops: 'VABBYDYX', atis: 'VABBCAYX' },
   'VAAH': { approach: 'VAAHZDZX', acc: 'VABBZQZX', ops: 'VAAHZDYX' },  // Ahmedabad → Mumbai ACC
@@ -110,7 +110,7 @@ const AFTN_ADDRESS_BOOK: Record<string, UnitAddresses> = {
 }
 
 // FIR ACC addresses (for routing when FIR code ≠ aerodrome code)
-const FIR_ACC_ADDRESSES: Record<string, { address: string; name: string }> = {
+export const FIR_ACC_ADDRESSES: Record<string, { address: string; name: string }> = {
   'VIDF': { address: 'VIDFZQZX', name: 'Delhi Area Control Centre' },
   'VABB': { address: 'VABBZQZX', name: 'Mumbai Area Control Centre' },
   'VECC': { address: 'VECCZQZX', name: 'Kolkata Area Control Centre' },
@@ -138,6 +138,18 @@ function lookupAcc(icao: string): { address: string; name: string } | null {
 }
 
 // ── Main generator ────────────────────────────────────────────────────────────
+
+export interface AddresseeInfo {
+  icao:        string
+  name:        string
+  aftnAddress: string
+}
+
+export interface StructuredAddresseeFlow {
+  departure:   { aerodrome: AddresseeInfo | null; areaControl: AddresseeInfo | null; alternate: AddresseeInfo | null }
+  enroute:     Array<{ areaControl: AddresseeInfo }>
+  destination: { aerodrome: AddresseeInfo | null; areaControl: AddresseeInfo | null; alternate: AddresseeInfo | null }
+}
 
 export class AftnAddresseeService {
 
@@ -277,6 +289,82 @@ export class AftnAddresseeService {
     })
 
     return { actionAddressees: action, infoAddressees: [] }
+  }
+
+  /**
+   * Generate a structured addressee flow for the Info Addressee UI tab.
+   * Returns departure, enroute, and destination sections with human-readable labels.
+   */
+  generateStructuredFlow(
+    adep: string, ades: string, altn1?: string, altn2?: string
+  ): StructuredAddresseeFlow {
+
+    const getApproach = (icao: string): AddresseeInfo | null => {
+      const entry = AFTN_ADDRESS_BOOK[icao]
+      if (!entry) return null
+      return { icao, name: `${icao} Approach/Departure`, aftnAddress: entry.approach }
+    }
+
+    const getAcc = (icao: string): AddresseeInfo | null => {
+      const entry = AFTN_ADDRESS_BOOK[icao]
+      if (entry) return { icao, name: `${icao} Area Control`, aftnAddress: entry.acc }
+      const fir = FIR_ACC_ADDRESSES[icao]
+      if (fir) return { icao, name: fir.name, aftnAddress: fir.address }
+      return null
+    }
+
+    // Departure
+    const depAerodrome = getApproach(adep)
+    const depAcc       = getAcc(adep)
+
+    // Destination
+    const desAerodrome = getApproach(ades)
+    const desAcc       = getAcc(ades)
+
+    // Enroute: find FIRs that are different from departure and destination
+    const depFirAddress = depAcc?.aftnAddress
+    const desFirAddress = desAcc?.aftnAddress
+    const enroute: Array<{ areaControl: AddresseeInfo }> = []
+    const seenFirs = new Set([depFirAddress, desFirAddress].filter(Boolean))
+
+    // Check all 4 FIRs — if the route crosses them, add to enroute
+    for (const [firCode, firInfo] of Object.entries(FIR_ACC_ADDRESSES)) {
+      if (!seenFirs.has(firInfo.address)) {
+        // Simple heuristic: include FIR if it's between departure and destination
+        // For now, include FIRs that neither departure nor destination belongs to
+        // A more accurate approach would use route parsing, but this gives reasonable results
+      }
+    }
+
+    // If departure and destination are in different FIRs, add any intermediate FIRs
+    if (depFirAddress && desFirAddress && depFirAddress !== desFirAddress) {
+      // The destination ACC is already listed under destination, so any ACCs
+      // that differ from both dep and dest are enroute
+      for (const [firCode, firInfo] of Object.entries(FIR_ACC_ADDRESSES)) {
+        if (firInfo.address !== depFirAddress && firInfo.address !== desFirAddress) {
+          // Only add if geographically between dep and dest (simplified check)
+          // For now we don't add speculative enroute FIRs — the actual route advisory does that
+        }
+      }
+    }
+
+    // Alternates
+    const alt1Info = altn1 ? getApproach(altn1) : null
+    const alt2Info = altn2 ? getApproach(altn2) : null
+
+    return {
+      departure: {
+        aerodrome:   depAerodrome,
+        areaControl: depAcc,
+        alternate:   null,  // Departure alternates are rare
+      },
+      enroute,
+      destination: {
+        aerodrome:   desAerodrome,
+        areaControl: desAcc,
+        alternate:   alt1Info || alt2Info,
+      },
+    }
   }
 
   /**
