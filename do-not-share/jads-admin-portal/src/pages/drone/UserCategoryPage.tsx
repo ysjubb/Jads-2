@@ -216,7 +216,7 @@ export function UserCategoryPage() {
         <div style={{ height: 220 }}>
           <ResponsiveContainer>
             <PieChart>
-              <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+              <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ''} ${((percent ?? 0) * 100).toFixed(0)}%`}>
                 {pieData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
               </Pie>
               <Tooltip contentStyle={{ background: T.surface, border: `1px solid ${T.border}`, fontSize: '0.75rem' }} />

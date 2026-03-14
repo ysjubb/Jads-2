@@ -422,9 +422,9 @@ function ZoneBreakdownChart({ data }: { data: PAZoneBreakdown[] }) {
             )}
           />
           <Tooltip
-            formatter={(value: number, name: string) => [
+            formatter={((value: number, name: string) => [
               `${value} PAs`, name,
-            ]}
+            ]) as any}
             contentStyle={{
               background: ZT.bg, border: `1px solid ${ZT.border}`, borderRadius: '4px',
               fontFamily: '"JetBrains Mono", monospace', fontSize: '0.75rem',

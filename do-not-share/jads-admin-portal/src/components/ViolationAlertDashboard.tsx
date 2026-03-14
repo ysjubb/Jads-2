@@ -1,6 +1,6 @@
 // T10 — Admin Portal: Live Violation Alert Dashboard
 
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { ZT } from '../theme'
 import { AdminWsService, TelemetryPoint, ViolationEvent } from '../services/adminWsService'
 import { useAdminAuth } from '../hooks/useAdminAuth'

@@ -497,7 +497,7 @@ interface AdapterEntry {
 
 function AdapterStatusPanel() {
   const [adapters, setAdapters] = React.useState<AdapterEntry[]>([])
-  const [useLive, setUseLive] = React.useState(false)
+  const [, setUseLive] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {

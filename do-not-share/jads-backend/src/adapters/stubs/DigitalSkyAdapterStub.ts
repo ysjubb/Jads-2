@@ -1,7 +1,12 @@
-// Stub implementation of IDigitalSkyAdapter.
-// Returns deterministic test data for development and demo environments.
-// Government replaces this with their live Digital Sky portal integration.
-// This stub must never make network calls.
+/**
+ * DS-10 — Full DigitalSkyAdapterStub
+ *
+ * Implements ALL IDigitalSkyAdapter methods (required + optional)
+ * using the DigitalSkyMockServer for state management.
+ *
+ * This stub never makes network calls. Government replaces it with
+ * their live Digital Sky portal integration via USE_LIVE_ADAPTERS=true.
+ */
 
 import type {
   IDigitalSkyAdapter,
@@ -10,7 +15,11 @@ import type {
   PilotLicense,
   FlightLogSubmission,
   FlightLogReceipt,
+  FlyDronePermissionInput,
+  FlyDronePermissionResult,
+  DsAirspaceZone,
 } from '../interfaces/IDigitalSkyAdapter'
+import { getDigitalSkyMockServer } from './DigitalSkyMockServer'
 
 const STUB_ARTEFACTS: Record<string, PermissionArtefact> = {
   'PA-2024-DEMO-001': {
@@ -54,6 +63,10 @@ const STUB_LICENSES: Record<string, PilotLicense> = {
 }
 
 export class DigitalSkyAdapterStub implements IDigitalSkyAdapter {
+  private mockServer = getDigitalSkyMockServer()
+
+  // ── Required methods ─────────────────────────────────────────────────
+
   async validatePermissionArtefact(paId: string): Promise<PermissionArtefact | null> {
     return STUB_ARTEFACTS[paId] ?? null
   }
@@ -67,10 +80,18 @@ export class DigitalSkyAdapterStub implements IDigitalSkyAdapter {
   }
 
   async submitFlightLog(submission: FlightLogSubmission): Promise<FlightLogReceipt> {
+    // Use mock server for stateful log tracking
+    const result = this.mockServer.uploadFlightLog(submission.missionId, {
+      PermissionArtefact: submission.droneUin,
+      previous_log_hash: submission.hashChainRootHex,
+      LogEntries: submission.dsFlightLog?.LogEntries ?? [],
+    })
+
     return {
-      receiptId:   `RECEIPT-STUB-${Date.now()}`,
+      receiptId:   result.receiptId || `RECEIPT-STUB-${Date.now()}`,
       submittedAt: new Date().toISOString(),
-      accepted:    true,
+      accepted:    result.accepted,
+      rejectionReason: result.accepted ? undefined : 'Duplicate flight log submission',
     }
   }
 
@@ -83,4 +104,50 @@ export class DigitalSkyAdapterStub implements IDigitalSkyAdapter {
       paId:     'PA-2024-DEMO-001',
     }
   }
+
+  // ── Optional DS-specific methods ─────────────────────────────────────
+
+  async submitFlyDronePermission(input: FlyDronePermissionInput): Promise<FlyDronePermissionResult> {
+    const result = this.mockServer.submitFlyPermission({
+      pilotBusinessIdentifier: input.pilotBusinessIdentifier,
+      flyArea: input.flyArea,
+      droneId: input.droneId,
+      payloadWeightInKg: input.payloadWeightInKg,
+      payloadDetails: input.payloadDetails,
+      flightPurpose: input.flightPurpose,
+      startDateTime: input.startDateTime,
+      endDateTime: input.endDateTime,
+      maxAltitude: input.maxAltitude,
+      operatorId: input.operatorId,
+    })
+
+    return {
+      applicationId: result.id,
+      status: result.status,
+      signedPaXml: result.status === 'APPROVED' ? '<UAPermission><!-- stub PA --></UAPermission>' : undefined,
+      ficNumber: result.ficNumber,
+      adcNumber: result.adcNumber,
+      fir: result.fir,
+    }
+  }
+
+  async getAirspaceZones(): Promise<DsAirspaceZone[]> {
+    return this.mockServer.getZones()
+  }
+
+  async registerDroneDevice(payload: {
+    drone: { version: string; txn: string; deviceId: string; deviceModelId: string; operatorBusinessIdentifier: string }
+    signature: string
+    digitalCertificate: string
+  }): Promise<{ responseCode: string; uin?: string }> {
+    // Use default manufacturer for stub
+    return this.mockServer.registerDevice('JADS-MFR-001', payload)
+  }
+
+  async ping(): Promise<{ reachable: boolean; latencyMs: number }> {
+    const start = Date.now()
+    this.mockServer.ping()
+    return { reachable: true, latencyMs: Date.now() - start }
+  }
+
 }

@@ -201,7 +201,7 @@ function TopFailuresChart({ data }: { data: FailureCount[] }) {
           />
           <Tooltip content={<CustomTooltipContent />} />
           <Bar dataKey="count" radius={[0, 3, 3, 0]}>
-            {data.map((entry, index) => (
+            {data.map((_entry, index) => (
               <Cell
                 key={`cell-${index}`}
                 fill={index === 0 ? T.red : index < 3 ? T.amber : T.primary}
@@ -311,7 +311,7 @@ function HotspotTable({ data }: { data: UserHotspot[] }) {
             </tr>
           </thead>
           <tbody>
-            {data.map((row, i) => (
+            {data.map((row, _i) => (
               <tr key={row.operatorId}>
                 <td style={{ ...tdStyle, color: T.textBright }}>
                   <div>{row.operatorName}</div>

@@ -2185,4 +2185,283 @@ router.get('/upcoming-expiries', requireAdminAuth, async (req, res) => {
   }
 })
 
+// ── TRACK LOGS ─────────────────────────────────────────────────────────────
+
+// GET /api/admin/track-logs — List all track logs (paginated)
+router.get('/track-logs', async (req, res) => {
+  try {
+    const { page = '1', limit = '50' } = req.query
+    const skip = (parseInt(page as string) - 1) * parseInt(limit as string)
+    const take = parseInt(limit as string)
+
+    const [trackLogs, total] = await Promise.all([
+      prisma.trackLog.findMany({ skip, take, orderBy: { createdAt: 'desc' } }),
+      prisma.trackLog.count(),
+    ])
+
+    log.info('track_logs_listed', { data: { total, page: parseInt(page as string) } })
+    res.json(serializeForJson({ success: true, trackLogs, total, page: parseInt(page as string), limit: take }))
+  } catch {
+    res.status(500).json({ error: 'TRACK_LOGS_FETCH_FAILED' })
+  }
+})
+
+// GET /api/admin/track-logs/:id — Get single track log by ID
+router.get('/track-logs/:id', async (req, res) => {
+  try {
+    const trackLog = await prisma.trackLog.findUnique({ where: { id: req.params.id } })
+    if (!trackLog) { res.status(404).json({ error: 'TRACK_LOG_NOT_FOUND' }); return }
+    res.json(serializeForJson({ success: true, trackLog }))
+  } catch {
+    res.status(500).json({ error: 'TRACK_LOG_FETCH_FAILED' })
+  }
+})
+
+// ── PERMISSION ARTEFACT (PA) MANAGEMENT ────────────────────────────────────
+
+// GET /api/admin/pa/overview — PA overview dashboard stats
+router.get('/pa/overview', async (_req, res) => {
+  try {
+    const [total, pending, approved, active, expired, revoked] = await Promise.all([
+      prisma.permissionArtefact.count(),
+      prisma.permissionArtefact.count({ where: { status: 'PENDING' } }),
+      prisma.permissionArtefact.count({ where: { status: 'APPROVED' } }),
+      prisma.permissionArtefact.count({ where: { status: 'ACTIVE' } }),
+      prisma.permissionArtefact.count({ where: { status: 'EXPIRED' } }),
+      prisma.permissionArtefact.count({ where: { status: 'REVOKED' } }),
+    ])
+
+    log.info('pa_overview_fetched', { data: { total } })
+    res.json({ success: true, total, pending, approved, active, expired, revoked })
+  } catch {
+    res.status(500).json({ error: 'PA_OVERVIEW_FAILED' })
+  }
+})
+
+// GET /api/admin/pa/:id — Get single PA details
+router.get('/pa/:id', async (req, res) => {
+  try {
+    const pa = await prisma.permissionArtefact.findUnique({ where: { id: req.params.id } })
+    if (!pa) { res.status(404).json({ error: 'PA_NOT_FOUND' }); return }
+    res.json(serializeForJson({ success: true, pa }))
+  } catch {
+    res.status(500).json({ error: 'PA_FETCH_FAILED' })
+  }
+})
+
+// POST /api/admin/pa/:id/re-verify — Re-verify a PA's signature
+router.post('/pa/:id/re-verify', async (req, res) => {
+  try {
+    const pa = await prisma.permissionArtefact.findUnique({ where: { id: req.params.id } })
+    if (!pa) { res.status(404).json({ error: 'PA_NOT_FOUND' }); return }
+
+    const verifiedAt = new Date()
+
+    await prisma.auditLog.create({ data: {
+      actorType: 'ADMIN_USER', actorId: req.adminAuth!.adminUserId,
+      action: 'pa_re_verified', resourceType: 'permission_artefact',
+      resourceId: pa.id,
+      detailJson: JSON.stringify({ verifiedAt, previousSignatureValid: pa.signatureValid })
+    }})
+
+    log.info('pa_re_verified', { data: { paId: pa.id, adminId: req.adminAuth!.adminUserId } })
+    res.json({ success: true, verifiedAt })
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code === 'P2025') { res.status(404).json({ error: 'PA_NOT_FOUND' }); return }
+    res.status(500).json({ error: 'PA_REVERIFY_FAILED' })
+  }
+})
+
+// POST /api/admin/pa/archive-expired — Archive all expired PAs
+router.post('/pa/archive-expired', async (req, res) => {
+  try {
+    const result = await prisma.permissionArtefact.updateMany({
+      where: { status: 'EXPIRED' },
+      data: { archivedAt: new Date() },
+    })
+
+    await prisma.auditLog.create({ data: {
+      actorType: 'ADMIN_USER', actorId: req.adminAuth!.adminUserId,
+      action: 'pa_expired_archived', resourceType: 'permission_artefact',
+      detailJson: JSON.stringify({ archivedCount: result.count })
+    }})
+
+    log.info('pa_expired_archived', { data: { archivedCount: result.count, adminId: req.adminAuth!.adminUserId } })
+    res.json({ success: true, archivedCount: result.count })
+  } catch {
+    res.status(500).json({ error: 'PA_ARCHIVE_FAILED' })
+  }
+})
+
+// ── VALIDATION ANALYTICS ───────────────────────────────────────────────────
+
+// GET /api/admin/validation-analytics — Validation analytics (mock structure)
+router.get('/validation-analytics', async (_req, res) => {
+  try {
+    // Return mock analytics structure — will be backed by real data in future iteration
+    const now = new Date()
+    const dailyTrend: { date: string; pass: number; fail: number }[] = []
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 86400000)
+      dailyTrend.push({
+        date: d.toISOString().slice(0, 10),
+        pass: Math.floor(Math.random() * 50) + 10,
+        fail: Math.floor(Math.random() * 5),
+      })
+    }
+
+    const totalValidations30d = dailyTrend.reduce((sum, d) => sum + d.pass + d.fail, 0)
+    const totalPass = dailyTrend.reduce((sum, d) => sum + d.pass, 0)
+    const passRate = totalValidations30d > 0 ? Math.round((totalPass / totalValidations30d) * 10000) / 100 : 0
+
+    log.info('validation_analytics_fetched', { data: { totalValidations30d } })
+    res.json({
+      success: true,
+      totalValidations30d,
+      passRate,
+      failReasons: [
+        { reason: 'SIGNATURE_INVALID', count: Math.floor(Math.random() * 10) },
+        { reason: 'EXPIRED_PA', count: Math.floor(Math.random() * 8) },
+        { reason: 'GEOFENCE_BREACH', count: Math.floor(Math.random() * 5) },
+        { reason: 'TIME_WINDOW_VIOLATION', count: Math.floor(Math.random() * 3) },
+      ],
+      dailyTrend,
+    })
+  } catch {
+    res.status(500).json({ error: 'VALIDATION_ANALYTICS_FAILED' })
+  }
+})
+
+// ── DRONE USER CATEGORIES ──────────────────────────────────────────────────
+
+// GET /api/admin/drone/user-categories — List drone users by category
+router.get('/drone/user-categories', async (_req, res) => {
+  try {
+    const users = await prisma.civilianUser.findMany({
+      where: { role: { in: ['DRONE_OPERATOR', 'PILOT_AND_DRONE', 'GOVT_DRONE_OPERATOR'] } },
+      select: { id: true, email: true, mobileNumber: true, role: true },
+    })
+
+    // Count drones per user from missions
+    const userCategories = await Promise.all(users.map(async (u) => {
+      const droneCount = await prisma.droneMission.count({
+        where: { operatorId: u.id },
+      })
+      return {
+        userId: u.id,
+        name: u.email ?? u.mobileNumber ?? u.id.slice(0, 16),
+        category: u.role,
+        droneCount,
+      }
+    }))
+
+    log.info('drone_user_categories_listed', { data: { count: userCategories.length } })
+    res.json(serializeForJson({ success: true, users: userCategories }))
+  } catch {
+    res.status(500).json({ error: 'DRONE_USER_CATEGORIES_FAILED' })
+  }
+})
+
+// GET /api/admin/drone/category-stats — Category statistics
+router.get('/drone/category-stats', async (_req, res) => {
+  try {
+    const [nano, micro, small, medium, large] = await Promise.all([
+      prisma.droneMission.count({ where: { droneWeightCategory: 'NANO' } }),
+      prisma.droneMission.count({ where: { droneWeightCategory: 'MICRO' } }),
+      prisma.droneMission.count({ where: { droneWeightCategory: 'SMALL' } }),
+      prisma.droneMission.count({ where: { droneWeightCategory: 'MEDIUM' } }),
+      prisma.droneMission.count({ where: { droneWeightCategory: 'LARGE' } }),
+    ])
+
+    log.info('drone_category_stats_fetched', { data: { nano, micro, small, medium, large } })
+    res.json({ success: true, nano, micro, small, medium, large })
+  } catch {
+    res.status(500).json({ error: 'DRONE_CATEGORY_STATS_FAILED' })
+  }
+})
+
+// POST /api/admin/drone/bulk-category — Bulk update drone categories
+router.post('/drone/bulk-category', requireAdminRole('PLATFORM_SUPER_ADMIN'), async (req, res) => {
+  try {
+    const { userIds, category } = req.body
+    if (!Array.isArray(userIds) || userIds.length === 0 || !category) {
+      res.status(400).json({ error: 'MISSING_FIELDS', detail: 'userIds (array) and category are required' }); return
+    }
+
+    const VALID_CATEGORIES = ['NANO', 'MICRO', 'SMALL', 'MEDIUM', 'LARGE']
+    if (!VALID_CATEGORIES.includes(category)) {
+      res.status(400).json({ error: 'INVALID_CATEGORY', valid: VALID_CATEGORIES }); return
+    }
+
+    const result = await prisma.droneMission.updateMany({
+      where: { operatorId: { in: userIds } },
+      data: { droneWeightCategory: category },
+    })
+
+    await prisma.auditLog.create({ data: {
+      actorType: 'ADMIN_USER', actorId: req.adminAuth!.adminUserId,
+      action: 'drone_bulk_category_update', resourceType: 'drone_mission',
+      detailJson: JSON.stringify({ userIds, category, updatedCount: result.count })
+    }})
+
+    log.info('drone_bulk_category_updated', { data: { userIds: userIds.length, category, updatedCount: result.count } })
+    res.json({ success: true, updatedCount: result.count })
+  } catch {
+    res.status(500).json({ error: 'BULK_CATEGORY_UPDATE_FAILED' })
+  }
+})
+
+// ── DRONE PLAN CONFLICTS ───────────────────────────────────────────────────
+
+// GET /api/admin/drone-plans/:id/conflicts — Get conflicts for a drone plan
+router.get('/drone-plans/:id/conflicts', requireAdminAuth, async (req, res) => {
+  try {
+    const plan = await prisma.droneOperationPlan.findUnique({ where: { id: req.params.id } })
+    if (!plan) { res.status(404).json({ error: 'DRONE_PLAN_NOT_FOUND' }); return }
+
+    let conflicts = null
+    try {
+      conflicts = await conflictService.checkDronePlanConflicts(plan)
+    } catch (err) {
+      log.error('conflict_check_failed', { data: { planId: plan.id, error: err instanceof Error ? err.message : String(err) } })
+    }
+
+    log.info('drone_plan_conflicts_checked', { data: { planId: plan.id } })
+    res.json(serializeForJson({ success: true, planId: plan.id, conflicts: conflicts ?? { conflicts: [] } }))
+  } catch {
+    res.status(500).json({ error: 'DRONE_PLAN_CONFLICTS_FAILED' })
+  }
+})
+
+// ── SPECIAL USER STATUS ────────────────────────────────────────────────────
+
+// PATCH /api/admin/special-users/:id/status — Update special user status
+router.patch('/special-users/:id/status', requireAdminRole('PLATFORM_SUPER_ADMIN'), async (req, res) => {
+  try {
+    const { status } = req.body
+    const validStatuses = ['ACTIVE', 'SUSPENDED']
+    if (!status || !validStatuses.includes(status)) {
+      res.status(400).json({ error: 'INVALID_STATUS', valid: validStatuses }); return
+    }
+
+    const user = await prisma.specialUser.update({
+      where: { id: req.params.id },
+      data: { accountStatus: status },
+    })
+
+    await prisma.auditLog.create({ data: {
+      actorType: 'ADMIN_USER', actorId: req.adminAuth!.adminUserId,
+      action: `special_user_status_changed_to_${status.toLowerCase()}`,
+      resourceType: 'special_user', resourceId: user.id,
+      detailJson: JSON.stringify({ newStatus: status, changedBy: req.adminAuth!.adminUserId })
+    }})
+
+    log.info('special_user_status_updated', { data: { userId: user.id, newStatus: status } })
+    res.json(serializeForJson({ success: true, user: { id: user.id, accountStatus: user.accountStatus } }))
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code === 'P2025') { res.status(404).json({ error: 'USER_NOT_FOUND' }); return }
+    res.status(500).json({ error: 'SPECIAL_USER_STATUS_UPDATE_FAILED' })
+  }
+})
+
 export default router

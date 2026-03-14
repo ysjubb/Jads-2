@@ -5,6 +5,11 @@
  * cryptographically linked chain. Any modification to any entry
  * invalidates all subsequent entries.
  *
+ * DS alignment:
+ *   - Genesis hash uses zero-fill (64 hex zeros) instead of 'GENESIS' string
+ *   - DS chains across flights (previous_log_hash = hash of last flight's log)
+ *   - JADS chains within a single flight AND across flights
+ *
  * This is the technical foundation of JADS's BSA 2023 compliance claim.
  */
 
@@ -45,17 +50,39 @@ export function deterministicStringify(obj: Record<string, unknown>): string {
 
 // ── Flight Log Chain ───────────────────────────────────────────────────
 
+/**
+ * Zero-fill genesis hash (64 hex zeros = SHA-256 of nothing).
+ * DS uses previous_log_hash from the prior flight; for the first entry
+ * in the first flight, we use all-zero hash instead of 'GENESIS' string.
+ */
+const GENESIS_HASH = '0'.repeat(64);
+
 export class FlightLogChain {
   private chain: FlightLogEntry[] = [];
   private flightId: string;
   private droneUIN: string;
   private signingKey: string; // RSA private key PEM
   private sequenceCounter = 0;
+  /** Hash from the drone's previous flight log (DS cross-flight chain) */
+  private previousFlightLogHash: string;
 
-  constructor(flightId: string, droneUIN: string, signingKey: string) {
+  /**
+   * @param flightId  Matches NPNT PA FlightID
+   * @param droneUIN  Drone UIN
+   * @param signingKey  RSA private key PEM
+   * @param previousFlightLogHash  Hash of the drone's last flight log
+   *                               (empty/undefined for first-ever flight → uses zero-fill)
+   */
+  constructor(
+    flightId: string,
+    droneUIN: string,
+    signingKey: string,
+    previousFlightLogHash?: string
+  ) {
     this.flightId = flightId;
     this.droneUIN = droneUIN;
     this.signingKey = signingKey;
+    this.previousFlightLogHash = previousFlightLogHash || GENESIS_HASH;
   }
 
   /**
@@ -70,7 +97,8 @@ export class FlightLogChain {
     // Compute previousLogHash
     let previousLogHash: string;
     if (seq === 0) {
-      previousLogHash = 'GENESIS';
+      // First entry uses zero-fill genesis hash (DS-aligned)
+      previousLogHash = this.previousFlightLogHash;
     } else {
       const prevEntry = this.chain[this.chain.length - 1];
       previousLogHash = crypto
@@ -135,8 +163,8 @@ export class FlightLogChain {
 
       // Verify previousLogHash
       if (i === 0) {
-        if (entry.previousLogHash !== 'GENESIS') {
-          errors.push(`Entry 0: previousLogHash should be 'GENESIS', got '${entry.previousLogHash}'`);
+        if (entry.previousLogHash !== this.previousFlightLogHash) {
+          errors.push(`Entry 0: previousLogHash should be '${this.previousFlightLogHash.substring(0, 16)}...', got '${entry.previousLogHash.substring(0, 16)}...'`);
           brokenLinkAt = brokenLinkAt ?? 0;
         }
       } else {

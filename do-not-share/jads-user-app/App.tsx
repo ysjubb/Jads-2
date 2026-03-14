@@ -58,7 +58,13 @@ export default function App() {
           <TouchableOpacity style={styles.backBtn} onPress={() => setScreen({ name: 'FPL_LIST' })}>
             <Text style={styles.backText}>&lt; Back to List</Text>
           </TouchableOpacity>
-          <FlightPlanClearanceScreen plan={screen.plan} />
+          <FlightPlanClearanceScreen
+            flightPlanId={screen.plan.id}
+            aircraftId={screen.plan.aircraftId}
+            adep={screen.plan.adep}
+            ades={screen.plan.ades}
+            eobt={screen.plan.eobt}
+          />
           {['FILED', 'ACKNOWLEDGED', 'PENDING_CLEARANCE'].includes(screen.plan.status) && (
             <TouchableOpacity style={styles.editBtn}
               onPress={() => setScreen({ name: 'FPL_EDIT', planId: screen.plan.id })}>

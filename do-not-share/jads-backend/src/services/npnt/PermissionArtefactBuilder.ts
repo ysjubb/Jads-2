@@ -1,11 +1,19 @@
 /**
- * FP11 — NPNT Permission Artefact Generator — DGCA v1.2 XML Full Schema
+ * FP11 — NPNT Permission Artefact Generator
  *
- * Generates a complete NPNT (No Permission No Takeoff) Permission Artefact
- * XML document conforming to DGCA v1.2 specification (March 2020).
+ * Generates NPNT Permission Artefact XML matching the Digital Sky
+ * Freemarker template from iSPIRT/digital-sky-api.
  *
- * The PA is an XML document that an RFM (Registered Flight Module) validates
- * before allowing the drone to arm.
+ * DS PA uses XML ATTRIBUTES (not child elements):
+ *   <Owner operatorID="{id}">
+ *     <Pilot id="{id}" validTo="NA"/>
+ *   </Owner>
+ *   <UADetails uinNo="{uin}"/>
+ *   <FlightPurpose shortDesc="{purpose}"/>
+ *   <PayloadDetails payLoadWeightInKg="{kg}" payloadDetails="{text}"/>
+ *   <FlightParameters flightStartTime="" flightEndTime="" maxAltitude="{feet AGL}">
+ *     <Coordinates><Coordinate latitude="" longitude=""/></Coordinates>
+ *   </FlightParameters>
  */
 
 import { NpntPermissionInput, validateNpntInput } from './NpntTypes';
@@ -14,9 +22,9 @@ import { NpntPermissionInput, validateNpntInput } from './NpntTypes';
 
 /**
  * Format a Date as ISO 8601 with +05:30 IST offset.
+ * DS uses this format for flightStartTime / flightEndTime attributes.
  */
 function toIstString(date: Date): string {
-  // IST is UTC+05:30
   const istOffsetMs = 5.5 * 60 * 60 * 1000;
   const istDate = new Date(date.getTime() + istOffsetMs);
 
@@ -31,7 +39,7 @@ function toIstString(date: Date): string {
 }
 
 /**
- * Escape XML special characters.
+ * Escape XML special characters for use in attribute values and text content.
  */
 function escapeXml(str: string): string {
   return str
@@ -45,14 +53,22 @@ function escapeXml(str: string): string {
 // ── Builder ────────────────────────────────────────────────────────────
 
 /**
- * Build a DGCA v1.2 NPNT Permission Artefact XML document (unsigned).
+ * Build a NPNT Permission Artefact XML document (unsigned) matching
+ * the Digital Sky Freemarker template schema.
+ *
+ * Key DS alignment:
+ *   - All data in XML attributes (not child elements)
+ *   - maxAltitude in feet AGL
+ *   - payloadWeight in kg
+ *   - Optional FIC/ADC numbers on FlightParameters
+ *   - Optional recurrence fields
  *
  * @param input  The permission input data
- * @returns      The XML string (unsigned — signature added by FP12)
+ * @returns      The XML string (unsigned — signature added by XmlDsigSigner)
  * @throws       If validation fails
  */
 export function buildPermissionArtefactXml(input: NpntPermissionInput): string {
-  // Validate input
+  // Validate input against DS thresholds
   const errors = validateNpntInput(input);
   if (errors.length > 0) {
     throw new Error(`NPNT PA validation failed:\n${errors.join('\n')}`);
@@ -66,102 +82,177 @@ export function buildPermissionArtefactXml(input: NpntPermissionInput): string {
     flyArea.push({ latitude: first.latitude, longitude: first.longitude });
   }
 
-  // Build coordinate elements
+  // Build <Coordinate> elements inside <Coordinates>
   const coordElements = flyArea
     .map(
       pt =>
-        `      <Coordinate latitude="${pt.latitude.toFixed(4)}" longitude="${pt.longitude.toFixed(4)}"/>`
+        `          <Coordinate latitude="${pt.latitude.toFixed(6)}" longitude="${pt.longitude.toFixed(6)}"/>`
     )
     .join('\n');
 
-  // Build frequency elements
-  const freqElements = input.frequencies
-    .map(f => `        <frequency>${escapeXml(f)}</frequency>`)
-    .join('\n');
+  // Build FlightParameters attributes
+  const fpAttrs: string[] = [
+    `flightStartTime="${escapeXml(toIstString(input.flightStartTime))}"`,
+    `flightEndTime="${escapeXml(toIstString(input.flightEndTime))}"`,
+  ];
 
-  // Build the complete XML
+  // Optional recurrence attributes
+  if (input.recurrenceTimeExpression) {
+    fpAttrs.push(`recurrenceTimeExpression="${escapeXml(input.recurrenceTimeExpression)}"`);
+    fpAttrs.push(`recurrenceTimeExpressionType="${escapeXml(input.recurrenceTimeExpressionType || 'CRON_QUARTZ')}"`);
+    if (input.recurringTimeDurationInMinutes !== undefined) {
+      fpAttrs.push(`recurringTimeDurationInMinutes="${input.recurringTimeDurationInMinutes}"`);
+    }
+  }
+
+  fpAttrs.push(`maxAltitude="${input.maxAltitudeFeetAGL}"`);
+
+  // Optional FIC/ADC numbers (set by approval pipeline)
+  if (input.ficNumber) {
+    fpAttrs.push(`ficNumber="${escapeXml(input.ficNumber)}"`);
+  }
+  if (input.adcNumber) {
+    fpAttrs.push(`adcNumber="${escapeXml(input.adcNumber)}"`);
+  }
+
+  const fpAttrString = fpAttrs.join('\n          ');
+
+  // Build the complete XML matching DS Freemarker template
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<UAPermission xmlns="http://www.dgca.gov.in/npnt">
+<UAPermission>
   <Permission>
-    <FlightID>${escapeXml(input.flightId)}</FlightID>
-    <Owner>
-      <operatorID>${escapeXml(input.operatorId)}</operatorID>
-      <pilotID>${escapeXml(input.pilotId)}</pilotID>
-      <UARegistrationNumber>${escapeXml(input.uaRegistrationNumber)}</UARegistrationNumber>
+    <Owner operatorID="${escapeXml(input.operatorId)}">
+      <Pilot id="${escapeXml(input.pilotId)}" validTo="${escapeXml(input.pilotValidTo)}"/>
     </Owner>
     <FlightDetails>
-      <flightPurpose>${escapeXml(input.flightPurpose)}</flightPurpose>
-      <payloadDetails>
-        <payloadType>${escapeXml(input.payloadType)}</payloadType>
-        <payloadMake>${escapeXml(input.payloadMake)}</payloadMake>
-        <payloadModel>${escapeXml(input.payloadModel)}</payloadModel>
-        <payloadWeight>${input.payloadWeight}</payloadWeight>
-      </payloadDetails>
-      <droneDetails>
-        <make>${escapeXml(input.droneMake)}</make>
-        <model>${escapeXml(input.droneModel)}</model>
-        <category>${escapeXml(input.droneCategory)}</category>
-        <class>${escapeXml(input.droneClass)}</class>
-      </droneDetails>
-    </FlightDetails>
-    <FlightParameters>
-      <flightStartTime>${toIstString(input.flightStartTime)}</flightStartTime>
-      <flightEndTime>${toIstString(input.flightEndTime)}</flightEndTime>
-      <maxAltitude>${input.maxAltitudeMeters}</maxAltitude>
-      <frequenciesUsed>
-${freqElements}
-      </frequenciesUsed>
-      <flyArea>
+      <UADetails uinNo="${escapeXml(input.uaRegistrationNumber)}"/>
+      <FlightPurpose shortDesc="${escapeXml(input.flightPurpose)}"/>
+      <PayloadDetails payLoadWeightInKg="${input.payloadWeightKg}" payloadDetails="${escapeXml(input.payloadDetails)}"/>
+      <FlightParameters
+          ${fpAttrString}>
+        <Coordinates>
 ${coordElements}
-      </flyArea>
-    </FlightParameters>
+        </Coordinates>
+      </FlightParameters>
+    </FlightDetails>
   </Permission>
 </UAPermission>`;
 
   return xml;
 }
 
+// ── Parser ──────────────────────────────────────────────────────────────
+
 /**
- * Parse a PA XML string to extract key fields (for verification display).
+ * Parsed PA fields (aligned with DS schema).
  */
 export interface ParsedPermissionArtefact {
+  operatorId: string;
+  pilotId: string;
+  pilotValidTo: string;
+  uinNo: string;
+  flightPurpose: string;
+  payloadWeightKg: number;
+  payloadDetails: string;
+  flightStartTime: string;
+  flightEndTime: string;
+  maxAltitudeFt: number;
+  ficNumber: string;
+  adcNumber: string;
+  flyAreaPoints: number;
+  flyArea: Array<{ latitude: number; longitude: number }>;
+}
+
+/**
+ * Parse a DS-format PA XML string to extract key fields.
+ * Handles attribute-based schema from the Freemarker template.
+ */
+export function parsePermissionArtefactXml(xml: string): ParsedPermissionArtefact {
+  // Extract attribute value from a tag
+  const extractAttr = (tag: string, attr: string): string => {
+    const tagMatch = xml.match(new RegExp(`<${tag}[^>]*?>`));
+    if (!tagMatch) return '';
+    const attrMatch = tagMatch[0].match(new RegExp(`${attr}="([^"]*)"`));
+    return attrMatch?.[1] ?? '';
+  };
+
+  // Extract all Coordinate elements
+  const coordRegex = /<Coordinate\s+latitude="([^"]+)"\s+longitude="([^"]+)"\s*\/>/g;
+  const flyArea: Array<{ latitude: number; longitude: number }> = [];
+  let coordMatch;
+  while ((coordMatch = coordRegex.exec(xml)) !== null) {
+    flyArea.push({
+      latitude: parseFloat(coordMatch[1]),
+      longitude: parseFloat(coordMatch[2]),
+    });
+  }
+
+  return {
+    operatorId: extractAttr('Owner', 'operatorID'),
+    pilotId: extractAttr('Pilot', 'id'),
+    pilotValidTo: extractAttr('Pilot', 'validTo'),
+    uinNo: extractAttr('UADetails', 'uinNo'),
+    flightPurpose: extractAttr('FlightPurpose', 'shortDesc'),
+    payloadWeightKg: parseFloat(extractAttr('PayloadDetails', 'payLoadWeightInKg')) || 0,
+    payloadDetails: extractAttr('PayloadDetails', 'payloadDetails'),
+    flightStartTime: extractAttr('FlightParameters', 'flightStartTime'),
+    flightEndTime: extractAttr('FlightParameters', 'flightEndTime'),
+    maxAltitudeFt: parseInt(extractAttr('FlightParameters', 'maxAltitude')) || 0,
+    ficNumber: extractAttr('FlightParameters', 'ficNumber'),
+    adcNumber: extractAttr('FlightParameters', 'adcNumber'),
+    flyAreaPoints: flyArea.length,
+    flyArea,
+  };
+}
+
+// ── Legacy Compatibility ────────────────────────────────────────────────
+
+/**
+ * Convert legacy JADS PA input (meters, grams, child-element schema)
+ * to DS-aligned input (feet, kg, attribute schema).
+ *
+ * Use this when existing code passes the old format.
+ */
+export interface LegacyNpntInput {
   flightId: string;
   operatorId: string;
   pilotId: string;
   uaRegistrationNumber: string;
   flightPurpose: string;
+  payloadType: string;
+  payloadMake: string;
+  payloadModel: string;
+  payloadWeight: number;        // grams (legacy)
   droneMake: string;
   droneModel: string;
   droneCategory: string;
-  flightStartTime: string;
-  flightEndTime: string;
-  maxAltitude: number;
-  flyAreaPoints: number;
+  droneClass: string;
+  flightStartTime: Date;
+  flightEndTime: Date;
+  maxAltitudeMeters: number;    // meters AGL (legacy)
+  frequencies: string[];
+  flyArea: Array<{ latitude: number; longitude: number }>;
 }
 
 /**
- * Simple regex-based PA XML parser (no XML parser dependency).
+ * Convert a legacy JADS input to DS-aligned NpntPermissionInput.
  */
-export function parsePermissionArtefactXml(xml: string): ParsedPermissionArtefact {
-  const extract = (tag: string): string => {
-    const match = xml.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
-    return match?.[1] ?? '';
-  };
-
-  const coordCount = (xml.match(/<Coordinate /g) || []).length;
+export function convertLegacyInput(legacy: LegacyNpntInput): NpntPermissionInput {
+  const metersToFeet = (m: number) => Math.round(m * 3.28084);
+  const gramsToKg = (g: number) => g / 1000;
 
   return {
-    flightId: extract('FlightID'),
-    operatorId: extract('operatorID'),
-    pilotId: extract('pilotID'),
-    uaRegistrationNumber: extract('UARegistrationNumber'),
-    flightPurpose: extract('flightPurpose'),
-    droneMake: extract('make'),
-    droneModel: extract('model'),
-    droneCategory: extract('category'),
-    flightStartTime: extract('flightStartTime'),
-    flightEndTime: extract('flightEndTime'),
-    maxAltitude: parseInt(extract('maxAltitude')) || 0,
-    flyAreaPoints: coordCount,
+    operatorId: legacy.operatorId,
+    pilotId: legacy.pilotId,
+    pilotValidTo: 'NA',
+    uaRegistrationNumber: legacy.uaRegistrationNumber,
+    flightPurpose: legacy.flightPurpose as NpntPermissionInput['flightPurpose'],
+    payloadWeightKg: gramsToKg(legacy.payloadWeight),
+    payloadDetails: `${legacy.payloadType}: ${legacy.payloadMake} ${legacy.payloadModel}`,
+    droneCategory: legacy.droneCategory as NpntPermissionInput['droneCategory'],
+    flightStartTime: legacy.flightStartTime,
+    flightEndTime: legacy.flightEndTime,
+    maxAltitudeFeetAGL: metersToFeet(legacy.maxAltitudeMeters),
+    flyArea: legacy.flyArea,
   };
 }

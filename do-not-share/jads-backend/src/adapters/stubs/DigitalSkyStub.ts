@@ -1,32 +1,27 @@
-// Digital Sky API stub adapter.
+// Digital Sky API stub adapter — LEGACY SIMPLIFIED INTERFACE.
+//
+// This file originally had a separate IDigitalSkyAdapter interface.
+// Now consolidated: re-exports the canonical interface from interfaces/
+// and provides a simplified stub with three methods used by older code paths.
+//
+// For the full DS integration stub, use DigitalSkyAdapterStub.ts instead.
 //
 // PRODUCTION: Replace with HTTP client calling Digital Sky API.
 // Base URL: https://digitalsky.dgca.gov.in/api/
 // Authentication: Client certificate issued after DSP certification.
-// DSP certification is a prerequisite — cannot call live API without it.
-// Estimated timeline: 6-12 months from application to approval.
 
 import { createServiceLogger } from '../../logger'
 
 const log = createServiceLogger('DigitalSkyStub')
 
-export interface IDigitalSkyAdapter {
-  submitFlightLog(missionId: string, recordCount: number): Promise<{
-    submitted:      boolean
-    digitalSkyRef?: string
-    reason?:        string
-  }>
-  fetchPermissionArtefact(artefactId: string): Promise<{
-    found:  boolean
-    paXml?: string
-  }>
-  registerUas(uasId: string, publicKeyHex: string): Promise<{
-    registered: boolean
-    reason?:    string
-  }>
-}
+// Re-export the canonical interface for backward compatibility
+export type { IDigitalSkyAdapter } from '../interfaces/IDigitalSkyAdapter'
 
-export class DigitalSkyStub implements IDigitalSkyAdapter {
+/**
+ * Simplified DS stub for basic operations.
+ * For full IDigitalSkyAdapter compliance, use DigitalSkyAdapterStub instead.
+ */
+export class DigitalSkyStub {
 
   async submitFlightLog(missionId: string, recordCount: number): Promise<{
     submitted:      boolean
@@ -63,7 +58,7 @@ export class DigitalSkyStub implements IDigitalSkyAdapter {
     }
   }
 
-  async registerUas(uasId: string, publicKeyHex: string): Promise<{
+  async registerUas(uasId: string, _publicKeyHex: string): Promise<{
     registered: boolean
     stubMode?:  boolean
     reason?:    string

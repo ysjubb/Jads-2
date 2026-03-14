@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAdminAuth, adminAxios }           from '../hooks/useAdminAuth'
 import { T }                                   from '../theme'
@@ -484,6 +484,8 @@ function Detail({ label, value, color }: { label: string; value: string; color?:
   )
 }
 
+// @ts-expect-error reserved utility
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }

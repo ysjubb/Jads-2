@@ -3,7 +3,7 @@
 // conflict advisories, drone events, PA verifications, violations, enforcement notices.
 // Each node: timestamp, type (color-coded), actor, description, hash (truncated), [Verify Hash] button.
 
-import React, { useEffect, useState } from 'react'
+import { type CSSProperties, useEffect, useState } from 'react'
 import { useAuditAuth } from '../hooks/useAuditAuth'
 
 const T = {
@@ -146,7 +146,7 @@ export function ForensicTimeline() {
     setTimeout(() => setVerifyingId(null), 1500)
   }
 
-  const tabStyle = (active: boolean): React.CSSProperties => ({
+  const tabStyle = (active: boolean): CSSProperties => ({
     padding: '0.5rem 1rem', border: 'none', cursor: 'pointer',
     background: active ? T.primary + '20' : 'transparent',
     color: active ? T.primary : T.muted,

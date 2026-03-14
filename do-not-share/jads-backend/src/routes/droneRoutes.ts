@@ -1028,7 +1028,7 @@ router.post('/flight-templates', requireAuth, async (req, res) => {
       try {
         const polygon = waypoints.map(p => ({ lat: p.lat, lng: p.lng }))
         const result = await classifyPolygon(polygon, 120)
-        zone = result.classification as 'GREEN' | 'YELLOW' | 'RED'
+        zone = result.primaryZone as 'GREEN' | 'YELLOW' | 'RED'
       } catch {
         // Default to GREEN if classification fails
       }
@@ -1436,6 +1436,47 @@ router.post('/track-logs/gps-track', requireAuth, requireDomain('DRONE'), async 
     const msg = e instanceof Error ? e.message : String(e)
     log.error('gps_track_upload_error', { data: { error: msg } })
     res.status(500).json({ error: 'GPS_TRACK_UPLOAD_FAILED' })
+  }
+})
+
+// ── POST /api/drone/validate-pa — Validate a PA XML ─────────────────────────
+// Accepts { paXml: string }, attempts to parse and verify, returns { valid, errors }
+router.post('/validate-pa', requireAuth, async (req, res) => {
+  try {
+    const { paXml } = req.body
+    if (!paXml || typeof paXml !== 'string') {
+      res.status(400).json({ error: 'PA_XML_REQUIRED', detail: 'paXml string is required' })
+      return
+    }
+
+    const errors: string[] = []
+
+    // Basic XML well-formedness check
+    if (!paXml.trim().startsWith('<?xml') && !paXml.trim().startsWith('<')) {
+      errors.push('Not valid XML: does not start with XML declaration or root element')
+    }
+
+    // Check for required PA elements
+    const requiredElements = ['PermissionArtefact', 'FlightDetails', 'UADetails', 'Pilot']
+    for (const elem of requiredElements) {
+      if (!paXml.includes(`<${elem}`) && !paXml.includes(`<${elem.toLowerCase()}`)) {
+        errors.push(`Missing required element: ${elem}`)
+      }
+    }
+
+    // Check for digital signature
+    if (!paXml.includes('<Signature') && !paXml.includes('<ds:Signature')) {
+      errors.push('Missing XML digital signature (W3C XMLDSig)')
+    }
+
+    const valid = errors.length === 0
+
+    log.info('pa_xml_validated', { data: { valid, errorCount: errors.length, userId: req.auth!.userId } })
+    res.json({ success: true, valid, errors })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    log.error('pa_validate_error', { data: { error: msg } })
+    res.status(500).json({ error: 'PA_VALIDATION_FAILED' })
   }
 })
 

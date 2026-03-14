@@ -475,13 +475,13 @@ export async function routeApplication(
   const airportEntry = resolvedIcao ? airportByIcao.get(resolvedIcao) : null
 
   // Build ATCAuthority
-  const authority = buildAuthority(authorityEntry)
+  const authority = buildAuthority(authorityEntry ?? undefined)
 
   // Check expedited eligibility
   const { expedited, reasons: expediteReasons } = await canExpedite(application, prisma)
 
   // Determine complexity
-  const isComplex = determineComplexity(application, authorityEntry)
+  const isComplex = determineComplexity(application, authorityEntry ?? undefined)
 
   // Processing days: 1 expedited, 7 standard, 30 complex
   const expectedProcessingDays = expedited ? 1 : isComplex ? 30 : 7
@@ -489,13 +489,13 @@ export async function routeApplication(
   // Build submission instructions
   const submissionInstructions = buildSubmissionInstructions(
     authority,
-    authorityEntry,
+    authorityEntry ?? undefined,
     expedited,
     isComplex
   )
 
   // Build required documents list
-  const requiredDocuments = buildRequiredDocuments(application, authorityEntry, isComplex)
+  const requiredDocuments = buildRequiredDocuments(application, authorityEntry ?? undefined, isComplex)
 
   // Contact details
   const contactDetails: ATCContactDetails = {

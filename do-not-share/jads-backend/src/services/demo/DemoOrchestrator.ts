@@ -52,6 +52,9 @@ export interface DemoFlightInput {
   operatorId?: string;
   pilotId?: string;
   flyArea?: Array<{ latitude: number; longitude: number }>;
+  /** Max altitude in feet AGL (DS convention). Legacy callers may pass meters. */
+  maxAltitudeFeetAGL?: number;
+  /** @deprecated Use maxAltitudeFeetAGL. Kept for backward compat; converted to feet internally. */
   maxAltitudeMeters?: number;
 }
 
@@ -195,24 +198,22 @@ export async function createDemoFlight(input: DemoFlightInput): Promise<DemoCrea
   let signedPaXml: string | undefined;
 
   if (input.isDrone && input.flyArea && input.flyArea.length >= 3) {
+    // Convert legacy maxAltitudeMeters to feet if new field not provided
+    const altFeetAGL = input.maxAltitudeFeetAGL
+      ?? (input.maxAltitudeMeters ? Math.round(input.maxAltitudeMeters * 3.28084) : 330);
+
     const paInput: NpntPermissionInput = {
-      flightId,
       operatorId: input.operatorId ?? 'JADS-DEMO-001',
       pilotId: input.pilotId ?? 'PIL-DEMO-001',
+      pilotValidTo: 'NA',
       uaRegistrationNumber: input.droneUIN ?? 'UA001234567890',
       flightPurpose: 'SURVEILLANCE',
-      payloadType: 'CAMERA',
-      payloadMake: input.droneMake ?? 'DJI',
-      payloadModel: input.droneModel ?? 'Zenmuse X5S',
-      payloadWeight: 461,
-      droneMake: input.droneMake ?? 'DJI',
-      droneModel: input.droneModel ?? 'PHANTOM 4',
+      payloadWeightKg: 0.461,
+      payloadDetails: `CAMERA: ${input.droneMake ?? 'DJI'} Zenmuse X5S`,
       droneCategory: (input.droneCategory as any) ?? 'MEDIUM',
-      droneClass: 'NTA',
-      flightStartTime: new Date(),
-      flightEndTime: new Date(Date.now() + 60 * 60 * 1000), // +1 hour
-      maxAltitudeMeters: input.maxAltitudeMeters ?? 100,
-      frequencies: ['2.4 GHz', '5.8 GHz'],
+      flightStartTime: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // +2 days (DS min 1 day advance)
+      flightEndTime: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000), // +2 days +1 hour
+      maxAltitudeFeetAGL: altFeetAGL,
       flyArea: input.flyArea,
     };
 
@@ -575,7 +576,7 @@ export function getDroneEnforcementScenario(): DemoFlightInput {
     droneCategory: 'MEDIUM',
     operatorId: 'JADS-DEMO-001',
     pilotId: 'PIL-DEMO-001',
-    maxAltitudeMeters: 100,
+    maxAltitudeFeetAGL: 330, // ~100m
     flyArea: [
       { latitude: 28.5355, longitude: 77.3910 },
       { latitude: 28.5355, longitude: 77.4200 },

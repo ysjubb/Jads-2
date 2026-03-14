@@ -120,7 +120,7 @@ router.post('/civilian/login/initiate', authLoginRateLimit, async (req, res) => 
 })
 
 // POST /api/auth/civilian/login/complete
-router.post('/civilian/login/complete', authRateLimit, async (req, res) => {
+router.post('/civilian/login/complete', authLoginRateLimit, async (req, res) => {
   try {
     const { userId, otp } = req.body
     if (!userId || !otp) { res.status(400).json({ error: 'MISSING_REQUIRED_FIELDS' }); return }

@@ -3,7 +3,7 @@
 // altitude creep, and expired PA operations. Each anomaly rendered as a card
 // with count, severity chip, and action buttons. Amber HUD theme.
 
-import React, { useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 
 const T = {
   bg:         '#050A08',
