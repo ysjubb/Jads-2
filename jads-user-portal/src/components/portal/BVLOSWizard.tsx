@@ -189,7 +189,7 @@ export function BVLOSWizard() {
           <AirspaceMap
             height="300px"
             drawMode={true}
-            onAreaSelected={geojson => update('areaGeojson', geojson)}
+            onAreaSelected={geojson => update('areaGeojson', geojson as GeoJSON.Polygon | null)}
             zoom={8}
             center={[20.5937, 78.9629]}
           />
