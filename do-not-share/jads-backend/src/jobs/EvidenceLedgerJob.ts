@@ -35,6 +35,7 @@ import { PrismaClient }        from '@prisma/client'
 import { createServiceLogger } from '../logger'
 import { ExternalAnchorService, createExternalAnchorService } from '../services/ExternalAnchorService'
 import type { AnchorPayload, AnchorReceipt } from '../services/ExternalAnchorService'
+import { env }                 from '../env'
 
 const log = createServiceLogger('EvidenceLedgerJob')
 
@@ -45,8 +46,8 @@ const GENESIS_HASH     = '0'.repeat(64) // prevAnchorHash for first-ever entry
 // In production: mount /var/log/jads on a separate read-once storage volume,
 // or ship entries to a centralised syslog/SIEM that operators cannot modify.
 // For iDEX demo: written to the app's log directory beside the DB.
-const EVIDENCE_LOG_PATH = process.env.EVIDENCE_LOG_PATH
-  ?? path.join(process.cwd(), 'evidence_ledger.log')
+const EVIDENCE_LOG_PATH = env.EVIDENCE_LOG_PATH
+  || path.join(process.cwd(), 'evidence_ledger.log')
 
 export class EvidenceLedgerJob {
   private task: ReturnType<typeof cron.schedule> | null = null

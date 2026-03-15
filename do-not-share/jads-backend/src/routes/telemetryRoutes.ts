@@ -88,8 +88,8 @@ router.get('/:id/track', requireAuth, async (req: Request, res: Response) => {
   }
 })
 
-// GET /api/missions/:id/track/live — latest single point (polling fallback)
-router.get('/:id/track/live', requireAuth, async (req: Request, res: Response) => {
+// GET /api/missions/:id/track/latest — latest single point (polling fallback)
+router.get('/:id/track/latest', requireAuth, async (req: Request, res: Response) => {
   try {
     const missionId = req.params.id
     const point = await service.getLatestPoint(missionId)

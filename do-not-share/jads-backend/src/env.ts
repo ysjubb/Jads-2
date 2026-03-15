@@ -89,6 +89,30 @@ export const env = {
   SMTP_USER:     optionalEnv('SMTP_USER', ''),
   SMTP_PASS:     optionalEnv('SMTP_PASS', ''),
   SMTP_FROM:     optionalEnv('SMTP_FROM', 'noreply@jads.gov.in'),
+  // ── Anchor / forensic integrity ──────────────────────────────────────────
+  ANCHOR_HMAC_KEY:        optionalEnv('ANCHOR_HMAC_KEY', ''),
+  ANCHOR_HMAC_FILE_PATH:  optionalEnv('ANCHOR_HMAC_FILE_PATH', ''),
+  ANCHOR_WEBHOOK_URL:     optionalEnv('ANCHOR_WEBHOOK_URL', ''),
+  ANCHOR_WEBHOOK_SECRET:  optionalEnv('ANCHOR_WEBHOOK_SECRET', ''),
+
+  // ── Evidence ledger ──────────────────────────────────────────────────────
+  EVIDENCE_LOG_PATH:      optionalEnv('EVIDENCE_LOG_PATH', ''),
+
+  // ── HSM (optional — for production key storage) ──────────────────────────
+  HSM_ENDPOINT:           optionalEnv('HSM_ENDPOINT', ''),
+  HSM_CREDENTIALS:        optionalEnv('HSM_CREDENTIALS', ''),
+
+  // ── Android Play Integrity (optional — for device attestation) ───────────
+  PLAY_INTEGRITY_PROJECT_ID: optionalEnv('PLAY_INTEGRITY_PROJECT_ID', ''),
+  PLAY_INTEGRITY_API_KEY:    optionalEnv('PLAY_INTEGRITY_API_KEY', ''),
+
+  // ── Demo / presentation mode ─────────────────────────────────────────────
+  DEMO_MODE:            optionalEnv('DEMO_MODE', 'false') === 'true',
+  JADS_PUBLIC_URL:      optionalEnv('JADS_PUBLIC_URL', ''),
+  JADS_WS_URL:          optionalEnv('JADS_WS_URL', ''),
+  DEMO_CORS_ORIGINS:    optionalEnv('DEMO_CORS_ORIGINS', ''),
+  DEMO_MISSION_ID:      optionalEnv('DEMO_MISSION_ID', 'demo-mission-001'),
+  DEMO_REPLAY_SPEED:    parseFloat(optionalEnv('DEMO_REPLAY_SPEED', '1')),
 } as const
 
 // ── Startup assertions ──────────────────────────────────────────────────

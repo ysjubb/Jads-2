@@ -11,6 +11,7 @@
 
 import crypto from 'crypto'
 import { createServiceLogger } from '../logger'
+import { env } from '../env'
 
 const log = createServiceLogger('KeyManagementService')
 
@@ -154,8 +155,8 @@ export class RuntimeIntegrityService {
 // ── Factory ──────────────────────────────────────────────────────────────
 
 export function createKeyProvider(): IKeyProvider {
-  const hsmEndpoint = process.env.HSM_ENDPOINT
-  const hsmCreds    = process.env.HSM_CREDENTIALS
+  const hsmEndpoint = env.HSM_ENDPOINT
+  const hsmCreds    = env.HSM_CREDENTIALS
 
   if (hsmEndpoint && hsmCreds) {
     log.info('using_hsm_key_provider', { data: { endpoint: hsmEndpoint } })
@@ -167,9 +168,9 @@ export function createKeyProvider(): IKeyProvider {
     data: { message: 'Set HSM_ENDPOINT for hardware-backed key management' }
   })
   return new EnvKeyProvider({
-    jwt:       process.env.JWT_SECRET       ?? '',
-    admin_jwt: process.env.ADMIN_JWT_SECRET ?? '',
-    adapter:   process.env.ADAPTER_INBOUND_KEY ?? '',
-    anchor:    process.env.ANCHOR_HMAC_KEY  ?? '',
+    jwt:       env.JWT_SECRET,
+    admin_jwt: env.ADMIN_JWT_SECRET,
+    adapter:   env.ADAPTER_INBOUND_KEY,
+    anchor:    env.ANCHOR_HMAC_KEY,
   })
 }

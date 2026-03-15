@@ -20,6 +20,7 @@ import path   from 'path'
 import https  from 'https'
 import { createServiceLogger } from '../logger'
 import { Rfc3161AnchorBackend } from './Rfc3161AnchorBackend'
+import { env } from '../env'
 
 const log = createServiceLogger('ExternalAnchorService')
 
@@ -297,29 +298,32 @@ export function createExternalAnchorService(): ExternalAnchorService {
   const service = new ExternalAnchorService()
 
   // Backend 1: HMAC-signed file (always enabled if key is set)
-  const hmacKey = process.env.ANCHOR_HMAC_KEY
+  // NOTE: These factory functions read process.env directly (not env.*) so that
+  // tests can override individual vars at runtime without re-importing the env singleton.
+  const hmacKey = process.env.ANCHOR_HMAC_KEY || env.ANCHOR_HMAC_KEY
   if (hmacKey) {
     const filePath = process.env.ANCHOR_HMAC_FILE_PATH
-      ?? path.join(process.cwd(), 'evidence_anchor_signed.log')
+      || env.ANCHOR_HMAC_FILE_PATH
+      || path.join(process.cwd(), 'evidence_anchor_signed.log')
     service.addBackend(new HmacFileAnchorBackend(filePath, hmacKey))
   }
 
   // Backend 2: Webhook to external service
-  const webhookUrl    = process.env.ANCHOR_WEBHOOK_URL
-  const webhookSecret = process.env.ANCHOR_WEBHOOK_SECRET
+  const webhookUrl    = process.env.ANCHOR_WEBHOOK_URL    || env.ANCHOR_WEBHOOK_URL
+  const webhookSecret = process.env.ANCHOR_WEBHOOK_SECRET || env.ANCHOR_WEBHOOK_SECRET
   if (webhookUrl && webhookSecret) {
     service.addBackend(new WebhookAnchorBackend(webhookUrl, webhookSecret))
   }
 
   // Backend 3: RFC 3161 Trusted Timestamping Authority (CDAC/eMudhra)
-  const tsaUrl = process.env.RFC3161_TSA_URL
+  const tsaUrl = process.env.RFC3161_TSA_URL || env.RFC3161_TSA_URL
   if (tsaUrl) {
     service.addBackend(new Rfc3161AnchorBackend({
       tsaUrl,
-      tsaUsername:    process.env.RFC3161_TSA_USERNAME,
-      tsaPassword:    process.env.RFC3161_TSA_PASSWORD,
-      timeoutMs:      parseInt(process.env.RFC3161_TSA_TIMEOUT_MS ?? '15000'),
-      tokenStorePath: process.env.RFC3161_TOKEN_STORE_PATH,
+      tsaUsername:    process.env.RFC3161_TSA_USERNAME    || env.RFC3161_TSA_USERNAME    || undefined,
+      tsaPassword:    process.env.RFC3161_TSA_PASSWORD    || env.RFC3161_TSA_PASSWORD    || undefined,
+      timeoutMs:      parseInt(process.env.RFC3161_TSA_TIMEOUT_MS ?? String(env.RFC3161_TSA_TIMEOUT_MS)),
+      tokenStorePath: process.env.RFC3161_TOKEN_STORE_PATH || env.RFC3161_TOKEN_STORE_PATH || undefined,
     }))
   }
 

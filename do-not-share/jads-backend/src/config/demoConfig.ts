@@ -3,27 +3,29 @@
 // JADS_PUBLIC_URL is the ngrok / tunnelled URL shown to remote viewers.
 // JADS_WS_URL is the corresponding WebSocket endpoint.
 
+import { env } from '../env'
+
 export const DEMO_CONFIG = {
   /** Master switch — gates all demo-mode behavior */
-  enabled: (process.env.DEMO_MODE ?? 'false') === 'true',
+  enabled: env.DEMO_MODE,
 
   /** Public URL exposed via ngrok (e.g. https://abc123.ngrok-free.app) */
-  publicUrl: process.env.JADS_PUBLIC_URL ?? '',
+  publicUrl: env.JADS_PUBLIC_URL,
 
   /** WebSocket URL exposed via ngrok (e.g. wss://abc123.ngrok-free.app/ws/missions) */
-  wsUrl: process.env.JADS_WS_URL ?? '',
+  wsUrl: env.JADS_WS_URL,
 
   /** Extra CORS origins allowed in demo mode (comma-separated) */
-  extraOrigins: (process.env.DEMO_CORS_ORIGINS ?? '')
+  extraOrigins: env.DEMO_CORS_ORIGINS
     .split(',')
     .map(s => s.trim())
     .filter(Boolean),
 
   /** Default demo mission ID when running the simulator */
-  defaultMissionId: process.env.DEMO_MISSION_ID ?? 'demo-mission-001',
+  defaultMissionId: env.DEMO_MISSION_ID,
 
   /** Simulator replay speed multiplier (1 = real-time, 10 = 10x) */
-  replaySpeed: parseFloat(process.env.DEMO_REPLAY_SPEED ?? '1'),
+  replaySpeed: env.DEMO_REPLAY_SPEED,
 } as const
 
 /**

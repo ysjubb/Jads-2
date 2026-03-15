@@ -9,6 +9,7 @@ import { createExternalAnchorService } from '../services/ExternalAnchorService'
 import { requireAuditAuth, requireRole } from '../middleware/authMiddleware'
 import { serializeForJson } from '../utils/bigintSerializer'
 import { prisma }          from '../lib/prisma'
+import { env }             from '../env'
 
 const router   = express.Router()
 const audit    = new AuditService(prisma)
@@ -332,8 +333,8 @@ router.get('/sequence-integrity', requireRole(['PLATFORM_SUPER_ADMIN']), async (
 // PLATFORM_SUPER_ADMIN only.
 router.get('/ledger/log-integrity', requireRole(['PLATFORM_SUPER_ADMIN']), async (req, res) => {
   try {
-    const logPath = process.env.EVIDENCE_LOG_PATH
-      ?? require('path').join(process.cwd(), 'evidence_ledger.log')
+    const logPath = env.EVIDENCE_LOG_PATH
+      || path.join(process.cwd(), 'evidence_ledger.log')
 
     if (!require('fs').existsSync(logPath)) {
       res.json({ status: 'NO_LOG_FILE', path: logPath, message: 'External evidence log not yet created (no missions anchored yet)' })

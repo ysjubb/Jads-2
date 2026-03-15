@@ -119,8 +119,8 @@ export class ICAONotamAdapter implements INotamAdapter {
 
 /** Factory: returns live adapter if API keys present, null otherwise. */
 export function createNotamAdapter(): ICAONotamAdapter | null {
-  const icaoKey = process.env.ICAO_API_KEY ?? ''
-  const notamifyKey = process.env.NOTAMIFY_API_KEY ?? ''
+  const icaoKey = env.ICAO_API_KEY
+  const notamifyKey = env.NOTAMIFY_API_KEY
   if (icaoKey || notamifyKey) return new ICAONotamAdapter()
   return null
 }

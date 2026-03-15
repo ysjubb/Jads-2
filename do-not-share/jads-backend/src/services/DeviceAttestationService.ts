@@ -12,6 +12,7 @@
 
 import crypto from 'crypto'
 import { createServiceLogger } from '../logger'
+import { env } from '../env'
 
 const log = createServiceLogger('DeviceAttestationService')
 
@@ -304,8 +305,8 @@ function computeTrustScore(
 export function createDeviceAttestationService(): DeviceAttestationService {
   const service = new DeviceAttestationService()
 
-  const playProjectId = process.env.PLAY_INTEGRITY_PROJECT_ID
-  const playApiKey    = process.env.PLAY_INTEGRITY_API_KEY
+  const playProjectId = env.PLAY_INTEGRITY_PROJECT_ID
+  const playApiKey    = env.PLAY_INTEGRITY_API_KEY
   if (playProjectId && playApiKey) {
     service.addVerifier(new PlayIntegrityVerifier(playProjectId, playApiKey))
   }

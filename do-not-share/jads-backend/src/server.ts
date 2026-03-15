@@ -30,7 +30,7 @@ app.use(cors({
   origin:         env.NODE_ENV === 'production'
     ? ['https://admin.jads.gov.in', 'https://audit.jads.gov.in', 'https://app.jads.gov.in']
     : true,
-  methods:        ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  methods:        ['GET', 'POST', 'PUT', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-JADS-Version'],
 }))
 app.use(express.json({ limit: '10mb' }))
