@@ -537,6 +537,42 @@ router.post('/airspace/airac-import', requireAdminRole('PLATFORM_SUPER_ADMIN'), 
       }
     }
 
+    // Process navaids (VOR/NDB/DME — Jeppesen one-way inflow)
+    for (const nav of (dataset.navaids ?? [])) {
+      try {
+        await prisma.airspaceVersion.create({ data: {
+          dataType: 'NAVAIDS', approvalStatus: 'ACTIVE',
+          createdBy: req.adminAuth!.adminUserId,
+          changeReason: `AIRAC ${dataset.airacCycle} navaid import`,
+          effectiveFrom: effDate, airacCycle: dataset.airacCycle,
+          versionNumber: 1,
+          payloadJson: JSON.stringify(nav),
+        }})
+        results.imported++
+      } catch (e) {
+        results.errors.push(`NAVAID ${nav.ident ?? '?'}: ${(e as Error).message}`)
+        results.skipped++
+      }
+    }
+
+    // Process airways / IFR routes (Jeppesen one-way inflow)
+    for (const aw of (dataset.airways ?? [])) {
+      try {
+        await prisma.airspaceVersion.create({ data: {
+          dataType: 'AIRWAYS', approvalStatus: 'ACTIVE',
+          createdBy: req.adminAuth!.adminUserId,
+          changeReason: `AIRAC ${dataset.airacCycle} airway import`,
+          effectiveFrom: effDate, airacCycle: dataset.airacCycle,
+          versionNumber: 1,
+          payloadJson: JSON.stringify(aw),
+        }})
+        results.imported++
+      } catch (e) {
+        results.errors.push(`AIRWAY ${aw.designator ?? '?'}: ${(e as Error).message}`)
+        results.skipped++
+      }
+    }
+
     await prisma.auditLog.create({ data: {
       actorType: 'ADMIN_USER', actorId: req.adminAuth!.adminUserId,
       action: 'airac_import', resourceType: 'airac', resourceId: dataset.airacCycle,

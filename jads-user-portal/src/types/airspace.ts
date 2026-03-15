@@ -43,3 +43,39 @@ export interface Airway {
   type: AirwayType;
   segments: AirwaySegment[];
 }
+
+// ── Chart data DTOs (populated by Jeppesen/AAI AIRAC import) ────────────────
+
+export type NavaidType = 'VOR' | 'NDB' | 'DME' | 'VORDME' | 'ILS' | 'TACAN';
+
+export interface AerodromeMapItem {
+  icao: string;
+  name: string;
+  lat: number;
+  lon: number;
+  elevation: number;
+  transitionAltitude?: number;
+  transitionLevel?: string;
+  firCode?: string;
+  city?: string;
+}
+
+export interface NavaidMapItem {
+  id: string;
+  name: string;
+  type: NavaidType;
+  ident: string;
+  frequency: string;
+  lat: number;
+  lon: number;
+  firCode?: string;
+  elevation?: number;
+}
+
+export interface FixMapItem {
+  name: string;
+  lat: number;
+  lon: number;
+  waypointType?: string;
+  firCode?: string;
+}

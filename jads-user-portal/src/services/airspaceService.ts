@@ -1,4 +1,4 @@
-import type { AirspaceZone, FIR, LatLng } from '../types/airspace';
+import type { AirspaceZone, FIR, LatLng, AerodromeMapItem, NavaidMapItem, FixMapItem, Airway } from '../types/airspace';
 import { INDIAN_FIRS, getFIRForPosition } from '../data/firData';
 import { userApi } from '../api/client';
 
@@ -44,6 +44,44 @@ export function checkZoneEligibility(
   }
   // RED zone
   return { allowed: false, reason: 'RED zone — no drone operations permitted without DGCA exemption' };
+}
+
+// ── Chart data fetch (Jeppesen/AAI AIRAC one-way inflow) ────────────────────
+
+export async function getAerodromes(): Promise<AerodromeMapItem[]> {
+  try {
+    const { data } = await userApi().get('/lookup/chart/aerodromes');
+    return data.aerodromes ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getNavaids(): Promise<NavaidMapItem[]> {
+  try {
+    const { data } = await userApi().get('/lookup/chart/navaids');
+    return data.navaids ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getAirways(): Promise<Airway[]> {
+  try {
+    const { data } = await userApi().get('/lookup/chart/airways');
+    return data.airways ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getFixes(): Promise<FixMapItem[]> {
+  try {
+    const { data } = await userApi().get('/lookup/chart/fixes');
+    return data.fixes ?? [];
+  } catch {
+    return [];
+  }
 }
 
 function pointInPolygon(lat: number, lng: number, polygon: LatLng[]): boolean {
